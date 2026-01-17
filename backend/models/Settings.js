@@ -68,6 +68,13 @@ const SettingsSchema = new mongoose.Schema(
             required: true,
         },
 
+        // Partnership Expense Split (Module 3: Must add up to 100%)
+        expenseSplit: {
+            waqar: { type: Number, default: 40, min: 0, max: 100 },
+            zahid: { type: Number, default: 30, min: 0, max: 100 },
+            saud:  { type: Number, default: 30, min: 0, max: 100 },
+        },
+
         // Global Subject Fee Configuration (Peshawar Standard Rates)
         defaultSubjectFees: [
             {

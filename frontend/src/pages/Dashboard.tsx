@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Users,
   AlertCircle,
@@ -41,7 +47,7 @@ const OwnerDashboard = () => {
   const fetchStats = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, {
-        credentials: 'include',
+        credentials: "include",
       });
       const data = await res.json();
       if (data.success) {
@@ -59,7 +65,7 @@ const OwnerDashboard = () => {
 
         // Fetch students
         const studentsRes = await fetch(`${API_BASE_URL}/students`, {
-          credentials: 'include',
+          credentials: "include",
         });
         const studentsData = await studentsRes.json();
         if (studentsData.success) {
@@ -89,7 +95,7 @@ const OwnerDashboard = () => {
     }
 
     const confirmed = confirm(
-      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`
+      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`,
     );
 
     if (!confirmed) return;
@@ -100,9 +106,9 @@ const OwnerDashboard = () => {
       setSuccessMessage(null);
 
       const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: `Daily closing by ${user?.fullName}`,
         }),
@@ -125,7 +131,9 @@ const OwnerDashboard = () => {
     }
   };
 
-  const activeStudents = students.filter((s: any) => s.status === "active").length;
+  const activeStudents = students.filter(
+    (s: any) => s.status === "active",
+  ).length;
 
   if (loading) {
     return (
@@ -133,7 +141,9 @@ const OwnerDashboard = () => {
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-lg text-muted-foreground">Loading dashboard data...</p>
+            <p className="text-lg text-muted-foreground">
+              Loading dashboard data...
+            </p>
           </div>
         </div>
       </DashboardLayout>
@@ -147,9 +157,12 @@ const OwnerDashboard = () => {
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2djRoNHYtNGgtNHptMC0yaDZ2Nmgtdi02eiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
         <div className="relative z-10">
           <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome back, <span className="text-yellow-400">{user?.fullName || 'Owner'}</span>
+            Welcome back,{" "}
+            <span className="text-yellow-400">{user?.fullName || "Owner"}</span>
           </h1>
-          <p className="text-blue-200 text-lg">Manage your financial streams and academy operations</p>
+          <p className="text-blue-200 text-lg">
+            Manage your financial streams and academy operations
+          </p>
         </div>
       </div>
 
@@ -197,9 +210,15 @@ const OwnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-cyan-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Chemistry Collection</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Chemistry Collection
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.chemistryRevenue > 0 ? Math.round(stats.chemistryRevenue / 1000) : 0}K
+                PKR{" "}
+                {stats.chemistryRevenue > 0
+                  ? Math.round(stats.chemistryRevenue / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-slate-500">Your subject revenue</p>
             </div>
@@ -212,9 +231,15 @@ const OwnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-orange-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Partner Debt (Recoverable)</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Partner Debt (Recoverable)
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.pendingReimbursements > 0 ? Math.round(stats.pendingReimbursements / 1000) : 0}K
+                PKR{" "}
+                {stats.pendingReimbursements > 0
+                  ? Math.round(stats.pendingReimbursements / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-slate-500">Zahid/Saud owe you</p>
             </div>
@@ -227,9 +252,15 @@ const OwnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-yellow-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Academy Pool</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Academy Pool
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.poolRevenue > 0 ? Math.round(stats.poolRevenue / 1000) : 0}K
+                PKR{" "}
+                {stats.poolRevenue > 0
+                  ? Math.round(stats.poolRevenue / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-slate-500">30% shared revenue</p>
             </div>
@@ -242,7 +273,9 @@ const OwnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-blue-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Total Enrolled</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Total Enrolled
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
                 {activeStudents > 0 ? activeStudents : "0"}
               </p>
@@ -275,7 +308,7 @@ const OwnerDashboard = () => {
               className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <DollarSign className="mr-2 h-5 w-5" />
-              {isClosing ? 'Closing...' : 'End of Day Closing'}
+              {isClosing ? "Closing..." : "End of Day Closing"}
             </Button>
 
             <Button
@@ -304,7 +337,9 @@ const OwnerDashboard = () => {
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-yellow-800">Demo Data Active</p>
+              <p className="text-sm font-medium text-yellow-800">
+                Demo Data Active
+              </p>
               <p className="text-sm text-yellow-700">{error}</p>
             </div>
           </div>
@@ -335,15 +370,31 @@ const PartnerDashboard = () => {
   // Fetch dashboard stats
   const fetchStats = async () => {
     try {
+      // Fetch general stats
       const res = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, {
-        credentials: 'include',
+        credentials: "include",
       });
       const data = await res.json();
+
+      // Fetch expense debt from Module 3 endpoint
+      let expenseDebt = 0;
+      try {
+        const debtRes = await fetch(`${API_BASE_URL}/finance/partner-expense-debt`, {
+          credentials: "include",
+        });
+        const debtData = await debtRes.json();
+        if (debtData.success) {
+          expenseDebt = debtData.data.totalDebt || 0;
+        }
+      } catch (debtErr) {
+        console.error("Error fetching expense debt:", debtErr);
+      }
+
       if (data.success) {
         setStats({
           floatingCash: data.data.floatingCash || 0,
           tuitionRevenue: data.data.tuitionRevenue || 0,
-          expenseDebt: data.data.expenseDebt || 0,
+          expenseDebt: expenseDebt,
         });
       }
     } catch (err) {
@@ -356,7 +407,7 @@ const PartnerDashboard = () => {
       try {
         setLoading(true);
         const studentsRes = await fetch(`${API_BASE_URL}/students`, {
-          credentials: 'include',
+          credentials: "include",
         });
         const studentsData = await studentsRes.json();
         if (studentsData.success) {
@@ -382,7 +433,7 @@ const PartnerDashboard = () => {
     }
 
     const confirmed = confirm(
-      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`
+      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`,
     );
 
     if (!confirmed) return;
@@ -393,9 +444,9 @@ const PartnerDashboard = () => {
       setSuccessMessage(null);
 
       const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: `Daily closing by ${user?.fullName}`,
         }),
@@ -417,7 +468,9 @@ const PartnerDashboard = () => {
     }
   };
 
-  const activeStudents = students.filter((s: any) => s.status === "active").length;
+  const activeStudents = students.filter(
+    (s: any) => s.status === "active",
+  ).length;
 
   if (loading) {
     return (
@@ -436,9 +489,14 @@ const PartnerDashboard = () => {
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2djRoNHYtNGgtNHptMC0yaDZ2Nmgtdi02eiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
         <div className="relative z-10">
           <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome, <span className="text-yellow-400">{user?.fullName || 'Partner'}</span>
+            Welcome,{" "}
+            <span className="text-yellow-400">
+              {user?.fullName || "Partner"}
+            </span>
           </h1>
-          <p className="text-blue-200 text-lg">Track your collections and manage your teaching revenue</p>
+          <p className="text-blue-200 text-lg">
+            Track your collections and manage your teaching revenue
+          </p>
         </div>
       </div>
 
@@ -487,11 +545,19 @@ const PartnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-orange-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Cash in Hand (Unverified)</p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.floatingCash > 0 ? Math.round(stats.floatingCash / 1000) : 0}K
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Cash in Hand (Unverified)
               </p>
-              <p className="text-xs text-orange-600 font-medium">⚠️ Needs End of Day Closing</p>
+              <p className="text-4xl font-bold text-slate-900 mb-1">
+                PKR{" "}
+                {stats.floatingCash > 0
+                  ? Math.round(stats.floatingCash / 1000)
+                  : 0}
+                K
+              </p>
+              <p className="text-xs text-orange-600 font-medium">
+                ⚠️ Needs End of Day Closing
+              </p>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
               <Wallet className="h-7 w-7" />
@@ -503,9 +569,15 @@ const PartnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-green-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Total Tuition Revenue</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Total Tuition Revenue
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.tuitionRevenue > 0 ? Math.round(stats.tuitionRevenue / 1000) : 0}K
+                PKR{" "}
+                {stats.tuitionRevenue > 0
+                  ? Math.round(stats.tuitionRevenue / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-slate-500">Verified collections</p>
             </div>
@@ -519,11 +591,19 @@ const PartnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-red-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Payable to Sir Waqar</p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR {stats.expenseDebt > 0 ? Math.round(stats.expenseDebt / 1000) : 0}K
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Payable to Sir Waqar
               </p>
-              <p className="text-xs text-red-600 font-medium">Your share of expenses</p>
+              <p className="text-4xl font-bold text-slate-900 mb-1">
+                PKR{" "}
+                {stats.expenseDebt > 0
+                  ? Math.round(stats.expenseDebt / 1000)
+                  : 0}
+                K
+              </p>
+              <p className="text-xs text-red-600 font-medium">
+                Your share of expenses
+              </p>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-lg">
               <AlertCircle className="h-7 w-7" />
@@ -535,7 +615,9 @@ const PartnerDashboard = () => {
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-blue-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">Enrolled in my Subjects</p>
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Enrolled in my Subjects
+              </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
                 {activeStudents > 0 ? activeStudents : "0"}
               </p>
@@ -568,10 +650,13 @@ const PartnerDashboard = () => {
               className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <DollarSign className="mr-2 h-5 w-5" />
-              {isClosing ? 'Closing...' : 'End of Day Closing'}
+              {isClosing ? "Closing..." : "End of Day Closing"}
             </Button>
             <p className="text-sm text-slate-500 mt-3 text-center">
-              Lock your floating cash of <span className="font-bold text-orange-600">PKR {stats.floatingCash.toLocaleString()}</span>
+              Lock your floating cash of{" "}
+              <span className="font-bold text-orange-600">
+                PKR {stats.floatingCash.toLocaleString()}
+              </span>
             </p>
           </div>
         </CardContent>
@@ -628,11 +713,11 @@ const Dashboard = () => {
   }
 
   // 🛡️ ROLE-BASED GATEKEEPER
-  if (user.role === 'OWNER') {
+  if (user.role === "OWNER") {
     return <OwnerDashboard />;
   }
 
-  if (user.role === 'PARTNER') {
+  if (user.role === "PARTNER") {
     return <PartnerDashboard />;
   }
 

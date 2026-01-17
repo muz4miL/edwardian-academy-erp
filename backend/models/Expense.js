@@ -56,6 +56,24 @@ const ExpenseSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+
+        // Partner Expense Split Logic (Module 3)
+        paidBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+        },
+        splitRatio: {
+            waqar: { type: Number, default: 40 }, // 40%
+            zahid: { type: Number, default: 30 }, // 30%
+            saud: { type: Number, default: 30 },  // 30%
+        },
+        shares: [{
+            partner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            partnerName: { type: String },
+            amount: { type: Number, required: true }, // Calculated debt (e.g., 30,000)
+            status: { type: String, enum: ['UNPAID', 'PAID'], default: 'UNPAID' },
+            paidAt: { type: Date },
+        }],
     },
     {
         timestamps: true, // Adds createdAt and updatedAt

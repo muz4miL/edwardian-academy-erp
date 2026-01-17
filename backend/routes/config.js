@@ -1,13 +1,8 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { getSettings, updateSettings } = require('../controllers/settingsController');
+const { protect } = require("../middleware/authMiddleware");
+const { getConfig, updateConfig } = require("../controllers/configController");
 
-// @route   GET /api/config
-// @desc    Get global academy settings
-router.get('/', getSettings);
-
-// @route   POST /api/config
-// @desc    Update global academy settings
-router.post('/', updateSettings);
-
+router.use(protect);
+router.route("/").get(getConfig).post(updateConfig);
 module.exports = router;
