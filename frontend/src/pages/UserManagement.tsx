@@ -1,0 +1,905 @@
+/**
+ * User Management Page
+ * OWNER-only hub for creating staff accounts and controlling their permissions
+ */
+
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  UserPlus,
+  Shield,
+  Users,
+  Pencil,
+  Trash2,
+  Eye,
+  EyeOff,
+  Crown,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Power,
+} from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
+import { useNavigate } from "react-router-dom";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+// Permission options with labels
+const PERMISSION_OPTIONS = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    description: "Main dashboard overview",
+    always: true,
+  },
+  {
+    key: "admissions",
+    label: "Admissions",
+    description: "New student admissions",
+  },
+  {
+    key: "students",
+    label: "Students",
+    description: "View and manage students",
+  },
+  {
+    key: "teachers",
+    label: "Teachers",
+    description: "View and manage teachers",
+  },
+  {
+    key: "finance",
+    label: "Finance",
+    description: "Fee collection and finance",
+  },
+  { key: "classes", label: "Classes", description: "Class management" },
+  { key: "timetable", label: "Timetable", description: "Class timetables" },
+  { key: "sessions", label: "Sessions", description: "Academic sessions" },
+];
+
+interface User {
+  _id: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  role: "OWNER" | "PARTNER" | "STAFF";
+  permissions: string[];
+  isActive: boolean;
+  phone?: string;
+  email?: string;
+  createdAt: string;
+  canBeDeleted: boolean;
+}
+
+export default function UserManagement() {
+  const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Modal states
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // Form states
+  const [formName, setFormName] = useState("");
+  const [formUsername, setFormUsername] = useState("");
+  const [formPassword, setFormPassword] = useState("");
+  const [formRole, setFormRole] = useState<string>("STAFF");
+  const [formPermissions, setFormPermissions] = useState<string[]>([
+    "dashboard",
+  ]);
+  const [formPhone, setFormPhone] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Check if current user is OWNER
+  if (currentUser?.role !== "OWNER") {
+    return (
+      <DashboardLayout title="Access Denied">
+        <div className="flex flex-col items-center justify-center h-96 gap-4">
+          <Shield className="h-16 w-16 text-red-500" />
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground">
+            Only OWNER can access User Management.
+          </p>
+          <Button onClick={() => navigate("/")}>Return to Dashboard</Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Fetch users
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ["users"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/users`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+  });
+
+  const users: User[] = usersData?.data || [];
+
+  // Create user mutation
+  const createMutation = useMutation({
+    mutationFn: async (userData: any) => {
+      const res = await fetch(`${API_BASE_URL}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(userData),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to create user");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("User Created", { description: data.message });
+      setAddModalOpen(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      toast.error("Failed to Create User", { description: error.message });
+    },
+  });
+
+  // Update user mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, userData }: { id: string; userData: any }) => {
+      const res = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(userData),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update user");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("User Updated", { description: data.message });
+      setEditModalOpen(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      toast.error("Failed to Update User", { description: error.message });
+    },
+  });
+
+  // Delete user mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete user");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("User Deleted", { description: data.message });
+      setDeleteConfirmOpen(false);
+      setSelectedUser(null);
+    },
+    onError: (error: any) => {
+      toast.error("Failed to Delete User", { description: error.message });
+    },
+  });
+
+  // Toggle status mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${API_BASE_URL}/users/${id}/toggle-status`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to toggle status");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Status Updated", { description: data.message });
+    },
+    onError: (error: any) => {
+      toast.error("Failed to Toggle Status", { description: error.message });
+    },
+  });
+
+  const resetForm = () => {
+    setFormName("");
+    setFormUsername("");
+    setFormPassword("");
+    setFormRole("STAFF");
+    setFormPermissions(["dashboard"]);
+    setFormPhone("");
+    setFormEmail("");
+    setShowPassword(false);
+    setSelectedUser(null);
+  };
+
+  const handleAddUser = () => {
+    if (!formName || !formUsername || !formPassword) {
+      toast.error("Missing Fields", {
+        description: "Please fill in all required fields",
+      });
+      return;
+    }
+    if (formPassword.length < 8) {
+      toast.error("Password Too Short", {
+        description: "Password must be at least 8 characters",
+      });
+      return;
+    }
+
+    createMutation.mutate({
+      fullName: formName,
+      username: formUsername,
+      password: formPassword,
+      role: formRole,
+      permissions: formPermissions,
+      phone: formPhone || undefined,
+      email: formEmail || undefined,
+    });
+  };
+
+  const handleEditUser = () => {
+    if (!selectedUser || !formName) {
+      toast.error("Missing Fields", {
+        description: "Please fill in required fields",
+      });
+      return;
+    }
+
+    const userData: any = {
+      fullName: formName,
+      role: formRole,
+      permissions: formPermissions,
+      phone: formPhone || undefined,
+      email: formEmail || undefined,
+    };
+
+    // Only include password if it was changed
+    if (formPassword && formPassword.length >= 8) {
+      userData.password = formPassword;
+    }
+
+    updateMutation.mutate({ id: selectedUser._id, userData });
+  };
+
+  const openEditModal = (user: User) => {
+    setSelectedUser(user);
+    setFormName(user.fullName);
+    setFormUsername(user.username);
+    setFormPassword("");
+    setFormRole(user.role);
+    setFormPermissions(user.permissions || ["dashboard"]);
+    setFormPhone(user.phone || "");
+    setFormEmail(user.email || "");
+    setEditModalOpen(true);
+  };
+
+  const handlePermissionToggle = (permission: string) => {
+    if (permission === "dashboard") return; // Can't toggle dashboard
+
+    setFormPermissions((prev) => {
+      if (prev.includes(permission)) {
+        return prev.filter((p) => p !== permission);
+      } else {
+        return [...prev, permission];
+      }
+    });
+  };
+
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case "OWNER":
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 gap-1">
+            <Crown className="h-3 w-3" />
+            Owner
+          </Badge>
+        );
+      case "PARTNER":
+        return <Badge className="bg-purple-100 text-purple-800">Partner</Badge>;
+      case "STAFF":
+        return <Badge className="bg-blue-100 text-blue-800">Staff</Badge>;
+      default:
+        return <Badge variant="outline">{role}</Badge>;
+    }
+  };
+
+  return (
+    <DashboardLayout title="User Management">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Shield className="h-6 w-6 text-primary" />
+              User Management
+            </h1>
+            <p className="text-muted-foreground">
+              Create staff accounts and control their access permissions
+            </p>
+          </div>
+          <Button
+            onClick={() => {
+              resetForm();
+              setAddModalOpen(true);
+            }}
+            className="gap-2"
+          >
+            <UserPlus className="h-4 w-4" />
+            Add New User
+          </Button>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <Users className="h-8 w-8 text-blue-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Users</p>
+                  <p className="text-2xl font-bold">{users.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <Crown className="h-8 w-8 text-yellow-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Owners</p>
+                  <p className="text-2xl font-bold">
+                    {users.filter((u) => u.role === "OWNER").length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <Shield className="h-8 w-8 text-purple-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Partners</p>
+                  <p className="text-2xl font-bold">
+                    {users.filter((u) => u.role === "PARTNER").length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <CheckCircle2 className="h-8 w-8 text-green-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Active</p>
+                  <p className="text-2xl font-bold">
+                    {users.filter((u) => u.isActive).length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Users Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>All Users</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : users.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>No users found</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Permissions</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user._id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{user.fullName}</p>
+                          <p className="text-sm text-muted-foreground">
+                            @{user.username}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getRoleBadge(user.role)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {user.role === "OWNER" ? (
+                            <Badge variant="outline" className="text-xs">
+                              All Access
+                            </Badge>
+                          ) : (
+                            user.permissions?.slice(0, 3).map((p) => (
+                              <Badge
+                                key={p}
+                                variant="secondary"
+                                className="text-xs capitalize"
+                              >
+                                {p}
+                              </Badge>
+                            ))
+                          )}
+                          {user.permissions?.length > 3 &&
+                            user.role !== "OWNER" && (
+                              <Badge variant="outline" className="text-xs">
+                                +{user.permissions.length - 3} more
+                              </Badge>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            user.isActive
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }
+                        >
+                          {user.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {user.role !== "OWNER" &&
+                            user._id !== currentUser?.userId && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() =>
+                                  toggleStatusMutation.mutate(user._id)
+                                }
+                                title={
+                                  user.isActive ? "Deactivate" : "Activate"
+                                }
+                              >
+                                <Power
+                                  className={`h-4 w-4 ${user.isActive ? "text-green-600" : "text-gray-400"}`}
+                                />
+                              </Button>
+                            )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditModal(user)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          {user.canBeDeleted &&
+                            user._id !== currentUser?.userId && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setDeleteConfirmOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Add User Modal */}
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Add New User
+            </DialogTitle>
+            <DialogDescription>
+              Create a new staff account with specific permissions
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Basic Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Full Name *</Label>
+                <Input
+                  placeholder="e.g., Ali Khan"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Username *</Label>
+                <Input
+                  placeholder="e.g., alikhan"
+                  value={formUsername}
+                  onChange={(e) =>
+                    setFormUsername(e.target.value.toLowerCase())
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Password *</Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Min 8 characters"
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Role *</Label>
+                <Select value={formRole} onValueChange={setFormRole}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STAFF">Staff</SelectItem>
+                    <SelectItem value="PARTNER">Partner</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Phone (Optional)</Label>
+                <Input
+                  placeholder="e.g., 0333-1234567"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email (Optional)</Label>
+                <Input
+                  type="email"
+                  placeholder="e.g., ali@example.com"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Permissions */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Sidebar Permissions
+              </Label>
+              <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="grid grid-cols-2 gap-3">
+                  {PERMISSION_OPTIONS.map((perm) => (
+                    <div key={perm.key} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`add-${perm.key}`}
+                        checked={formPermissions.includes(perm.key)}
+                        onCheckedChange={() => handlePermissionToggle(perm.key)}
+                        disabled={perm.always}
+                      />
+                      <Label
+                        htmlFor={`add-${perm.key}`}
+                        className="text-sm cursor-pointer"
+                      >
+                        {perm.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Selected permissions determine which sidebar tabs this user can
+                see
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddUser} disabled={createMutation.isPending}>
+              {createMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Create User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Edit User
+            </DialogTitle>
+            <DialogDescription>
+              Update user information and permissions
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Full Name *</Label>
+                <Input
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Username</Label>
+                <Input value={formUsername} disabled className="bg-muted" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>New Password (leave blank to keep current)</Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Min 8 characters"
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select
+                  value={formRole}
+                  onValueChange={setFormRole}
+                  disabled={selectedUser?.role === "OWNER"}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STAFF">Staff</SelectItem>
+                    <SelectItem value="PARTNER">Partner</SelectItem>
+                    {selectedUser?.role === "OWNER" && (
+                      <SelectItem value="OWNER">Owner</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={formEmail}
+                  onChange={(e) => setFormEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Permissions (only for non-OWNER) */}
+            {selectedUser?.role !== "OWNER" && (
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Sidebar Permissions
+                </Label>
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    {PERMISSION_OPTIONS.map((perm) => (
+                      <div
+                        key={perm.key}
+                        className="flex items-center space-x-2"
+                      >
+                        <Checkbox
+                          id={`edit-${perm.key}`}
+                          checked={formPermissions.includes(perm.key)}
+                          onCheckedChange={() =>
+                            handlePermissionToggle(perm.key)
+                          }
+                          disabled={perm.always}
+                        />
+                        <Label
+                          htmlFor={`edit-${perm.key}`}
+                          className="text-sm cursor-pointer"
+                        >
+                          {perm.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedUser?.role === "OWNER" && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center gap-2 text-yellow-800">
+                  <Crown className="h-5 w-5" />
+                  <span className="font-semibold">Owner Account</span>
+                </div>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Owner accounts have full access to all features automatically.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditUser}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              Delete User
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{selectedUser?.fullName}</strong>? This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() =>
+                selectedUser && deleteMutation.mutate(selectedUser._id)
+              }
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </DashboardLayout>
+  );
+}

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -12,31 +11,112 @@ import {
   BookOpen,
   Clock,
   CalendarClock,
-  GraduationCap
+  GraduationCap,
+  Shield,
+  Globe,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
+// Navigation items with permission keys
+// permission: matches the key in user.permissions array
+// ownerOnly: additional restriction for sensitive pages
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: UserPlus, label: "Admissions", path: "/admissions" },
-  { icon: Users, label: "Students", path: "/students" },
-  { icon: GraduationCap, label: "Teachers", path: "/teachers" },
-  { icon: DollarSign, label: "Finance", path: "/finance" },
-  { icon: BookOpen, label: "Classes", path: "/classes" },
-  { icon: Clock, label: "Timetable", path: "/timetable" },
-  { icon: CalendarClock, label: "Sessions", path: "/sessions" },
-  { icon: Settings, label: "Configuration", path: "/configuration" },
+  {
+    icon: LayoutDashboard,
+    label: "Dashboard",
+    path: "/",
+    permission: "dashboard",
+  },
+  {
+    icon: UserPlus,
+    label: "Admissions",
+    path: "/admissions",
+    permission: "admissions",
+  },
+  { icon: Users, label: "Students", path: "/students", permission: "students" },
+  {
+    icon: GraduationCap,
+    label: "Teachers",
+    path: "/teachers",
+    permission: "teachers",
+  },
+  {
+    icon: DollarSign,
+    label: "Finance",
+    path: "/finance",
+    permission: "finance",
+  },
+  { icon: BookOpen, label: "Classes", path: "/classes", permission: "classes" },
+  {
+    icon: Clock,
+    label: "Timetable",
+    path: "/timetable",
+    permission: "timetable",
+  },
+  {
+    icon: CalendarClock,
+    label: "Sessions",
+    path: "/sessions",
+    permission: "sessions",
+  },
+  {
+    icon: Settings,
+    label: "Configuration",
+    path: "/configuration",
+    permission: "configuration",
+    ownerOnly: true,
+  },
+  {
+    icon: Shield,
+    label: "Users",
+    path: "/users",
+    permission: "users",
+    ownerOnly: true,
+  },
+  {
+    icon: Globe,
+    label: "Website",
+    path: "/website-manager",
+    permission: "website",
+    ownerOnly: true,
+  },
+  {
+    icon: Banknote,
+    label: "Payroll",
+    path: "/payroll",
+    permission: "payroll",
+    ownerOnly: true,
+  },
 ];
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+
+  // Get user permissions (OWNER gets all permissions automatically)
+  const userPermissions = user?.permissions || ["dashboard"];
+  const isOwner = user?.role === "OWNER";
+
+  // Filter nav items based on user permissions and role
+  const filteredNavItems = navItems.filter((item) => {
+    // OWNER bypasses all permission checks
+    if (isOwner) return true;
+
+    // ownerOnly items are restricted to OWNER role
+    if (item.ownerOnly) return false;
+
+    // Check if user has permission for this item
+    return userPermissions.includes(item.permission);
+  });
 
   return (
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 h-screen bg-sidebar transition-all duration-300 ease-in-out",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-64",
       )}
     >
       {/* Sidebar Header - Professional Layout */}
@@ -49,8 +129,12 @@ export function Sidebar() {
               className="h-12 w-12 object-contain"
             />
             <div className="flex flex-col">
-              <h1 className="font-bold text-lg leading-tight text-white">Edwardian Academy</h1>
-              <p className="text-xs font-medium text-blue-300/80 tracking-wide uppercase">Enterprise ERP</p>
+              <h1 className="font-bold text-lg leading-tight text-white">
+                Edwardian Academy
+              </h1>
+              <p className="text-xs font-medium text-blue-300/80 tracking-wide uppercase">
+                Enterprise ERP
+              </p>
             </div>
           </div>
         )}
@@ -65,7 +149,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="mt-4 flex flex-col gap-1 px-2">
-        {navItems.map((item) => {
+        {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link
@@ -75,7 +159,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
             >
               <item.icon className="h-5 w-5 shrink-0" />

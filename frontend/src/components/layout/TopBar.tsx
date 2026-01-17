@@ -1,5 +1,6 @@
-import { Bell, Search, User, Sun, Moon } from "lucide-react";
+import { Bell, Search, User, Sun, Moon, LogOut } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/context/AuthContext";
 
 interface TopBarProps {
   title: string;
@@ -17,11 +19,31 @@ interface TopBarProps {
 
 export function TopBar({ title }: TopBarProps) {
   const [isDark, setIsDark] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const toggleTheme = () => {
     setIsDark(!isDark);
     document.documentElement.classList.toggle("dark");
   };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  // Get display name and role badge color
+  const displayName = user?.fullName || user?.username || "Admin";
+  const roleBadgeColor =
+    user?.role === "OWNER"
+      ? "bg-amber-500"
+      : user?.role === "PARTNER"
+        ? "bg-emerald-500"
+        : "bg-blue-500";
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6">
@@ -56,19 +78,37 @@ export function TopBar({ title }: TopBarProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
-                <User className="h-4 w-4 text-primary-foreground" />
+              <div
+                className={`flex h-8 w-8 items-center justify-center rounded-full ${roleBadgeColor}`}
+              >
+                <User className="h-4 w-4 text-white" />
               </div>
-              <span className="hidden font-medium md:block">Admin</span>
+              <div className="hidden md:flex md:flex-col md:items-start">
+                <span className="font-medium text-sm">{displayName}</span>
+                <span className="text-xs text-muted-foreground">
+                  {user?.role || "User"}
+                </span>
+              </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-popover">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">{displayName}</p>
+                <p className="text-xs text-muted-foreground">{user?.role}</p>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Logout</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleLogout}
+              className="text-destructive focus:text-destructive cursor-pointer"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

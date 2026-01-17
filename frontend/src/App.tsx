@@ -9,13 +9,19 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Admissions from "./pages/Admissions";
 import Students from "./pages/Students";
+import StudentProfile from "./pages/StudentProfile";
 import Teachers from "./pages/Teachers";
+import TeacherProfile from "./pages/TeacherProfile";
 import Finance from "./pages/Finance";
 import Classes from "./pages/Classes";
 import Configuration from "./pages/Configuration";
 import Timetable from "./pages/Timetable";
 import Sessions from "./pages/Sessions";
 import StudentCard from "./pages/StudentCard";
+import UserManagement from "./pages/UserManagement";
+import WebsiteManager from "./pages/WebsiteManager";
+import PublicLanding from "./pages/PublicLanding";
+import Payroll from "./pages/Payroll";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,8 +34,9 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Public Route */}
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/public-home" element={<PublicLanding />} />
 
             {/* Protected Routes */}
             <Route
@@ -57,10 +64,26 @@ const App = () => (
               }
             />
             <Route
+              path="/students/:id"
+              element={
+                <ProtectedRoute>
+                  <StudentProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/teachers"
               element={
                 <ProtectedRoute>
                   <Teachers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/teachers/:id"
+              element={
+                <ProtectedRoute>
+                  <TeacherProfile />
                 </ProtectedRoute>
               }
             />
@@ -105,10 +128,34 @@ const App = () => (
               }
             />
             <Route
+              path="/users"
+              element={
+                <ProtectedRoute>
+                  <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/student-card"
               element={
                 <ProtectedRoute>
                   <StudentCard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/website-manager"
+              element={
+                <ProtectedRoute>
+                  <WebsiteManager />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/payroll"
+              element={
+                <ProtectedRoute>
+                  <Payroll />
                 </ProtectedRoute>
               }
             />

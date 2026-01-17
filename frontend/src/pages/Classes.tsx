@@ -38,10 +38,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BookOpen, Plus, Search, Loader2, Edit, Trash2, DollarSign, Users } from "lucide-react";
+import {
+  BookOpen,
+  Plus,
+  Search,
+  Loader2,
+  Edit,
+  Trash2,
+  DollarSign,
+  Users,
+  Crown,
+  User,
+} from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { classApi, settingsApi } from "@/lib/api";
+import { classApi, settingsApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 
 // Section options
 const sectionOptions = [
@@ -87,6 +99,21 @@ const Classes = () => {
   const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
   const [formBaseFee, setFormBaseFee] = useState("");
   const [formStatus, setFormStatus] = useState("active");
+  const [formAssignedTeacher, setFormAssignedTeacher] = useState("");
+  const [formRevenueMode, setFormRevenueMode] = useState<
+    "standard" | "partner"
+  >("standard");
+
+  // Fetch teachers for dropdown
+  const { data: teachersData } = useQuery({
+    queryKey: ["teachers"],
+    queryFn: () => teacherApi.getAll(),
+  });
+
+  const teachers = teachersData?.data || [];
+
+  // Partner teacher names (auto-set to partner mode)
+  const partnerNames = ["waqar", "zahid", "saud"];
 
   // TASK 3: Fetch global subject fees from Settings
   const { data: settingsData } = useQuery({
@@ -133,7 +160,8 @@ const Classes = () => {
 
   // Update mutation
   const updateClassMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => classApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      classApi.update(id, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
       toast.success("Class Updated", {
@@ -171,6 +199,8 @@ const Classes = () => {
     setFormSubjects([]);
     setFormBaseFee("");
     setFormStatus("active");
+    setFormAssignedTeacher("");
+    setFormRevenueMode("standard");
   };
 
   // Populate form for edit
@@ -179,7 +209,7 @@ const Classes = () => {
     setFormSection(classDoc.section || "");
     // Handle both old (string[]) and new (SubjectWithFee[]) format
     const subjects = (classDoc.subjects || []).map((s: any) => {
-      if (typeof s === 'string') {
+      if (typeof s === "string") {
         return { name: s, fee: classDoc.baseFee || 0 };
       }
       return { name: s.name, fee: s.fee || 0 };
@@ -187,6 +217,8 @@ const Classes = () => {
     setFormSubjects(subjects);
     setFormBaseFee(String(classDoc.baseFee || ""));
     setFormStatus(classDoc.status || "active");
+    setFormAssignedTeacher(classDoc.assignedTeacher || "");
+    setFormRevenueMode(classDoc.revenueMode || "standard");
   };
 
   // Handlers
@@ -209,17 +241,30 @@ const Classes = () => {
       return;
     }
 
+    // Get teacher name for denormalization
+    const selectedTeacher = teachers.find(
+      (t: any) => t._id === formAssignedTeacher,
+    );
+
     createClassMutation.mutate({
       className: formClassName,
       section: formSection,
       subjects: formSubjects,
       baseFee: Number(formBaseFee) || 0,
       status: formStatus,
+      assignedTeacher: formAssignedTeacher || undefined,
+      teacherName: selectedTeacher?.name || undefined,
+      revenueMode: formRevenueMode,
     });
   };
 
   const handleSubmitEdit = () => {
     if (!selectedClass?._id) return;
+
+    // Get teacher name for denormalization
+    const selectedTeacher = teachers.find(
+      (t: any) => t._id === formAssignedTeacher,
+    );
 
     updateClassMutation.mutate({
       id: selectedClass._id,
@@ -229,56 +274,90 @@ const Classes = () => {
         subjects: formSubjects,
         baseFee: Number(formBaseFee) || 0,
         status: formStatus,
+        assignedTeacher: formAssignedTeacher || undefined,
+        teacherName: selectedTeacher?.name || undefined,
+        revenueMode: formRevenueMode,
       },
     });
   };
 
+  // Handle teacher selection - auto-set partner mode for partners
+  const handleTeacherChange = (teacherId: string) => {
+    setFormAssignedTeacher(teacherId);
+    const selectedTeacher = teachers.find((t: any) => t._id === teacherId);
+    if (selectedTeacher) {
+      const isPartner = partnerNames.some((name) =>
+        selectedTeacher.name?.toLowerCase().includes(name),
+      );
+      if (isPartner) {
+        setFormRevenueMode("partner");
+        toast.info(`${selectedTeacher.name} is a Partner`, {
+          description: "Revenue mode automatically set to 100% Partner",
+        });
+      }
+    }
+  };
+
   // Toggle subject selection
   const handleSubjectToggle = (subjectId: string) => {
-    const exists = formSubjects.find(s => s.name === subjectId);
+    const exists = formSubjects.find((s) => s.name === subjectId);
     if (exists) {
-      setFormSubjects(prev => prev.filter(s => s.name !== subjectId));
+      setFormSubjects((prev) => prev.filter((s) => s.name !== subjectId));
     } else {
-      const subjectOption = subjectOptions.find(s => s.id === subjectId);
-      setFormSubjects(prev => [...prev, {
-        name: subjectId,
-        fee: subjectOption?.defaultFee || Number(formBaseFee) || 0
-      }]);
+      const subjectOption = subjectOptions.find((s) => s.id === subjectId);
+      setFormSubjects((prev) => [
+        ...prev,
+        {
+          name: subjectId,
+          fee: subjectOption?.defaultFee || Number(formBaseFee) || 0,
+        },
+      ]);
     }
   };
 
   // Update subject fee
   const handleSubjectFeeChange = (subjectName: string, fee: number) => {
-    setFormSubjects(prev => prev.map(s =>
-      s.name === subjectName ? { ...s, fee } : s
-    ));
+    setFormSubjects((prev) =>
+      prev.map((s) => (s.name === subjectName ? { ...s, fee } : s)),
+    );
   };
 
   // Check if subject is selected
   const isSubjectSelected = (subjectId: string) => {
-    return formSubjects.some(s => s.name === subjectId);
+    return formSubjects.some((s) => s.name === subjectId);
   };
 
   // Get subject fee
   const getSubjectFee = (subjectId: string) => {
-    const subject = formSubjects.find(s => s.name === subjectId);
+    const subject = formSubjects.find((s) => s.name === subjectId);
     return subject?.fee || 0;
   };
 
   // Calculate total subject fees
-  const totalSubjectFees = formSubjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+  const totalSubjectFees = formSubjects.reduce(
+    (sum, s) => sum + (s.fee || 0),
+    0,
+  );
 
   // Calculate stats - TASK 2: Use real data from backend
-  const activeClasses = classes.filter((c: any) => c.status === "active").length;
-  const totalStudents = classes.reduce((sum: number, c: any) => sum + (c.studentCount || 0), 0);
-  const totalRevenue = classes.reduce((sum: number, c: any) => sum + (c.currentRevenue || 0), 0);
+  const activeClasses = classes.filter(
+    (c: any) => c.status === "active",
+  ).length;
+  const totalStudents = classes.reduce(
+    (sum: number, c: any) => sum + (c.studentCount || 0),
+    0,
+  );
+  const totalRevenue = classes.reduce(
+    (sum: number, c: any) => sum + (c.currentRevenue || 0),
+    0,
+  );
 
   // Helper to display subject fees in table
   const getSubjectDisplay = (classDoc: any) => {
     const subjects = classDoc.subjects || [];
     return subjects.slice(0, 2).map((s: any) => {
-      const name = typeof s === 'string' ? s : s.name;
-      const fee = typeof s === 'object' ? s.fee : null;
+      const name = typeof s === "string" ? s : s.name;
+      const fee = typeof s === "object" ? s.fee : null;
       return { name, fee };
     });
   };
@@ -304,36 +383,52 @@ const Classes = () => {
 
       {/* Stats Cards */}
       <div className="grid gap-4 mt-6 md:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-4 card-shadow" style={{ borderRadius: "0.75rem" }}>
+        <div
+          className="rounded-xl border border-border bg-card p-4 card-shadow"
+          style={{ borderRadius: "0.75rem" }}
+        >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100">
               <BookOpen className="h-5 w-5 text-sky-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{classes.length}</p>
+              <p className="text-2xl font-bold text-foreground">
+                {classes.length}
+              </p>
               <p className="text-sm text-muted-foreground">Total Classes</p>
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 card-shadow" style={{ borderRadius: "0.75rem" }}>
+        <div
+          className="rounded-xl border border-border bg-card p-4 card-shadow"
+          style={{ borderRadius: "0.75rem" }}
+        >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
               <Users className="h-5 w-5 text-green-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{totalStudents}</p>
+              <p className="text-2xl font-bold text-foreground">
+                {totalStudents}
+              </p>
               <p className="text-sm text-muted-foreground">Total Students</p>
             </div>
           </div>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 card-shadow" style={{ borderRadius: "0.75rem" }}>
+        <div
+          className="rounded-xl border border-border bg-card p-4 card-shadow"
+          style={{ borderRadius: "0.75rem" }}
+        >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
               <DollarSign className="h-5 w-5 text-amber-600" />
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {totalRevenue.toLocaleString()} <span className="text-sm font-normal text-muted-foreground">PKR</span>
+                {totalRevenue.toLocaleString()}{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  PKR
+                </span>
               </p>
               <p className="text-sm text-muted-foreground">Revenue Collected</p>
             </div>
@@ -389,28 +484,44 @@ const Classes = () => {
                 <TableHead className="font-semibold">Class</TableHead>
                 <TableHead className="font-semibold">Section</TableHead>
                 <TableHead className="font-semibold">Subjects & Fees</TableHead>
-                <TableHead className="font-semibold text-center">Students</TableHead>
-                <TableHead className="font-semibold text-right">Financial Status</TableHead>
-                <TableHead className="font-semibold text-center">Status</TableHead>
-                <TableHead className="font-semibold text-right">Actions</TableHead>
+                <TableHead className="font-semibold text-center">
+                  Students
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  Financial Status
+                </TableHead>
+                <TableHead className="font-semibold text-center">
+                  Status
+                </TableHead>
+                <TableHead className="font-semibold text-right">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {classes.map((classDoc: any) => {
                 const subjectDisplays = getSubjectDisplay(classDoc);
-                const totalFee = (classDoc.subjects || []).reduce((s: number, sub: any) => {
-                  if (typeof sub === 'object' && sub.fee) return s + sub.fee;
-                  return s;
-                }, 0) || classDoc.baseFee || 0;
+                const totalFee =
+                  (classDoc.subjects || []).reduce((s: number, sub: any) => {
+                    if (typeof sub === "object" && sub.fee) return s + sub.fee;
+                    return s;
+                  }, 0) ||
+                  classDoc.baseFee ||
+                  0;
 
                 return (
-                  <TableRow key={classDoc._id} className="hover:bg-secondary/50">
+                  <TableRow
+                    key={classDoc._id}
+                    className="hover:bg-secondary/50"
+                  >
                     <TableCell>
                       <span className="font-mono text-sm text-sky-600 font-semibold">
                         {classDoc.classId}
                       </span>
                     </TableCell>
-                    <TableCell className="font-medium">{classDoc.className}</TableCell>
+                    <TableCell className="font-medium">
+                      {classDoc.className}
+                    </TableCell>
                     <TableCell>
                       <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
                         {classDoc.section}
@@ -441,21 +552,30 @@ const Classes = () => {
                     {/* TASK 2: Student Count */}
                     <TableCell className="text-center">
                       <div className="flex flex-col items-center">
-                        <span className="text-lg font-bold text-sky-600">{classDoc.studentCount || 0}</span>
-                        <span className="text-[10px] text-muted-foreground">enrolled</span>
+                        <span className="text-lg font-bold text-sky-600">
+                          {classDoc.studentCount || 0}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          enrolled
+                        </span>
                       </div>
                     </TableCell>
                     {/* TASK 3: Financial Status - Collected & Pending */}
                     <TableCell className="text-right">
                       <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">Collected:</span>
+                          <span className="text-xs text-muted-foreground">
+                            Collected:
+                          </span>
                           <span className="font-semibold text-green-600">
-                            {(classDoc.currentRevenue || 0).toLocaleString()} PKR
+                            {(classDoc.currentRevenue || 0).toLocaleString()}{" "}
+                            PKR
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">Pending:</span>
+                          <span className="text-xs text-muted-foreground">
+                            Pending:
+                          </span>
                           <span className="font-semibold text-amber-600">
                             {(classDoc.totalPending || 0).toLocaleString()} PKR
                           </span>
@@ -463,7 +583,11 @@ const Classes = () => {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <StatusBadge status={classDoc.status === "active" ? "active" : "inactive"} />
+                      <StatusBadge
+                        status={
+                          classDoc.status === "active" ? "active" : "inactive"
+                        }
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
@@ -545,6 +669,74 @@ const Classes = () => {
               </div>
             </div>
 
+            {/* Assigned Professor */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Assigned Professor
+              </Label>
+              <Select
+                value={formAssignedTeacher}
+                onValueChange={handleTeacherChange}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Select professor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers
+                    .filter((t: any) => t.status === "active")
+                    .map((teacher: any) => (
+                      <SelectItem key={teacher._id} value={teacher._id}>
+                        <span className="flex items-center gap-2">
+                          {teacher.name}
+                          {partnerNames.some((name) =>
+                            teacher.name?.toLowerCase().includes(name),
+                          ) && <Crown className="h-3 w-3 text-yellow-500" />}
+                          <span className="text-xs text-muted-foreground capitalize">
+                            ({teacher.subject})
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Revenue Mode Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Revenue Mode
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {formRevenueMode === "partner"
+                    ? "100% goes to the Professor (Partner)"
+                    : "70% Teacher / 30% Academy split"}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-sm ${formRevenueMode === "standard" ? "font-semibold text-blue-600" : "text-muted-foreground"}`}
+                >
+                  Standard
+                </span>
+                <Switch
+                  checked={formRevenueMode === "partner"}
+                  onCheckedChange={(checked) =>
+                    setFormRevenueMode(checked ? "partner" : "standard")
+                  }
+                  className="data-[state=checked]:bg-yellow-500"
+                />
+                <span
+                  className={`text-sm flex items-center gap-1 ${formRevenueMode === "partner" ? "font-semibold text-yellow-600" : "text-muted-foreground"}`}
+                >
+                  <Crown className="h-3 w-3" />
+                  Partner
+                </span>
+              </div>
+            </div>
+
             {/* Subjects with Individual Fees */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -563,21 +755,27 @@ const Classes = () => {
                   return (
                     <div
                       key={subject.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
-                        ? "border-sky-500 bg-sky-50"
-                        : "border-border hover:border-sky-300"
-                        }`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                        isSelected
+                          ? "border-sky-500 bg-sky-50"
+                          : "border-border hover:border-sky-300"
+                      }`}
                     >
                       {/* Checkbox */}
                       <div
-                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
-                          ? "bg-sky-500 border-sky-500"
-                          : "border-slate-300"
-                          }`}
+                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${
+                          isSelected
+                            ? "bg-sky-500 border-sky-500"
+                            : "border-slate-300"
+                        }`}
                         onClick={() => handleSubjectToggle(subject.id)}
                       >
                         {isSelected && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
                             <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
                           </svg>
                         )}
@@ -585,8 +783,9 @@ const Classes = () => {
 
                       {/* Subject Name */}
                       <span
-                        className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? 'text-sky-700' : 'text-foreground'
-                          }`}
+                        className={`flex-1 text-sm font-medium cursor-pointer ${
+                          isSelected ? "text-sky-700" : "text-foreground"
+                        }`}
                         onClick={() => handleSubjectToggle(subject.id)}
                       >
                         {subject.label}
@@ -597,8 +796,13 @@ const Classes = () => {
                         <div className="relative w-32">
                           <Input
                             type="number"
-                            value={currentFee || ''}
-                            onChange={(e) => handleSubjectFeeChange(subject.id, Number(e.target.value) || 0)}
+                            value={currentFee || ""}
+                            onChange={(e) =>
+                              handleSubjectFeeChange(
+                                subject.id,
+                                Number(e.target.value) || 0,
+                              )
+                            }
                             className="h-8 pr-12 text-right font-medium bg-white"
                             placeholder="0"
                           />
@@ -707,6 +911,74 @@ const Classes = () => {
               </div>
             </div>
 
+            {/* Assigned Professor */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Assigned Professor
+              </Label>
+              <Select
+                value={formAssignedTeacher}
+                onValueChange={handleTeacherChange}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Select professor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teachers
+                    .filter((t: any) => t.status === "active")
+                    .map((teacher: any) => (
+                      <SelectItem key={teacher._id} value={teacher._id}>
+                        <span className="flex items-center gap-2">
+                          {teacher.name}
+                          {partnerNames.some((name) =>
+                            teacher.name?.toLowerCase().includes(name),
+                          ) && <Crown className="h-3 w-3 text-yellow-500" />}
+                          <span className="text-xs text-muted-foreground capitalize">
+                            ({teacher.subject})
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Revenue Mode Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Revenue Mode
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {formRevenueMode === "partner"
+                    ? "100% goes to the Professor (Partner)"
+                    : "70% Teacher / 30% Academy split"}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-sm ${formRevenueMode === "standard" ? "font-semibold text-blue-600" : "text-muted-foreground"}`}
+                >
+                  Standard
+                </span>
+                <Switch
+                  checked={formRevenueMode === "partner"}
+                  onCheckedChange={(checked) =>
+                    setFormRevenueMode(checked ? "partner" : "standard")
+                  }
+                  className="data-[state=checked]:bg-yellow-500"
+                />
+                <span
+                  className={`text-sm flex items-center gap-1 ${formRevenueMode === "partner" ? "font-semibold text-yellow-600" : "text-muted-foreground"}`}
+                >
+                  <Crown className="h-3 w-3" />
+                  Partner
+                </span>
+              </div>
+            </div>
+
             {/* Subjects with Individual Fees */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -725,39 +997,50 @@ const Classes = () => {
                   return (
                     <div
                       key={subject.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
-                        ? "border-sky-500 bg-sky-50"
-                        : "border-border hover:border-sky-300"
-                        }`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                        isSelected
+                          ? "border-sky-500 bg-sky-50"
+                          : "border-border hover:border-sky-300"
+                      }`}
                     >
                       <div
-                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
-                          ? "bg-sky-500 border-sky-500"
-                          : "border-slate-300"
-                          }`}
+                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${
+                          isSelected
+                            ? "bg-sky-500 border-sky-500"
+                            : "border-slate-300"
+                        }`}
                         onClick={() => handleSubjectToggle(subject.id)}
                       >
                         {isSelected && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
                             <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
                           </svg>
                         )}
                       </div>
-
+                      y
                       <span
-                        className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? 'text-sky-700' : 'text-foreground'
-                          }`}
+                        className={`flex-1 text-sm font-medium cursor-pointer ${
+                          isSelected ? "text-sky-700" : "text-foreground"
+                        }`}
                         onClick={() => handleSubjectToggle(subject.id)}
                       >
                         {subject.label}
                       </span>
-
                       {isSelected && (
                         <div className="relative w-32">
                           <Input
                             type="number"
-                            value={currentFee || ''}
-                            onChange={(e) => handleSubjectFeeChange(subject.id, Number(e.target.value) || 0)}
+                            value={currentFee || ""}
+                            onChange={(e) =>
+                              handleSubjectFeeChange(
+                                subject.id,
+                                Number(e.target.value) || 0,
+                              )
+                            }
                             className="h-8 pr-12 text-right font-medium bg-white"
                             placeholder="0"
                           />
@@ -813,7 +1096,10 @@ const Classes = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-foreground">
@@ -823,8 +1109,7 @@ const Classes = () => {
               Are you sure you want to delete{" "}
               <span className="font-bold text-sky-600">
                 {selectedClass?.className} - {selectedClass?.section}
-              </span>
-              {" "}
+              </span>{" "}
               <span className="font-mono text-sm text-muted-foreground">
                 ({selectedClass?.classId})
               </span>
@@ -832,7 +1117,10 @@ const Classes = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteClassMutation.isPending} className="border-border">
+            <AlertDialogCancel
+              disabled={deleteClassMutation.isPending}
+              className="border-border"
+            >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
