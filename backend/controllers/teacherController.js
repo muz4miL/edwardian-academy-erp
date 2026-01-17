@@ -1,0 +1,214 @@
+const Teacher = require('../models/Teacher');
+const Settings = require('../models/Settings');
+
+/**
+ * @route   GET /api/teachers
+ * @desc    Get all teachers
+ * @access  Public
+ */
+exports.getTeachers = async (req, res) => {
+    try {
+        const teachers = await Teacher.find().sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            count: teachers.length,
+            data: teachers,
+        });
+    } catch (error) {
+        console.error('❌ Error fetching teachers:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch teachers',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * @route   GET /api/teachers/:id
+ * @desc    Get single teacher by ID
+ * @access  Public
+ */
+exports.getTeacherById = async (req, res) => {
+    try {
+        const teacher = await Teacher.findById(req.params.id);
+
+        if (!teacher) {
+            return res.status(404).json({
+                success: false,
+                message: 'Teacher not found',
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: teacher,
+        });
+    } catch (error) {
+        console.error('❌ Error fetching teacher:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch teacher',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * @route   POST /api/teachers
+ * @desc    Create new teacher with smart defaults from Settings
+ * @access  Public
+ */
+exports.createTeacher = async (req, res) => {
+    try {
+        // 🔍 EXTREME DEBUGGING - Log incoming data
+        console.log('=== CREATE TEACHER REQUEST ===');
+        console.log('Incoming Data:', JSON.stringify(req.body, null, 2));
+
+        const { name, phone, subject, joiningDate, compensation } = req.body;
+
+        // Fetch global settings for smart defaults
+        let settings = await Settings.findOne();
+        if (!settings) {
+            // Create default settings if none exist
+            settings = new Settings();
+            await settings.save();
+        }
+
+        // Prepare compensation object with smart defaults
+        let compensationData = {
+            type: compensation?.type || settings.defaultCompensationMode,
+        };
+
+        // Apply smart defaults based on compensation type
+        if (compensationData.type === 'percentage') {
+            compensationData.teacherShare = compensation?.teacherShare ?? settings.defaultTeacherShare;
+            compensationData.academyShare = compensation?.academyShare ?? settings.defaultAcademyShare;
+            // Explicitly set unused fields to null
+            compensationData.fixedSalary = null;
+            compensationData.baseSalary = null;
+            compensationData.profitShare = null;
+        } else if (compensationData.type === 'fixed') {
+            compensationData.fixedSalary = compensation?.fixedSalary ?? settings.defaultBaseSalary;
+            // Explicitly set unused fields to null
+            compensationData.teacherShare = null;
+            compensationData.academyShare = null;
+            compensationData.baseSalary = null;
+            compensationData.profitShare = null;
+        } else if (compensationData.type === 'hybrid') {
+            // Hybrid mode doesn't have defaults in settings, must be provided
+            compensationData.baseSalary = compensation?.baseSalary;
+            compensationData.profitShare = compensation?.profitShare;
+            // Explicitly set unused fields to null
+            compensationData.teacherShare = null;
+            compensationData.academyShare = null;
+            compensationData.fixedSalary = null;
+        }
+
+        console.log('Processed Compensation Data:', JSON.stringify(compensationData, null, 2));
+
+        // Create new teacher document
+        const teacher = new Teacher({
+            name,
+            phone,
+            subject,
+            joiningDate: joiningDate || Date.now(),
+            compensation: compensationData,
+        });
+
+        await teacher.save();
+
+        console.log('✅ Created new teacher:', teacher.name);
+
+        res.status(201).json({
+            success: true,
+            message: 'Teacher created successfully',
+            data: teacher,
+        });
+    } catch (error) {
+        console.error('❌ Error creating teacher:');
+        console.error('Error Message:', error.message);
+        console.error('Error Stack:', error.stack);
+        console.error('Detailed Error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+
+        res.status(400).json({
+            success: false,
+            message: 'Failed to create teacher',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * @route   PUT /api/teachers/:id
+ * @desc    Update teacher
+ * @access  Public
+ */
+exports.updateTeacher = async (req, res) => {
+    try {
+        const teacher = await Teacher.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            {
+                new: true, // Return updated document
+                runValidators: true, // Run schema validators
+            }
+        );
+
+        if (!teacher) {
+            return res.status(404).json({
+                success: false,
+                message: 'Teacher not found',
+            });
+        }
+
+        console.log('✅ Updated teacher:', teacher.name);
+
+        res.status(200).json({
+            success: true,
+            message: 'Teacher updated successfully',
+            data: teacher,
+        });
+    } catch (error) {
+        console.error('❌ Error updating teacher:', error);
+        res.status(400).json({
+            success: false,
+            message: 'Failed to update teacher',
+            error: error.message,
+        });
+    }
+};
+
+/**
+ * @route   DELETE /api/teachers/:id
+ * @desc    Delete teacher
+ * @access  Public
+ */
+exports.deleteTeacher = async (req, res) => {
+    try {
+        const teacher = await Teacher.findByIdAndDelete(req.params.id);
+
+        if (!teacher) {
+            return res.status(404).json({
+                success: false,
+                message: 'Teacher not found',
+            });
+        }
+
+        console.log('✅ Deleted teacher:', teacher.name);
+
+        res.status(200).json({
+            success: true,
+            message: 'Teacher deleted successfully',
+            data: {},
+        });
+    } catch (error) {
+        console.error('❌ Error deleting teacher:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete teacher',
+            error: error.message,
+        });
+    }
+};

@@ -1,0 +1,13 @@
+{
+    "name": "Muzamil Shiraz",
+    "phone": "03110533665",
+    "subject": "math",
+    "compensation": {
+        "type": "fixed",
+        "fixedSalary": 40000,
+        "teacherShare": null,
+        "academyShare": null,
+        "baseSalary": null,
+        "profitShare": null
+    }
+}

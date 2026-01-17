@@ -1,0 +1,10 @@
+{
+    "name": "Dr. Hybrid Teacher",
+    "phone": "+92 300 9999999",
+    "subject": "biology",
+    "compensation": {
+        "type": "hybrid",
+        "baseSalary": 25000,
+        "profitShare": 15
+    }
+}
