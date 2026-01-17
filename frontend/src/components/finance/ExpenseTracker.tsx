@@ -40,9 +40,11 @@ import { toast } from "sonner";
 interface ExpenseShare {
   partner: string;
   partnerName: string;
+  partnerKey?: string;
   amount: number;
   percentage: number;
-  status: "UNPAID" | "PAID";
+  status: "UNPAID" | "PAID" | "N/A";
+  paidAt?: string;
 }
 
 interface Expense {
@@ -57,6 +59,8 @@ interface Expense {
   status: "pending" | "paid" | "overdue";
   billNumber?: string;
   description?: string;
+  paidByType?: "ACADEMY_CASH" | "WAQAR" | "ZAHID" | "SAUD";
+  hasPartnerDebt?: boolean;
   shares?: ExpenseShare[];
   splitRatio?: {
     waqar: number;
@@ -104,6 +108,7 @@ export const ExpenseTracker = ({
   const [expenseAmount, setExpenseAmount] = useState("");
   const [vendorName, setVendorName] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [paidByType, setPaidByType] = useState("ACADEMY_CASH"); // NEW: Who paid for this expense
 
   // Create expense mutation
   const createExpenseMutation = useMutation({
@@ -116,16 +121,30 @@ export const ExpenseTracker = ({
       if (!response.ok) throw new Error("Failed to create expense");
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
-      toast.success("✅ Expense added successfully!");
+      queryClient.invalidateQueries({ queryKey: ["settlements"] });
+
+      // Show different message based on who paid
+      if (data.debtGenerated) {
+        toast.success("✅ Expense added! Partner debt generated.", {
+          description: `${data.shares
+            ?.filter((s: any) => s.status === "UNPAID")
+            .map((s: any) => `${s.partner}: PKR ${s.amount.toLocaleString()}`)
+            .join(", ")}`,
+        });
+      } else {
+        toast.success("✅ Expense added successfully!");
+      }
+
       // Reset form
       setExpenseTitle("");
       setExpenseCategory("");
       setExpenseAmount("");
       setVendorName("");
       setDueDate("");
+      setPaidByType("ACADEMY_CASH");
     },
     onError: () => {
       toast.error("❌ Failed to add expense. Please try again.");
@@ -199,7 +218,18 @@ export const ExpenseTracker = ({
       amount: parseFloat(expenseAmount),
       vendorName,
       dueDate,
+      paidByType, // NEW: Send who paid for this expense
     });
+  };
+
+  // Reset form after successful creation
+  const resetForm = () => {
+    setExpenseTitle("");
+    setExpenseCategory("");
+    setExpenseAmount("");
+    setVendorName("");
+    setDueDate("");
+    setPaidByType("ACADEMY_CASH");
   };
 
   const getStatusBadge = (status: string) => {
@@ -403,6 +433,52 @@ export const ExpenseTracker = ({
           </div>
         </div>
 
+        {/* Paid By Dropdown - Financial Sovereignty Feature */}
+        <div className="mt-4 p-4 bg-amber-50 rounded-lg border-2 border-amber-200">
+          <Label className="text-sm font-semibold flex items-center gap-2 mb-3">
+            <Users className="h-4 w-4 text-amber-600" />
+            Who Paid for This?
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">
+                    If a partner paid out-of-pocket, other partners will owe
+                    them their share.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </Label>
+          <Select value={paidByType} onValueChange={setPaidByType}>
+            <SelectTrigger className="bg-white h-10 border-2 border-amber-300">
+              <SelectValue placeholder="Who paid?" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ACADEMY_CASH">
+                🏦 Academy Cash (Normal Flow)
+              </SelectItem>
+              <SelectItem value="WAQAR">
+                👤 Sir Waqar (Out-of-Pocket)
+              </SelectItem>
+              <SelectItem value="ZAHID">
+                👤 Dr. Zahid (Out-of-Pocket)
+              </SelectItem>
+              <SelectItem value="SAUD">👤 Sir Saud (Out-of-Pocket)</SelectItem>
+            </SelectContent>
+          </Select>
+          {paidByType !== "ACADEMY_CASH" && (
+            <div className="mt-2 p-2 bg-amber-100 rounded-md">
+              <p className="text-xs text-amber-800 font-medium flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                ⚠️ This will generate debt for other partners
+              </p>
+            </div>
+          )}
+        </div>
+
         <Button
           onClick={handleAddExpense}
           disabled={createExpenseMutation.isPending}
@@ -449,6 +525,18 @@ export const ExpenseTracker = ({
                           {expense.title}
                         </p>
                         {getStatusBadge(expense.status)}
+                        {/* Partner Debt Badge - Shows when a partner paid out-of-pocket */}
+                        {(expense as any).paidByType &&
+                          (expense as any).paidByType !== "ACADEMY_CASH" && (
+                            <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-xs">
+                              💳 Paid by {(expense as any).paidByType}
+                            </Badge>
+                          )}
+                        {(expense as any).hasPartnerDebt && (
+                          <Badge className="bg-purple-500 hover:bg-purple-600 text-white text-xs animate-pulse">
+                            ⚡ Debt Generated
+                          </Badge>
+                        )}
                         {expense.shares && expense.shares.length > 0 && (
                           <Button
                             variant="ghost"

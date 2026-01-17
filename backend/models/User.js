@@ -58,6 +58,13 @@ const userSchema = new mongoose.Schema(
       floating: { type: Number, default: 0 }, // Cash currently in pocket
       verified: { type: Number, default: 0 }, // Cash verified/banked
     },
+    // Partner Debt Tracking - Amount owed TO the owner (Sir Waqar)
+    // Used when owner pays expenses out-of-pocket and partners owe their share
+    debtToOwner: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     // Deprecated fields kept for safety, but we rely on walletBalance now
     pendingDebt: {
       type: Number,

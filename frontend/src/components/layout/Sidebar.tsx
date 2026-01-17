@@ -15,6 +15,7 @@ import {
   Shield,
   Globe,
   Banknote,
+  Handshake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -87,6 +88,13 @@ const navItems = [
     label: "Payroll",
     path: "/payroll",
     permission: "payroll",
+    ownerOnly: true,
+  },
+  {
+    icon: Handshake,
+    label: "Settlement",
+    path: "/partner-settlement",
+    permission: "settlement",
     ownerOnly: true,
   },
 ];
