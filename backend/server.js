@@ -60,6 +60,9 @@ const classRoutes = require("./routes/classes");
 const sessionRoutes = require("./routes/sessions");
 const timetableRoutes = require("./routes/timetable");
 const expenseRoutes = require("./routes/expenses");
+const userRoutes = require("./routes/users");
+const websiteRoutes = require("./routes/website");
+const payrollRoutes = require("./routes/payroll");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -71,6 +74,9 @@ app.use("/api/classes", classRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/timetable", timetableRoutes);
 app.use("/api/expenses", expenseRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/website", websiteRoutes);
+app.use("/api/payroll", payrollRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -87,6 +93,7 @@ app.get("/", (req, res) => {
       sessions: "/api/sessions",
       timetable: "/api/timetable",
       expenses: "/api/expenses",
+      users: "/api/users",
     },
   });
 });

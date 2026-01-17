@@ -1,6 +1,22 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// All possible permission values for sidebar tabs
+const PERMISSION_VALUES = [
+  "dashboard",
+  "admissions",
+  "students",
+  "teachers",
+  "finance",
+  "classes",
+  "timetable",
+  "sessions",
+  "configuration",
+  "users", // User Management - OWNER only in practice
+  "website", // Website CMS - OWNER only
+  "payroll", // Payroll Management - OWNER only
+];
+
 const userSchema = new mongoose.Schema(
   {
     userId: {
@@ -30,6 +46,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["OWNER", "PARTNER", "STAFF"],
       required: true,
+    },
+    // RBAC: Permissions array controls which sidebar tabs the user can see
+    permissions: {
+      type: [String],
+      enum: PERMISSION_VALUES,
+      default: ["dashboard"], // Everyone gets dashboard by default
     },
     // Financial Fields (Updated for Smart Wallet)
     walletBalance: {
@@ -109,11 +131,29 @@ userSchema.methods.getPublicProfile = function () {
         }
       : { floating: 0, verified: 0 };
 
+  // OWNER gets all permissions automatically
+  let permissions = this.permissions || ["dashboard"];
+  if (this.role === "OWNER") {
+    permissions = [
+      "dashboard",
+      "admissions",
+      "students",
+      "teachers",
+      "finance",
+      "classes",
+      "timetable",
+      "sessions",
+      "configuration",
+      "users",
+    ];
+  }
+
   return {
     userId: this.userId,
     username: this.username,
     fullName: this.fullName,
     role: this.role,
+    permissions,
     walletBalance,
     // Backward-compatible field for older frontend code
     floatingCash: walletBalance.floating,

@@ -1,18 +1,21 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // Subject sub-schema (matches Class model structure)
-const studentSubjectSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true,
+const studentSubjectSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    fee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
-  fee: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-}, { _id: false });
+  { _id: false },
+);
 
 const studentSchema = new mongoose.Schema(
   {
@@ -66,13 +69,13 @@ const studentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'inactive', 'graduated'],
-      default: 'active',
+      enum: ["active", "inactive", "graduated"],
+      default: "active",
     },
     feeStatus: {
       type: String,
-      enum: ['paid', 'partial', 'pending'],
-      default: 'pending',
+      enum: ["paid", "partial", "pending"],
+      default: "pending",
     },
     totalFee: {
       type: Number,
@@ -91,57 +94,73 @@ const studentSchema = new mongoose.Schema(
     // ObjectId references for data integrity
     classRef: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Class',
+      ref: "Class",
       required: false,
     },
     sessionRef: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Session',
+      ref: "Session",
       required: false,
+    },
+    // Teacher assignment (auto-linked from class)
+    assignedTeacher: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Teacher",
+      required: false,
+    },
+    assignedTeacherName: {
+      type: String,
+      trim: true,
     },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Virtual field for balance - TASK 1: Use Math.max to prevent negative balance
-studentSchema.virtual('balance').get(function () {
+studentSchema.virtual("balance").get(function () {
   return Math.max(0, this.totalFee - this.paidAmount);
 });
 
 // Virtual for total subject fees (locked at admission time)
-studentSchema.virtual('totalSubjectFees').get(function () {
+studentSchema.virtual("totalSubjectFees").get(function () {
   if (!this.subjects || !Array.isArray(this.subjects)) return 0;
   return this.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
 });
 
 // Ensure virtuals are included in JSON responses
-studentSchema.set('toJSON', { virtuals: true });
-studentSchema.set('toObject', { virtuals: true });
+studentSchema.set("toJSON", { virtuals: true });
+studentSchema.set("toObject", { virtuals: true });
 
 // Pre-save hook with price locking
-studentSchema.pre('save', async function () {
-  console.log('\n🛠️  PRE-SAVE HOOK TRIGGERED');
+studentSchema.pre("save", async function () {
+  console.log("\n🛠️  PRE-SAVE HOOK TRIGGERED");
   console.log(`🛠️  GENERATING ID FOR: ${this.studentName}`);
   console.log(`🛠️  Class: ${this.class}, Group: ${this.group}`);
 
   // TASK 1: Lock subject prices from Class model at admission time
-  if (this.isNew && this.classRef && (!this.subjects || this.subjects.length === 0)) {
+  if (
+    this.isNew &&
+    this.classRef &&
+    (!this.subjects || this.subjects.length === 0)
+  ) {
     try {
-      const Class = mongoose.model('Class');
+      const Class = mongoose.model("Class");
       const classDoc = await Class.findById(this.classRef).lean();
 
       if (classDoc && classDoc.subjects) {
         // Copy subject prices from Class to lock them at admission time
-        this.subjects = classDoc.subjects.map(s => ({
-          name: typeof s === 'string' ? s : s.name,
-          fee: typeof s === 'object' ? (s.fee || 0) : (classDoc.baseFee || 0),
+        this.subjects = classDoc.subjects.map((s) => ({
+          name: typeof s === "string" ? s : s.name,
+          fee: typeof s === "object" ? s.fee || 0 : classDoc.baseFee || 0,
         }));
-        console.log(`📌 LOCKED ${this.subjects.length} subjects with prices from Class`);
+        console.log(
+          `📌 LOCKED ${this.subjects.length} subjects with prices from Class`,
+        );
       }
     } catch (err) {
-      console.log('⚠️ Could not lock subject prices:', err.message);
+      console.log("⚠️ Could not lock subject prices:", err.message);
     }
   }
 
@@ -151,26 +170,27 @@ studentSchema.pre('save', async function () {
     console.log(`🛠️  Total students in DB: ${count}`);
 
     if (count === 0) {
-      this.studentId = 'STU-001';
-      console.log('✅ GENERATED ID (First Student): STU-001');
+      this.studentId = "STU-001";
+      console.log("✅ GENERATED ID (First Student): STU-001");
     } else {
-      const lastStudent = await this.constructor.findOne({})
+      const lastStudent = await this.constructor
+        .findOne({})
         .sort({ createdAt: -1 })
-        .select('studentId')
+        .select("studentId")
         .lean();
 
       if (lastStudent && lastStudent.studentId) {
         const match = lastStudent.studentId.match(/STU-(\d+)/);
         if (match) {
           const lastNumber = parseInt(match[1], 10);
-          const newNumber = String(lastNumber + 1).padStart(3, '0');
+          const newNumber = String(lastNumber + 1).padStart(3, "0");
           this.studentId = `STU-${newNumber}`;
           console.log(`✅ GENERATED ID: STU-${newNumber}`);
         } else {
-          this.studentId = 'STU-001';
+          this.studentId = "STU-001";
         }
       } else {
-        this.studentId = 'STU-001';
+        this.studentId = "STU-001";
       }
     }
   }
@@ -193,16 +213,18 @@ studentSchema.pre('save', async function () {
   // - If paidAmount === 0 → status = 'pending'
 
   if (paidAmount >= totalFee && totalFee > 0) {
-    this.feeStatus = 'paid';
+    this.feeStatus = "paid";
   } else if (paidAmount > 0 && paidAmount < totalFee) {
-    this.feeStatus = 'partial';
+    this.feeStatus = "partial";
   } else {
-    this.feeStatus = 'pending';
+    this.feeStatus = "pending";
   }
 
-  console.log(`✅ FINAL STATE: ID=${this.studentId}, FeeStatus=${this.feeStatus}, TotalFee=${totalFee}, PaidAmount=${paidAmount}, Subjects=${this.subjects?.length || 0}\n`);
+  console.log(
+    `✅ FINAL STATE: ID=${this.studentId}, FeeStatus=${this.feeStatus}, TotalFee=${totalFee}, PaidAmount=${paidAmount}, Subjects=${this.subjects?.length || 0}\n`,
+  );
 });
 
-const Student = mongoose.model('Student', studentSchema);
+const Student = mongoose.model("Student", studentSchema);
 
 module.exports = Student;

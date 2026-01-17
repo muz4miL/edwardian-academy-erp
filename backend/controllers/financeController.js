@@ -5,6 +5,7 @@ const DailyRevenue = require("../models/DailyRevenue");
 const Notification = require("../models/Notification");
 const Expense = require("../models/Expense");
 const Settings = require("../models/Settings");
+const Configuration = require("../models/Configuration");
 const User = require("../models/User");
 
 // @desc    Close Day - Lock floating cash into verified balance
@@ -460,20 +461,23 @@ exports.createSharedExpense = async (req, res) => {
     let ratio = splitRatio; // Use provided ratio if any
 
     if (!ratio) {
-      // Try to get from Settings (Configuration model)
-      const config = await Settings.findOne();
+      // Try to get from Configuration model (new Partnership config)
+      const config = await Configuration.findOne();
       if (config && config.expenseSplit) {
         ratio = {
           waqar: config.expenseSplit.waqar || 40,
           zahid: config.expenseSplit.zahid || 30,
           saud: config.expenseSplit.saud || 30,
         };
-        console.log("📊 Using dynamic expense split from config:", ratio);
+        console.log(
+          "📊 Using dynamic expense split from Configuration:",
+          ratio,
+        );
       } else {
         // Fallback to default 40/30/30
         ratio = { waqar: 40, zahid: 30, saud: 30 };
         console.log(
-          "📊 Using default expense split (config not found):",
+          "📊 Using default expense split (Configuration not found):",
           ratio,
         );
       }
