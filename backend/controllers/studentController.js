@@ -337,7 +337,7 @@ exports.collectFee = async (req, res) => {
 
     // REVENUE MODE DETECTION:
     // Priority 1: Class-level revenueMode (if set to 'partner' → 100%)
-    // Priority 2: Partner Exception by name (Waqar, Zahid, Saud → 100%)
+    // Priority 2: Partner Exception (if partner100Rule is ON and teacher is Waqar/Zahid/Saud → 100%)
     // Priority 3: Normal split from configuration
 
     const partnerNames = ["waqar", "zahid", "saud"];
@@ -347,6 +347,10 @@ exports.collectFee = async (req, res) => {
 
     // Check class-level revenue mode
     const isClassPartnerMode = studentClass?.revenueMode === "partner";
+
+    // Get the configuration (including partner100Rule)
+    const config = await Configuration.findOne();
+    const partner100RuleEnabled = config?.partner100Rule ?? true; // Default ON
 
     // Get the salary split configuration
     let teacherPercentage = 70;
@@ -361,17 +365,26 @@ exports.collectFee = async (req, res) => {
       console.log(
         `📚 CLASS PARTNER MODE: ${studentClass.name} → 100% revenue to ${teacher?.name || "assigned teacher"}`,
       );
-    } else if (isPartnerTeacher) {
-      // Partner Exception by name: 100% goes to the teacher/partner
+    } else if (isPartnerTeacher && partner100RuleEnabled) {
+      // Partner Exception by name: 100% goes to the teacher/partner (only if rule is ON)
       teacherPercentage = 100;
       academyPercentage = 0;
-      revenueSource = "partner-exception";
+      revenueSource = "partner-100-rule";
       console.log(
-        `👑 PARTNER DETECTED: ${teacher.name} → Applying 100% revenue rule`,
+        `👑 PARTNER 100% RULE: ${teacher.name} → Applying 100% revenue (rule enabled in config)`,
+      );
+    } else if (isPartnerTeacher && !partner100RuleEnabled) {
+      // Partner exists but 100% rule is OFF - use normal split
+      if (config && config.salaryConfig) {
+        teacherPercentage = config.salaryConfig.teacherShare || 70;
+        academyPercentage = config.salaryConfig.academyShare || 30;
+      }
+      revenueSource = "partner-standard-split";
+      console.log(
+        `📊 Partner ${teacher.name} using standard split (100% rule disabled)`,
       );
     } else {
       // Normal teachers: Use configuration split
-      const config = await Configuration.findOne();
       if (config && config.salaryConfig) {
         teacherPercentage = config.salaryConfig.teacherShare || 70;
         academyPercentage = config.salaryConfig.academyShare || 30;

@@ -33,26 +33,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Loader2,
-  DollarSign,
-  Users,
   CheckCircle2,
-  Clock,
-  AlertCircle,
   Wallet,
   ArrowDownRight,
-  ArrowUpRight,
   History,
   Banknote,
-  Receipt,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -214,23 +200,24 @@ export default function PartnerSettlement() {
     <DashboardLayout title="Partner Settlement">
       <HeaderBanner
         title="💰 Partner Settlement Hub"
-        subtitle="Manage inter-partner debts and record cash repayments"
+        subtitle="Track partner debts and record cash repayments to Sir Waqar"
       >
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-green-600 hover:bg-green-700 h-10 px-6">
               <Banknote className="mr-2 h-4 w-4" />
-              Record Repayment
+              Record Cash Received
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Banknote className="h-5 w-5 text-green-600" />
-                Record Cash Repayment
+                Record Cash Received
               </DialogTitle>
               <DialogDescription>
-                Record cash received from a partner to settle their debt.
+                When a partner pays cash to Sir Waqar, record it here to reduce
+                their debt.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -283,7 +270,7 @@ export default function PartnerSettlement() {
                 ) : (
                   <>
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Confirm Repayment
+                    Confirm Payment Received
                   </>
                 )}
               </Button>
@@ -301,45 +288,59 @@ export default function PartnerSettlement() {
         </div>
       ) : (
         <div className="mt-6 space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Total Receivable */}
-            <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-green-700 flex items-center gap-2">
-                  <Wallet className="h-4 w-4" />
-                  Total Receivable
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold text-green-600">
-                  PKR {(overviewData?.totalReceivable || 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  From all partners combined
-                </p>
-              </CardContent>
-            </Card>
+          {/* Total Owed Banner */}
+          <Card className="border-2 border-green-300 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50">
+            <CardContent className="py-6">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+                    <Wallet className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-green-700 font-medium">
+                      Total Owed to Sir Waqar
+                    </p>
+                    <p className="text-4xl font-bold text-green-600">
+                      PKR{" "}
+                      {(overviewData?.totalReceivable || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground text-center md:text-right">
+                  <p>From out-of-pocket expenses</p>
+                  <p className="text-xs">
+                    paid by Sir Waqar on behalf of partners
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
+          {/* Partner Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Dr. Zahid's Debt */}
             <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-blue-700 flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Dr. Zahid Owes
+                <CardTitle className="text-lg font-bold text-blue-800 flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <span className="text-blue-600 font-bold">Z</span>
+                  </div>
+                  Dr. Zahid
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-blue-600">
+                <p className="text-3xl font-bold text-blue-600 mb-2">
                   PKR {(partners.zahid?.unpaidTotal || 0).toLocaleString()}
                 </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-xs">
-                    {partners.zahid?.unpaidCount || 0} unpaid
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs border-blue-300">
+                    {partners.zahid?.unpaidCount || 0} pending expenses
                   </Badge>
-                  <Badge className="bg-green-100 text-green-700 text-xs">
-                    {partners.zahid?.paidCount || 0} settled
-                  </Badge>
+                  {(partners.zahid?.paidCount || 0) > 0 && (
+                    <Badge className="bg-green-100 text-green-700 text-xs">
+                      {partners.zahid?.paidCount} settled
+                    </Badge>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -347,136 +348,40 @@ export default function PartnerSettlement() {
             {/* Sir Saud's Debt */}
             <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-purple-700 flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Sir Saud Owes
+                <CardTitle className="text-lg font-bold text-purple-800 flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                    <span className="text-purple-600 font-bold">S</span>
+                  </div>
+                  Sir Saud
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-purple-600">
+                <p className="text-3xl font-bold text-purple-600 mb-2">
                   PKR {(partners.saud?.unpaidTotal || 0).toLocaleString()}
                 </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-xs">
-                    {partners.saud?.unpaidCount || 0} unpaid
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="text-xs border-purple-300"
+                  >
+                    {partners.saud?.unpaidCount || 0} pending expenses
                   </Badge>
-                  <Badge className="bg-green-100 text-green-700 text-xs">
-                    {partners.saud?.paidCount || 0} settled
-                  </Badge>
+                  {(partners.saud?.paidCount || 0) > 0 && (
+                    <Badge className="bg-green-100 text-green-700 text-xs">
+                      {partners.saud?.paidCount} settled
+                    </Badge>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Expense History with Partner Debts */}
-          <Card className="border-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Receipt className="h-5 w-5 text-amber-600" />
-                Expenses Paid by Sir Waqar (Out-of-Pocket)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {expensesLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : expenses.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No out-of-pocket expenses found.</p>
-                  <p className="text-sm">
-                    When Sir Waqar pays for expenses, they'll appear here.
-                  </p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Expense</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead>Partner Shares</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
-                      <TableRow key={expense._id}>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(expense.expenseDate).toLocaleDateString(
-                            "en-PK",
-                            {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            },
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{expense.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {expense.category}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          PKR {expense.amount.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {expense.shares
-                              ?.filter((s) => s.partnerKey !== "waqar")
-                              .map((share, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-2 text-xs"
-                                >
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      share.status === "PAID"
-                                        ? "bg-green-500"
-                                        : "bg-amber-500"
-                                    }`}
-                                  />
-                                  <span>{share.partnerName}</span>
-                                  <span className="text-muted-foreground">
-                                    PKR {share.amount.toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {expense.debtSummary.totalUnpaid > 0 ? (
-                            <Badge className="bg-amber-100 text-amber-700">
-                              <Clock className="h-3 w-3 mr-1" />
-                              PKR{" "}
-                              {expense.debtSummary.totalUnpaid.toLocaleString()}{" "}
-                              pending
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-green-100 text-green-700">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Fully Settled
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Recent Settlements */}
           <Card className="border-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <History className="h-5 w-5 text-green-600" />
-                Recent Settlements
+                Recent Cash Payments Received
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -522,8 +427,10 @@ export default function PartnerSettlement() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <History className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No settlements recorded yet.</p>
-                  <p className="text-sm">Record a repayment to see it here.</p>
+                  <p>No cash payments recorded yet.</p>
+                  <p className="text-sm">
+                    When partners pay Sir Waqar back, record it here.
+                  </p>
                 </div>
               )}
             </CardContent>

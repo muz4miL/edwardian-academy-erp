@@ -142,13 +142,22 @@ export default function PublicLanding() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold text-xl">E</span>
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo.png"
+                alt="Edwardian Academy"
+                className="h-10 w-10 object-contain"
+              />
+              <div className="flex flex-col">
+                <span className="text-lg font-bold text-gray-800 leading-tight">
+                  Edwardian
+                </span>
+                <span className="text-lg font-bold text-gray-800 leading-tight">
+                  Academy
+                </span>
               </div>
-              <span className="text-xl font-bold text-gray-800">Education</span>
-              <span className="text-xs text-gray-500 italic">
-                Be Prepared for the future
+              <span className="text-xs text-gray-500 italic ml-1">
+                Advancing Knowledge, Transforming Lives
               </span>
             </div>
 
@@ -160,12 +169,7 @@ export default function PublicLanding() {
               >
                 Home
               </a>
-              <a
-                href="#courses"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                All Courses
-              </a>
+
               <a
                 href="#about"
                 className="text-gray-700 hover:text-cyan-600 transition-colors"
@@ -178,12 +182,7 @@ export default function PublicLanding() {
               >
                 Instructors
               </a>
-              <a
-                href="#pricing"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                Pricing & FAQ
-              </a>
+
               <a
                 href="#contact"
                 className="text-gray-700 hover:text-cyan-600 transition-colors"
@@ -251,19 +250,19 @@ export default function PublicLanding() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.3 }}
-              className="text-5xl md:text-6xl font-bold mb-6 leading-tight"
+              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
             >
-              {config?.heroSection?.title || "Edwardian Academy"}
+              {config?.heroSection?.title || "The Edwardian's Academy"}
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.5 }}
-              className="text-xl md:text-2xl text-cyan-100 mb-4 leading-relaxed"
+              className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-cyan-50 mb-6 leading-relaxed font-light tracking-wide"
             >
               {config?.heroSection?.subtitle ||
-                "Your Pathway to Academic Excellence"}
+                "Advancing Knowledge. Transforming Lives"}
             </motion.p>
 
             {config?.heroSection?.tagline && (

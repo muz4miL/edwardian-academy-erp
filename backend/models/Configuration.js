@@ -2,18 +2,51 @@ const mongoose = require("mongoose");
 
 const configurationSchema = new mongoose.Schema(
   {
+    // Card 4: Academy Identity
     academyName: { type: String, default: "Edwardian Academy" },
-    expenseSplit: {
-      waqar: { type: Number, default: 40 },
-      zahid: { type: Number, default: 30 },
-      saud: { type: Number, default: 30 },
-    },
+    academyLogo: { type: String, default: "" },
+    academyAddress: { type: String, default: "Peshawar, Pakistan" },
+    academyPhone: { type: String, default: "" },
+
+    // Card 1: Global Staff Split (Revenue IN) - for non-owner teachers
     salaryConfig: {
-      teacherShare: { type: Number, default: 70 },
-      academyShare: { type: Number, default: 30 },
+      teacherShare: { type: Number, default: 70, min: 0, max: 100 },
+      academyShare: { type: Number, default: 30, min: 0, max: 100 },
+    },
+
+    // Card 2: Partner Revenue Rule (The 100% Rule)
+    partner100Rule: {
+      type: Boolean,
+      default: true,
+      description:
+        "If ON, partners (Waqar, Zahid, Saud) receive 100% for their own subjects",
+    },
+
+    // Card 3: Dynamic Expense Split (Money OUT) - must total 100%
+    expenseSplit: {
+      waqar: { type: Number, default: 40, min: 0, max: 100 },
+      zahid: { type: Number, default: 30, min: 0, max: 100 },
+      saud: { type: Number, default: 30, min: 0, max: 100 },
     },
   },
   { timestamps: true },
 );
+
+// Pre-save validation: expenseSplit must total 100%
+configurationSchema.pre("save", function (next) {
+  const total =
+    this.expenseSplit.waqar + this.expenseSplit.zahid + this.expenseSplit.saud;
+  if (total !== 100) {
+    return next(new Error(`Expense split must total 100%, got ${total}%`));
+  }
+
+  const salaryTotal =
+    this.salaryConfig.teacherShare + this.salaryConfig.academyShare;
+  if (salaryTotal !== 100) {
+    return next(new Error(`Salary split must total 100%, got ${salaryTotal}%`));
+  }
+
+  next();
+});
 
 module.exports = mongoose.model("Configuration", configurationSchema);

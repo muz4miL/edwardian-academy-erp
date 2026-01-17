@@ -102,11 +102,11 @@ const Teachers = () => {
   // Fetch teachers from MongoDB using React Query
   const { data: teachersResponse, isLoading } = useQuery({
     queryKey: ["teachers"],
-    queryFn: teacherApi.getAll,
+    queryFn: () => teacherApi.getAll(),
   });
 
-  const teachers = teachersResponse?.data || [];
-  const teacherCount = teachersResponse?.count || 0;
+  const teachers = (teachersResponse as any)?.data || [];
+  const teacherCount = (teachersResponse as any)?.count || 0;
 
   // Delete mutation
   const deleteTeacherMutation = useMutation({
@@ -337,7 +337,10 @@ const Teachers = () => {
                         {teacher.name.charAt(0)}
                       </div>
                       <div>
-                        <p className="font-medium text-foreground">
+                        <p
+                          className="font-medium text-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
+                          onClick={() => handleView(teacher)}
+                        >
                           {teacher.name}
                         </p>
                         <p className="text-sm text-muted-foreground">
