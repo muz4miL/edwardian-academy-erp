@@ -1,10 +1,10 @@
+
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   UserPlus,
   Users,
-  GraduationCap,
   DollarSign,
   Settings,
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
   BookOpen,
   Clock,
   CalendarClock,
+  GraduationCap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,23 +39,27 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64"
       )}
     >
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+      {/* Sidebar Header - Professional Layout */}
+      <div className="border-b border-slate-700/50 px-6 py-5">
         {!collapsed && (
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <GraduationCap className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-primary-foreground">Academy</h1>
-              <p className="text-xs text-sidebar-muted">Management System</p>
+            <img
+              src="/logo.png"
+              alt="Edwardian Logo"
+              className="h-12 w-12 object-contain"
+            />
+            <div className="flex flex-col">
+              <h1 className="font-bold text-lg leading-tight text-white">Edwardian Academy</h1>
+              <p className="text-xs font-medium text-blue-300/80 tracking-wide uppercase">Enterprise ERP</p>
             </div>
           </div>
         )}
         {collapsed && (
-          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <GraduationCap className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Edwardian Logo"
+            className="mx-auto h-10 w-10 object-contain"
+          />
         )}
       </div>
 

@@ -1,14 +1,19 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    credentials: true, // Allow cookies to be sent
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); // Parse cookies from HTTP headers
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -24,6 +29,7 @@ const connectDB = async () => {
 connectDB();
 
 // Import Routes
+const authRoutes = require('./routes/auth');
 const studentRoutes = require('./routes/students');
 const teacherRoutes = require('./routes/teachers');
 const financeRoutes = require('./routes/finance');
@@ -34,6 +40,7 @@ const timetableRoutes = require('./routes/timetable');
 const expenseRoutes = require('./routes/expenses');
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/finance', financeRoutes);
@@ -46,9 +53,10 @@ app.use('/api/expenses', expenseRoutes);
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({
-        message: 'Academy Management System API',
-        version: '1.0.0',
+        message: 'Edwardian Academy ERP API',
+        version: '2.0.0',
         endpoints: {
+            auth: '/api/auth',
             students: '/api/students',
             teachers: '/api/teachers',
             finance: '/api/finance',
@@ -56,6 +64,7 @@ app.get('/', (req, res) => {
             classes: '/api/classes',
             sessions: '/api/sessions',
             timetable: '/api/timetable',
+            expenses: '/api/expenses',
         },
     });
 });

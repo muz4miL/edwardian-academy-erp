@@ -1,11 +1,60 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const User = require('./models/User');
 const Student = require('./models/Student');
 const Teacher = require('./models/Teacher');
 const FinanceRecord = require('./models/FinanceRecord');
 
 // Load environment variables
 dotenv.config();
+
+// ========================================
+// CORE PARTNER ACCOUNTS (Protected)
+// ========================================
+const coreUsers = [
+    {
+        userId: 'OWNER-001',
+        username: 'waqar',
+        password: 'admin123', // Will be hashed by pre-save hook
+        fullName: 'Sir Waqar Baig',
+        role: 'OWNER',
+        phone: '0300-1234567',
+        email: 'waqar@edwardianacademy.com',
+        walletBalance: 0,
+        floatingCash: 0,
+        pendingDebt: 0,
+        isActive: true,
+        canBeDeleted: false, // Cannot be deleted
+    },
+    {
+        userId: 'PARTNER-001',
+        username: 'zahid',
+        password: 'admin123',
+        fullName: 'Dr. Zahid',
+        role: 'PARTNER',
+        phone: '0300-2345678',
+        email: 'zahid@edwardianacademy.com',
+        walletBalance: 0,
+        floatingCash: 0,
+        pendingDebt: 0,
+        isActive: true,
+        canBeDeleted: false, // Cannot be deleted
+    },
+    {
+        userId: 'PARTNER-002',
+        username: 'saud',
+        password: 'admin123',
+        fullName: 'Sir Shah Saud',
+        role: 'PARTNER',
+        phone: '0300-3456789',
+        email: 'saud@edwardianacademy.com',
+        walletBalance: 0,
+        floatingCash: 0,
+        pendingDebt: 0,
+        isActive: true,
+        canBeDeleted: false, // Cannot be deleted
+    },
+];
 
 // Sample data
 const students = [
@@ -160,10 +209,20 @@ const seedDatabase = async () => {
 
         // Clear existing data
         console.log('🗑️  Clearing existing data...');
+        await User.deleteMany({});
         await Student.deleteMany({});
         await Teacher.deleteMany({});
         await FinanceRecord.deleteMany({});
         console.log('✅ Existing data cleared!');
+
+        // Insert Core Users (Partners)
+        console.log('👥 Creating Core Partner Accounts...');
+        const insertedUsers = await User.insertMany(coreUsers);
+        console.log(`✅ ${insertedUsers.length} core users created!`);
+        console.log(`   - ${insertedUsers[0].fullName} (${insertedUsers[0].role})`);
+        console.log(`   - ${insertedUsers[1].fullName} (${insertedUsers[1].role})`);
+        console.log(`   - ${insertedUsers[2].fullName} (${insertedUsers[2].role})`);
+
 
         // Insert students
         console.log('📝 Inserting students...');
@@ -183,6 +242,7 @@ const seedDatabase = async () => {
 
         console.log('\n🎉 Database seeded successfully!');
         console.log('\n📊 Summary:');
+        console.log(`   Users: ${insertedUsers.length}`);
         console.log(`   Students: ${insertedStudents.length}`);
         console.log(`   Teachers: ${insertedTeachers.length}`);
         console.log(`   Finance Records: ${insertedRecords.length}`);

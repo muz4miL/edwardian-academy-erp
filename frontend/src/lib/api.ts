@@ -1,6 +1,88 @@
 // API Base URL
 const API_BASE_URL = 'http://localhost:5000/api';
 
+// ========================================
+// Authentication API Endpoints
+// ========================================
+export const authApi = {
+    // Login user
+    login: async (username: string, password: string) => {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include', // Include cookies
+            body: JSON.stringify({ username, password }),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Login failed');
+        }
+        return data;
+    },
+
+    // Get current user (auto-login check)
+    getMe: async () => {
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            credentials: 'include', // Send cookie
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch user');
+        }
+        return data;
+    },
+
+    // Logout
+    logout: async () => {
+        const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+            method: 'POST',
+            credentials: 'include', // Send cookie
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Logout failed');
+        }
+        return data;
+    },
+
+    // Create staff (OWNER only)
+    createStaff: async (staffData: {
+        username: string;
+        password: string;
+        fullName: string;
+        phone?: string;
+        email?: string;
+    }) => {
+        const response = await fetch(`${API_BASE_URL}/auth/create-staff`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include', // Send cookie
+            body: JSON.stringify(staffData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create staff');
+        }
+        return data;
+    },
+
+    // Get all staff (OWNER only)
+    getAllStaff: async () => {
+        const response = await fetch(`${API_BASE_URL}/auth/staff`, {
+            credentials: 'include', // Send cookie
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch staff');
+        }
+        return data;
+    },
+};
+
 // Teacher API Endpoints
 export const teacherApi = {
     // Get all teachers
