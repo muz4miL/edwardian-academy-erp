@@ -172,11 +172,11 @@ exports.getDashboardStats = async (req, res) => {
       const chemistryFilter =
         userRole === "PARTNER"
           ? {
-              collectedBy: collectedByMatch,
-              category: "Chemistry",
-              status: "VERIFIED",
-              type: "INCOME",
-            }
+            collectedBy: collectedByMatch,
+            category: "Chemistry",
+            status: "VERIFIED",
+            type: "INCOME",
+          }
           : { category: "Chemistry", status: "VERIFIED", type: "INCOME" };
 
       const chemistryResult = await Transaction.aggregate([
@@ -842,6 +842,160 @@ exports.getFinanceHistory = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while fetching finance history",
+      error: error.message,
+    });
+  }
+};
+
+// ========================================
+// PARTNER PORTAL: Personalized Stats Endpoint
+// ========================================
+
+// @desc    Get Partner Portal Stats (Personalized Dashboard Data)
+// @route   GET /api/finance/partner-portal-stats
+// @access  Protected (PARTNER only)
+exports.getPartnerPortalStats = async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user._id);
+    const userRole = req.user.role;
+
+    // Security: Only partners can access this endpoint
+    if (userRole !== "PARTNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. This endpoint is for PARTNER users only.",
+      });
+    }
+
+    console.log("🏛️ Partner Portal Stats for:", req.user.fullName || req.user.username);
+    const collectedByMatch = { $in: [userId, userId.toString()] };
+
+    // 1. CASH IN HAND: Floating (unverified) cash collected by this partner
+    const floatingResult = await Transaction.aggregate([
+      {
+        $match: {
+          collectedBy: collectedByMatch,
+          status: "FLOATING",
+          type: "INCOME",
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const cashInHand = floatingResult?.[0]?.total ?? 0;
+
+    // 2. EXPENSE LIABILITY: What this partner owes for shared expenses
+    const myExpenses = await Expense.find({
+      "shares.partner": userId,
+      "shares.status": "UNPAID",
+    });
+
+    let expenseLiability = 0;
+    const pendingExpenseDetails = [];
+
+    for (const exp of myExpenses) {
+      const myShare = exp.shares.find(
+        (s) => s.partner.toString() === userId.toString() && s.status === "UNPAID"
+      );
+      if (myShare) {
+        expenseLiability += myShare.amount;
+        pendingExpenseDetails.push({
+          expenseId: exp._id,
+          title: exp.title,
+          totalAmount: exp.amount,
+          myShare: myShare.amount,
+          category: exp.category,
+          dueDate: exp.dueDate,
+        });
+      }
+    }
+
+    // 3. TOTAL EARNINGS: All verified income collected by this partner (70% of tuition)
+    const verifiedResult = await Transaction.aggregate([
+      {
+        $match: {
+          collectedBy: collectedByMatch,
+          status: "VERIFIED",
+          type: "INCOME",
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const totalVerifiedCollections = verifiedResult?.[0]?.total ?? 0;
+
+    // Calculate 70% share (their actual earnings from collections)
+    const totalEarnings = Math.round(totalVerifiedCollections * 0.7);
+
+    // 4. SETTLEMENT HISTORY: Recent closings and settlements for this partner
+    const recentClosings = await DailyClosing.find({ partnerId: userId })
+      .sort({ date: -1 })
+      .limit(10)
+      .lean();
+
+    const settlementHistory = recentClosings.map((closing) => ({
+      _id: closing._id,
+      date: closing.date,
+      type: "DAY_CLOSING",
+      amount: closing.totalAmount,
+      status: closing.status,
+      notes: closing.notes,
+      breakdown: closing.breakdown,
+    }));
+
+    // 5. NET POSITION: Earnings minus liabilities
+    const netPosition = totalEarnings - expenseLiability;
+
+    // 6. TODAY'S COLLECTIONS: Quick snapshot
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayCollections = await Transaction.aggregate([
+      {
+        $match: {
+          collectedBy: collectedByMatch,
+          type: "INCOME",
+          createdAt: { $gte: todayStart },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
+
+    const todayStats = {
+      amount: todayCollections?.[0]?.total ?? 0,
+      count: todayCollections?.[0]?.count ?? 0,
+    };
+
+    console.log("✅ Partner Portal Stats calculated:", {
+      cashInHand,
+      expenseLiability,
+      totalEarnings,
+      netPosition,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        // Core Metrics
+        cashInHand,
+        expenseLiability,
+        totalEarnings,
+        netPosition,
+
+        // Today's snapshot
+        todayStats,
+
+        // Detailed breakdowns
+        pendingExpenses: pendingExpenseDetails,
+        settlementHistory,
+
+        // Meta info
+        lastUpdated: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getPartnerPortalStats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching partner portal stats",
       error: error.message,
     });
   }

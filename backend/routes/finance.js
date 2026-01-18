@@ -11,6 +11,7 @@ const {
   markExpenseSharePaid,
   getReimbursementReport,
   getFinanceHistory,
+  getPartnerPortalStats,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -23,6 +24,16 @@ const { protect, restrictTo } = require("../middleware/authMiddleware");
 // @desc    Get financial stats for dashboard widgets
 // @access  Protected
 router.get("/dashboard-stats", protect, getDashboardStats);
+
+// @route   GET /api/finance/partner-portal-stats
+// @desc    Get Partner Portal personalized stats (cashInHand, expenseLiability, totalEarnings)
+// @access  Protected (PARTNER only)
+router.get(
+  "/partner-portal-stats",
+  protect,
+  restrictTo("PARTNER"),
+  getPartnerPortalStats,
+);
 
 // @route   GET /api/finance/history
 // @desc    Get finance history (ledger) - OWNER sees all, PARTNER sees own

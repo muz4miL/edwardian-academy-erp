@@ -22,6 +22,9 @@ const User = require("../models/User");
  */
 
 const resetAcademy = async () => {
+    // Initialize result variables at function scope
+    let studentResult = { deletedCount: 0 };
+
     try {
         console.log("🔧 Connecting to MongoDB...");
         await mongoose.connect(process.env.MONGODB_URI);
@@ -79,13 +82,8 @@ const resetAcademy = async () => {
         let userUpdateCount = 0;
 
         for (const user of users) {
-            // Reset wallet balances
-            if (user.walletBalance && typeof user.walletBalance === "object") {
-                user.walletBalance.verified = 0;
-                user.walletBalance.floating = 0;
-            } else {
-                user.walletBalance = 0;
-            }
+            // Reset wallet balances - always use the proper object structure
+            user.walletBalance = { floating: 0, verified: 0 };
 
             // Reset debts
             user.debtToOwner = 0;
@@ -101,7 +99,7 @@ const resetAcademy = async () => {
         // ========================================
         if (!keepStudents) {
             console.log("👨‍🎓 Step 4: Deleting Student Records...");
-            const studentResult = await Student.deleteMany({});
+            studentResult = await Student.deleteMany({});
             console.log(`   ✅ Deleted ${studentResult.deletedCount} Student documents`);
             console.log(`   ⚠️  Note: Use --keep-students flag to preserve student data\n`);
         } else {

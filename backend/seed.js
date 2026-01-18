@@ -20,8 +20,7 @@ const coreUsers = [
         role: 'OWNER',
         phone: '0300-1234567',
         email: 'waqar@edwardianacademy.com',
-        walletBalance: 0,
-        floatingCash: 0,
+        walletBalance: { floating: 0, verified: 0 },
         pendingDebt: 0,
         isActive: true,
         canBeDeleted: false, // Cannot be deleted
@@ -34,8 +33,7 @@ const coreUsers = [
         role: 'PARTNER',
         phone: '0300-2345678',
         email: 'zahid@edwardianacademy.com',
-        walletBalance: 0,
-        floatingCash: 0,
+        walletBalance: { floating: 0, verified: 0 },
         pendingDebt: 0,
         isActive: true,
         canBeDeleted: false, // Cannot be deleted
@@ -48,8 +46,7 @@ const coreUsers = [
         role: 'PARTNER',
         phone: '0300-3456789',
         email: 'saud@edwardianacademy.com',
-        walletBalance: 0,
-        floatingCash: 0,
+        walletBalance: { floating: 0, verified: 0 },
         pendingDebt: 0,
         isActive: true,
         canBeDeleted: false, // Cannot be deleted

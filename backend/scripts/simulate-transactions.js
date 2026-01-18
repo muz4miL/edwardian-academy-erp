@@ -64,17 +64,19 @@ const simulateTransactions = async () => {
         console.log(`\n✅ Created ${transactions.length} transactions`);
         console.log(`💵 Total FLOATING cash: PKR ${totalAmount.toLocaleString()}\n`);
 
-        // 4. Update Zahid's wallet (optional - for display purposes)
+        // 4. Update Zahid's wallet floating cash
         console.log('💼 Updating wallet balance...');
 
-        // Note: In the real system, wallet is calculated from transactions
-        // But if User model has a walletBalance field, we can update it
-        if (zahid.walletBalance !== undefined) {
-            zahid.walletBalance = totalAmount;
+        // Update the floating cash in the nested walletBalance object
+        if (zahid.walletBalance && typeof zahid.walletBalance === 'object') {
+            zahid.walletBalance.floating = (zahid.walletBalance.floating || 0) + totalAmount;
             await zahid.save();
-            console.log(`✅ Wallet updated: PKR ${totalAmount.toLocaleString()}\n`);
+            console.log(`✅ Wallet updated: Floating PKR ${zahid.walletBalance.floating.toLocaleString()}\n`);
         } else {
-            console.log('ℹ️  User model does not have walletBalance field (using transaction-based calculation)\n');
+            // Initialize with proper structure if needed
+            zahid.walletBalance = { floating: totalAmount, verified: 0 };
+            await zahid.save();
+            console.log(`✅ Wallet initialized: Floating PKR ${totalAmount.toLocaleString()}\n`);
         }
 
         // 5. Summary

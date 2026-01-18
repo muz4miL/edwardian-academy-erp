@@ -9,38 +9,22 @@
  */
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Loader2,
-  CheckCircle2,
   Wallet,
   ArrowDownRight,
   History,
   Banknote,
 } from "lucide-react";
-import { toast } from "sonner";
+
+// Import the shared SettlementModal component
+import { SettlementModal } from "@/components/finance/SettlementModal";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -76,33 +60,7 @@ interface SettlementOverview {
   }>;
 }
 
-interface ExpenseWithDebt {
-  _id: string;
-  title: string;
-  amount: number;
-  category: string;
-  expenseDate: string;
-  paidByType: string;
-  shares: Array<{
-    partnerName: string;
-    partnerKey: string;
-    amount: number;
-    status: string;
-    paidAt?: string;
-  }>;
-  debtSummary: {
-    totalUnpaid: number;
-    totalPaid: number;
-    unpaidPartners: string[];
-    paidPartners: string[];
-  };
-}
-
 export default function PartnerSettlement() {
-  const queryClient = useQueryClient();
-  const [selectedPartner, setSelectedPartner] = useState<string>("");
-  const [repaymentAmount, setRepaymentAmount] = useState<string>("");
-  const [repaymentNotes, setRepaymentNotes] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Fetch settlement overview
@@ -120,81 +78,10 @@ export default function PartnerSettlement() {
     staleTime: 1000 * 30, // Cache for 30 seconds
   });
 
-  // Fetch expenses paid by Waqar
-  const { data: expensesData, isLoading: expensesLoading } = useQuery<{
-    data: ExpenseWithDebt[];
-  }>({
-    queryKey: ["expenses", "partner-debts"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE_URL}/api/expenses/partner-debts`);
-      if (!res.ok) throw new Error("Failed to fetch partner debts");
-      return res.json();
-    },
-  });
-
-  // Record repayment mutation
-  const recordRepaymentMutation = useMutation({
-    mutationFn: async (data: {
-      partnerId: string;
-      amount: number;
-      notes?: string;
-    }) => {
-      const res = await fetch(
-        `${API_BASE_URL}/api/expenses/settlements/record`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        },
-      );
-      if (!res.ok) throw new Error("Failed to record repayment");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["settlements"] });
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      toast.success(
-        `✅ Recorded PKR ${data.data.settlement.amount.toLocaleString()} from ${data.data.settlement.partner}`,
-      );
-      setIsDialogOpen(false);
-      setRepaymentAmount("");
-      setRepaymentNotes("");
-      setSelectedPartner("");
-    },
-    onError: () => {
-      toast.error("❌ Failed to record repayment. Please try again.");
-    },
-  });
-
-  const handleRecordRepayment = () => {
-    if (!selectedPartner || !repaymentAmount) {
-      toast.error("Please select a partner and enter an amount");
-      return;
-    }
-
-    const amount = parseFloat(repaymentAmount);
-    if (amount <= 0) {
-      toast.error("Amount must be greater than 0");
-      return;
-    }
-
-    recordRepaymentMutation.mutate({
-      partnerId: selectedPartner,
-      amount,
-      notes: repaymentNotes,
-    });
-  };
-
   const overviewData = overview?.data;
-  const expenses = expensesData?.data || [];
 
-  // Get partner list for dropdown
+  // Get partner list for display
   const partners = overviewData?.partners || {};
-  const partnerList = Object.entries(partners).map(([key, stats]) => ({
-    id: stats?.partnerId || key,
-    name: stats?.partnerName || key,
-    debt: stats?.unpaidTotal || 0,
-  }));
 
   return (
     <DashboardLayout title="Partner Settlement">
@@ -202,82 +89,20 @@ export default function PartnerSettlement() {
         title="💰 Partner Settlement Hub"
         subtitle="Track partner debts and record cash repayments to Sir Waqar"
       >
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-green-600 hover:bg-green-700 h-10 px-6">
-              <Banknote className="mr-2 h-4 w-4" />
-              Record Cash Received
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Banknote className="h-5 w-5 text-green-600" />
-                Record Cash Received
-              </DialogTitle>
-              <DialogDescription>
-                When a partner pays cash to Sir Waqar, record it here to reduce
-                their debt.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Partner</Label>
-                <Select
-                  value={selectedPartner}
-                  onValueChange={setSelectedPartner}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select partner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {partnerList.map((partner) => (
-                      <SelectItem key={partner.id} value={partner.id}>
-                        {partner.name} (Owes: PKR{" "}
-                        {partner.debt.toLocaleString()})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Amount Received (PKR)</Label>
-                <Input
-                  type="number"
-                  placeholder="Enter amount"
-                  value={repaymentAmount}
-                  onChange={(e) => setRepaymentAmount(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Notes (Optional)</Label>
-                <Input
-                  placeholder="e.g., Cash payment for January expenses"
-                  value={repaymentNotes}
-                  onChange={(e) => setRepaymentNotes(e.target.value)}
-                />
-              </div>
-              <Button
-                onClick={handleRecordRepayment}
-                disabled={recordRepaymentMutation.isPending}
-                className="w-full bg-green-600 hover:bg-green-700"
-              >
-                {recordRepaymentMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Recording...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Confirm Payment Received
-                  </>
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button
+          onClick={() => setIsDialogOpen(true)}
+          className="bg-green-600 hover:bg-green-700 h-10 px-6"
+        >
+          <Banknote className="mr-2 h-4 w-4" />
+          Record Cash Received
+        </Button>
       </HeaderBanner>
+
+      {/* Use the shared SettlementModal component */}
+      <SettlementModal
+        isOpen={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+      />
 
       {overviewLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -386,7 +211,7 @@ export default function PartnerSettlement() {
             </CardHeader>
             <CardContent>
               {overviewData?.recentSettlements &&
-              overviewData.recentSettlements.length > 0 ? (
+                overviewData.recentSettlements.length > 0 ? (
                 <div className="space-y-3">
                   {overviewData.recentSettlements.map((settlement) => (
                     <div
