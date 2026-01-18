@@ -5,6 +5,7 @@ const Configuration = require("../models/Configuration");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
 const Settlement = require("../models/Settlement");
+const { protect, restrictTo } = require("../middleware/authMiddleware");
 
 // @route   GET /api/expenses
 // @desc    Get all expenses
@@ -81,10 +82,11 @@ router.get("/:id", async (req, res) => {
 
 // @route   POST /api/expenses
 // @desc    Create new expense with automatic partnership split
-// @access  Public
-router.post("/", async (req, res) => {
+// @access  Protected
+router.post("/", protect, async (req, res) => {
   try {
     console.log("📝 Expense creation request received:", req.body);
+    const userRole = req.user?.role || "OPERATOR";
 
     const {
       title,
@@ -181,6 +183,9 @@ router.post("/", async (req, res) => {
         if (paidByType === "ACADEMY_CASH") {
           // Academy paid - everyone's share is from academy funds
           shareStatus = "N/A"; // Not applicable - no inter-partner debt
+        } else if (paidByType === "JOINT_POOL") {
+          // Joint pool expense - deducted from gross revenue before splits
+          shareStatus = "N/A"; // Not applicable - no inter-partner debt
         } else if (paidByType.toUpperCase() === partnerKey?.toUpperCase()) {
           // This partner paid the expense - their share is automatically "PAID"
           shareStatus = "PAID";
@@ -209,6 +214,7 @@ router.post("/", async (req, res) => {
         });
 
         // 4. Only deduct from wallets if ACADEMY paid (normal flow)
+        // JOINT_POOL expenses are NOT deducted here - they're handled in stats calculation
         if (paidByType === "ACADEMY_CASH") {
           if (
             partner.walletBalance &&
@@ -261,21 +267,49 @@ router.post("/", async (req, res) => {
 
     console.log("✅ Expense created successfully:", expense._id);
 
-    res.status(201).json({
+    // === REVERSE SMART SYNC: Role-based response ===
+    // OPERATOR/PARTNER: Only return the single transaction record
+    // OWNER: Return full data including totals
+    const baseResponse = {
       success: true,
       message:
         paidByType === "ACADEMY_CASH"
-          ? "Expense created successfully with partnership split"
-          : `Expense recorded - Paid by ${paidByType}. Partner debts generated.`,
-      data: expense,
-      shares: shares.map((s) => ({
+          ? "Expense created successfully"
+          : `Expense recorded - Paid by ${paidByType}`,
+      data: {
+        _id: expense._id,
+        title: expense.title,
+        category: expense.category,
+        amount: expense.amount,
+        vendorName: expense.vendorName,
+        dueDate: expense.dueDate,
+        status: expense.status,
+        paidByType: expense.paidByType,
+        createdAt: expense.createdAt,
+      },
+    };
+
+    // OWNER-only: Include additional analytics
+    if (userRole === "OWNER") {
+      // Calculate current totals for owner
+      const totalExpensesResult = await Expense.aggregate([
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
+      const currentTotalExpenses = totalExpensesResult[0]?.total || 0;
+
+      baseResponse.shares = shares.map((s) => ({
         partner: s.partnerName,
         amount: s.amount,
         percentage: s.percentage,
         status: s.status,
-      })),
-      debtGenerated: hasPartnerDebt,
-    });
+      }));
+      baseResponse.debtGenerated = hasPartnerDebt;
+      baseResponse.analytics = {
+        totalExpenses: currentTotalExpenses,
+      };
+    }
+
+    res.status(201).json(baseResponse);
   } catch (error) {
     console.error("❌ Expense creation error:", error.message);
     console.error("Stack:", error.stack);

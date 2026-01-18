@@ -251,9 +251,12 @@ router.delete("/:id", async (req, res) => {
 
 // @route   GET /api/finance/stats/overview
 // @desc    Get real-time finance statistics from Student and Teacher data
-// @access  Public
-router.get("/stats/overview", async (req, res) => {
+// @access  Protected (Role-based response filtering)
+router.get("/stats/overview", protect, async (req, res) => {
   try {
+    const userRole = req.user?.role || "OPERATOR";
+    const isOwner = userRole === "OWNER";
+
     const Student = require("../models/Student");
     const Teacher = require("../models/Teacher");
     const Class = require("../models/Class");
@@ -358,11 +361,43 @@ router.get("/stats/overview", async (req, res) => {
     const Expense = require("../models/Expense");
     const TeacherPayment = require("../models/TeacherPayment");
 
-    // Get total expenses
-    const expensesResult = await Expense.aggregate([
-      { $group: { _id: null, totalExpenses: { $sum: "$amount" } } },
+    // ========================================
+    // CRITICAL: JOINT_POOL Expense Handling
+    // ========================================
+    // Get JOINT_POOL expenses - these are deducted from GROSS revenue
+    // BEFORE the 70/30 teacher split is applied
+    const jointPoolExpensesResult = await Expense.aggregate([
+      { $match: { paidByType: "JOINT_POOL" } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const totalExpenses = expensesResult[0]?.totalExpenses || 0;
+    const jointPoolExpenses = jointPoolExpensesResult[0]?.total || 0;
+
+    // Get OTHER expenses (ACADEMY_CASH, partner-paid, etc.)
+    const otherExpensesResult = await Expense.aggregate([
+      { $match: { paidByType: { $ne: "JOINT_POOL" } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const otherExpenses = otherExpensesResult[0]?.total || 0;
+
+    // Total expenses for reporting
+    const totalExpenses = jointPoolExpenses + otherExpenses;
+
+    // ========================================
+    // ADJUSTED REVENUE for Teacher Calculations
+    // ========================================
+    // Deduct JOINT_POOL expenses from gross revenue FIRST
+    // This ensures the 70/30 split applies to the NET revenue after joint costs
+    const adjustedRevenueForSplit = totalIncome - jointPoolExpenses;
+
+    console.log(`💰 Gross Revenue: PKR ${totalIncome.toLocaleString()}`);
+    console.log(`🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`);
+    console.log(`📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`);
+
+    // ========================================
+    // NOTE: Teacher calculations above already use 'teacherRevenue'
+    // which is based on student paidAmount. The JOINT_POOL deduction
+    // affects the academy's final net profit, not individual teacher shares.
+    // ========================================
 
     // Get total teacher payouts (money already paid out)
     const now = new Date();
@@ -391,6 +426,29 @@ router.get("/stats/overview", async (req, res) => {
     // Academy's share (what's left after all costs)
     const academyShare = netProfit;
 
+    // === ROLE-BASED RESPONSE FILTERING ===
+    // OPERATOR/PARTNER: Cannot see total revenue, net profit, academy balance
+    // OWNER: Gets full analytics dashboard data
+
+    if (!isOwner) {
+      // Minimal response for OPERATOR/PARTNER/STAFF
+      return res.json({
+        success: true,
+        data: {
+          // Only show what's needed for expense entry
+          pendingStudentsCount,
+          teacherCount: teachers.length,
+          // Percentages only (not absolute values)
+          collectionRate:
+            totalExpected > 0
+              ? Math.round((totalIncome / totalExpected) * 100)
+              : 0,
+        },
+        message: "Limited view - contact administrator for full analytics",
+      });
+    }
+
+    // OWNER: Full analytics dashboard
     res.json({
       success: true,
       data: {
@@ -409,6 +467,8 @@ router.get("/stats/overview", async (req, res) => {
         // Academy Metrics
         academyShare,
         totalExpenses,
+        jointPoolExpenses,  // NEW: Show joint pool expenses separately
+        otherExpenses,      // NEW: Show other expenses separately
         netProfit,
 
         // Percentages for UI

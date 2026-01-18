@@ -68,7 +68,7 @@ const ExpenseSchema = new mongoose.Schema(
     // WHO actually paid for this expense
     paidByType: {
       type: String,
-      enum: ["ACADEMY_CASH", "WAQAR", "ZAHID", "SAUD"],
+      enum: ["ACADEMY_CASH", "WAQAR", "ZAHID", "SAUD", "JOINT_POOL"],
       default: "ACADEMY_CASH",
     },
     // Reference to user who paid (if partner paid out-of-pocket)
