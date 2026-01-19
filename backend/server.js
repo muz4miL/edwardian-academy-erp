@@ -63,6 +63,7 @@ const expenseRoutes = require("./routes/expenses");
 const userRoutes = require("./routes/users");
 const websiteRoutes = require("./routes/website");
 const payrollRoutes = require("./routes/payroll");
+const leadRoutes = require("./routes/leads");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -77,6 +78,7 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/website", websiteRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/leads", leadRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -94,6 +96,7 @@ app.get("/", (req, res) => {
       timetable: "/api/timetable",
       expenses: "/api/expenses",
       users: "/api/users",
+      leads: "/api/leads",
     },
   });
 });

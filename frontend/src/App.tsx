@@ -23,6 +23,7 @@ import WebsiteManager from "./pages/WebsiteManager";
 import PublicLanding from "./pages/PublicLanding";
 import Payroll from "./pages/Payroll";
 import PartnerSettlement from "./pages/PartnerSettlement";
+import Leads from "./pages/Leads";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -165,6 +166,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <PartnerSettlement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/leads"
+              element={
+                <ProtectedRoute>
+                  <Leads />
                 </ProtectedRoute>
               }
             />

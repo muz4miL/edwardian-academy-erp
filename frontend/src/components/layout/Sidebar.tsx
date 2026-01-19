@@ -16,6 +16,7 @@ import {
   Globe,
   Banknote,
   Handshake,
+  Phone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -48,6 +49,12 @@ const navItems = [
     label: "Finance",
     path: "/finance",
     permission: "finance",
+  },
+  {
+    icon: Phone,
+    label: "Inquiries",
+    path: "/leads",
+    permission: "dashboard", // Accessible to all logged-in users
   },
   { icon: BookOpen, label: "Classes", path: "/classes", permission: "classes" },
   {
