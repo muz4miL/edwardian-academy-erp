@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 // Subject sub-schema (matches Class model structure)
 const studentSubjectSchema = new mongoose.Schema(
@@ -25,6 +26,47 @@ const studentSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    // ========================================
+    // PHASE 2: Physical Security Fields
+    // ========================================
+    barcodeId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows null values while maintaining uniqueness
+      index: true,
+      trim: true,
+      // Format: EDW-2026-001
+    },
+    // Student Portal Login Password
+    password: {
+      type: String,
+      select: false, // Hidden by default in queries
+    },
+    // Enhanced status for student lifecycle
+    studentStatus: {
+      type: String,
+      enum: ["Active", "Pending", "Alumni", "Expelled", "Suspended"],
+      default: "Active",
+    },
+    // ID Card reprint tracking (anti-fraud)
+    reprintCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // CNIC for verification
+    cnic: {
+      type: String,
+      trim: true,
+    },
+    // Student Photo URL
+    photo: {
+      type: String,
+      trim: true,
+    },
+    // ========================================
+    // Original Fields
+    // ========================================
     studentName: {
       type: String,
       required: true,
@@ -223,7 +265,57 @@ studentSchema.pre("save", async function () {
   console.log(
     `✅ FINAL STATE: ID=${this.studentId}, FeeStatus=${this.feeStatus}, TotalFee=${totalFee}, PaidAmount=${paidAmount}, Subjects=${this.subjects?.length || 0}\n`,
   );
+
+  // Hash password if modified
+  if (this.isModified("password") && this.password) {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    console.log("🔐 Password hashed for student");
+  }
 });
+
+// ========================================
+// INSTANCE METHODS
+// ========================================
+
+// Compare password for student login
+studentSchema.methods.comparePassword = async function (candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Generate barcode ID (EDW-YEAR-XXX format)
+studentSchema.methods.generateBarcodeId = async function () {
+  if (this.barcodeId) return this.barcodeId;
+
+  const year = new Date().getFullYear();
+  const count = await this.constructor.countDocuments({ barcodeId: { $exists: true, $ne: null } });
+  const sequence = String(count + 1).padStart(3, "0");
+  this.barcodeId = `EDW-${year}-${sequence}`;
+
+  return this.barcodeId;
+};
+
+// Get public profile (for student portal)
+studentSchema.methods.getStudentProfile = function () {
+  return {
+    _id: this._id,
+    studentId: this.studentId,
+    barcodeId: this.barcodeId,
+    studentName: this.studentName,
+    fatherName: this.fatherName,
+    class: this.class,
+    group: this.group,
+    subjects: this.subjects,
+    email: this.email,
+    photo: this.photo,
+    studentStatus: this.studentStatus,
+    feeStatus: this.feeStatus,
+    totalFee: this.totalFee,
+    paidAmount: this.paidAmount,
+    balance: this.balance,
+    sessionRef: this.sessionRef,
+  };
+};
 
 const Student = mongoose.model("Student", studentSchema);
 

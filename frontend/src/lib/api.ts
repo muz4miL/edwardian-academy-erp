@@ -159,7 +159,9 @@ export const teacherApi = {
 export const settingsApi = {
     // Get settings
     get: async () => {
-        const response = await fetch(`${API_BASE_URL}/config`);
+        const response = await fetch(`${API_BASE_URL}/config`, {
+            credentials: 'include', // ✅ CRITICAL: Send cookies for authentication
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch settings');
@@ -174,6 +176,7 @@ export const settingsApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // ✅ Include cookies
             body: JSON.stringify(settingsData),
         });
         const data = await response.json();

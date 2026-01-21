@@ -292,3 +292,64 @@
     background: hsl(222 47% 15%);
   }
 }
+
+/* ========================================
+   PRINT STYLES - Security Receipt
+   ======================================== */
+@media print {
+
+  /* Hide everything except the receipt */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only the receipt and its children */
+  #security-receipt,
+  #security-receipt * {
+    visibility: visible;
+  }
+
+  /* Position the receipt at top-left */
+  #security-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    /* Thermal printer width */
+    max-width: 100%;
+    padding: 10mm;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide dialog overlay and buttons */
+  [role="dialog"],
+  [data-state="open"] {
+    background: transparent !important;
+    position: static !important;
+  }
+
+  /* Reset colors for grayscale printing */
+  #security-receipt img {
+    filter: grayscale(100%);
+  }
+
+  /* Ensure text is black */
+  #security-receipt .text-gray-500,
+  #security-receipt .text-gray-600 {
+    color: #333 !important;
+  }
+
+  /* Hide buttons in print */
+  button,
+  .print-hide {
+    display: none !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: 80mm auto;
+    /* Thermal printer */
+    margin: 0;
+  }
+}

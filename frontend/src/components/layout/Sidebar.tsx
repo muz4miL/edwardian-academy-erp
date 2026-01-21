@@ -17,6 +17,8 @@ import {
   Banknote,
   Handshake,
   Phone,
+  ScanLine,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -68,6 +70,20 @@ const navItems = [
     label: "Sessions",
     path: "/sessions",
     permission: "sessions",
+  },
+  // Phase 2: Physical Security
+  {
+    icon: ScanLine,
+    label: "Gate Scanner",
+    path: "/gatekeeper",
+    permission: "dashboard",
+  },
+  {
+    icon: UserCheck,
+    label: "Approvals",
+    path: "/pending-approvals",
+    permission: "admissions",
+    badge: true, // Show pending count
   },
   {
     icon: Settings,

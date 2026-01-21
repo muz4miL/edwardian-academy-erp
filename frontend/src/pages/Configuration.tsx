@@ -23,6 +23,12 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Settings,
   Save,
   Loader2,
@@ -35,6 +41,9 @@ import {
   CheckCircle2,
   Percent,
   Banknote,
+  Plus,
+  Edit,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
@@ -70,6 +79,16 @@ const Configuration = () => {
   const [academyName, setAcademyName] = useState("Edwardian Academy");
   const [academyAddress, setAcademyAddress] = useState("Peshawar, Pakistan");
   const [academyPhone, setAcademyPhone] = useState("");
+
+  // --- Card 5: Master Subject Pricing ---
+  const [defaultSubjectFees, setDefaultSubjectFees] = useState<Array<{ name: string; fee: number }>>([]);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newSubjectFee, setNewSubjectFee] = useState("");
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<{ name: string; fee: number; index: number } | null>(null);
+  const [editFeeValue, setEditFeeValue] = useState("");
 
   // --- Check Owner Access ---
   useEffect(() => {
@@ -120,6 +139,9 @@ const Configuration = () => {
           setAcademyName(data.academyName || "Edwardian Academy");
           setAcademyAddress(data.academyAddress || "Peshawar, Pakistan");
           setAcademyPhone(data.academyPhone || "");
+
+          // Card 5: Master Subject Pricing
+          setDefaultSubjectFees(data.defaultSubjectFees || []);
         }
       } catch (error) {
         console.error("Failed to fetch settings:", error);
@@ -199,7 +221,14 @@ const Configuration = () => {
         academyName,
         academyAddress,
         academyPhone,
+        // Card 5
+        defaultSubjectFees,
       };
+
+      console.log("💾 Saving configuration with subject fees:", {
+        subjectCount: defaultSubjectFees.length,
+        subjects: defaultSubjectFees,
+      });
 
       const response = await fetch(`${API_BASE_URL}/api/config`, {
         method: "POST",
@@ -343,11 +372,10 @@ const Configuration = () => {
 
               {/* Validation */}
               <div
-                className={`p-3 rounded-lg flex items-center gap-2 ${
-                  salaryError
-                    ? "bg-red-50 border border-red-200"
-                    : "bg-green-50 border border-green-200"
-                }`}
+                className={`p-3 rounded-lg flex items-center gap-2 ${salaryError
+                  ? "bg-red-50 border border-red-200"
+                  : "bg-green-50 border border-green-200"
+                  }`}
               >
                 {salaryError ? (
                   <>
@@ -415,11 +443,10 @@ const Configuration = () => {
               </div>
 
               <div
-                className={`p-3 rounded-lg ${
-                  partner100Rule
-                    ? "bg-yellow-100 border border-yellow-300"
-                    : "bg-gray-100 border border-gray-200"
-                }`}
+                className={`p-3 rounded-lg ${partner100Rule
+                  ? "bg-yellow-100 border border-yellow-300"
+                  : "bg-gray-100 border border-gray-200"
+                  }`}
               >
                 {partner100Rule ? (
                   <p className="text-sm text-yellow-800">
@@ -535,11 +562,10 @@ const Configuration = () => {
 
               {/* Validation */}
               <div
-                className={`p-3 rounded-lg flex items-center gap-2 ${
-                  splitError
-                    ? "bg-red-50 border border-red-200"
-                    : "bg-green-50 border border-green-200"
-                }`}
+                className={`p-3 rounded-lg flex items-center gap-2 ${splitError
+                  ? "bg-red-50 border border-red-200"
+                  : "bg-green-50 border border-green-200"
+                  }`}
               >
                 {splitError ? (
                   <>
@@ -616,8 +642,259 @@ const Configuration = () => {
               </p>
             </CardContent>
           </Card>
+
+          {/* ========== CARD 5: Master Subject Pricing ========== */}
+          <Card className="lg:col-span-2 border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-purple-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100">
+                  <Banknote className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Master Subject Pricing</CardTitle>
+                  <CardDescription>
+                    Global base fees synced across all modules
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Define default fees for each subject. These will auto-fill in Class Management & Public Registration.
+              </p>
+
+              {/* Add New Subject */}
+              <div className="p-4 bg-white rounded-lg border-2 border-dashed border-indigo-200">
+                <p className="text-sm font-semibold mb-3 text-indigo-700">Add New Subject</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-1">
+                    <Input
+                      placeholder="Subject Name (e.g., Biology)"
+                      value={newSubjectName}
+                      onChange={(e) => setNewSubjectName(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        placeholder="Default Fee"
+                        value={newSubjectFee}
+                        onChange={(e) => setNewSubjectFee(e.target.value)}
+                        className="h-10 pr-12"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        PKR
+                      </span>
+                    </div>
+                  </div>
+                  <div className="md:col-span-1">
+                    <Button
+                      onClick={() => {
+                        if (!newSubjectName.trim() || !newSubjectFee) {
+                          toast({
+                            title: "Missing Information",
+                            description: "Please enter both subject name and fee",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+
+                        // Check for duplicates
+                        if (defaultSubjectFees.some(s => s.name.toLowerCase() === newSubjectName.trim().toLowerCase())) {
+                          toast({
+                            title: "Duplicate Subject",
+                            description: "This subject already exists",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+
+                        setDefaultSubjectFees([
+                          ...defaultSubjectFees,
+                          { name: newSubjectName.trim(), fee: Number(newSubjectFee) }
+                        ]);
+                        setNewSubjectName("");
+                        setNewSubjectFee("");
+                        toast({
+                          title: "✓ Subject Added",
+                          description: `${newSubjectName} will sync across all modules`,
+                          className: "bg-green-50 border-green-200",
+                        });
+                      }}
+                      className="w-full h-10 bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Subject
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subject List */}
+              {defaultSubjectFees.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Current Subject Pricing ({defaultSubjectFees.length})
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-2">
+                    {defaultSubjectFees.map((subject, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <p className="font-semibold text-gray-900">{subject.name}</p>
+                          <p className="text-sm text-indigo-600 font-medium">
+                            PKR {subject.fee.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {/* Edit Fee Button */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                            onClick={() => {
+                              setEditingSubject({ ...subject, index });
+                              setEditFeeValue(String(subject.fee));
+                              setEditDialogOpen(true);
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {/* Delete Button */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              if (window.confirm(`Remove ${subject.name}?`)) {
+                                setDefaultSubjectFees(
+                                  defaultSubjectFees.filter((_, i) => i !== index)
+                                );
+                                toast({
+                                  title: "Subject Removed",
+                                  description: `${subject.name} deleted`,
+                                });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed">
+                  <Banknote className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">No subjects defined yet</p>
+                  <p className="text-xs text-gray-400">Add subjects to sync pricing across the system</p>
+                </div>
+              )}
+
+              <div className="border-t pt-3">
+                <p className="text-xs text-muted-foreground">
+                  💡 <strong>Auto-Sync:</strong> These fees will appear in Class Management dropdowns & Public Registration forms
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
+
+      {/* Edit Subject Fee Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5 text-indigo-600" />
+              Edit Subject Fee
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Subject Name</Label>
+              <Input
+                value={editingSubject?.name || ""}
+                disabled
+                className="bg-gray-50"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Default Fee (PKR)</Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  value={editFeeValue}
+                  onChange={(e) => setEditFeeValue(e.target.value)}
+                  placeholder="Enter fee amount"
+                  className="pr-12"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const newFee = Number(editFeeValue);
+                      if (!isNaN(newFee) && newFee >= 0 && editingSubject) {
+                        setDefaultSubjectFees(
+                          defaultSubjectFees.map((s, i) =>
+                            i === editingSubject.index ? { ...s, fee: newFee } : s
+                          )
+                        );
+                        toast({
+                          title: "✓ Fee Updated",
+                          description: `${editingSubject.name}: PKR ${newFee.toLocaleString()}`,
+                        });
+                        setEditDialogOpen(false);
+                      }
+                    }
+                  }}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                  PKR
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const newFee = Number(editFeeValue);
+                if (!isNaN(newFee) && newFee >= 0 && editingSubject) {
+                  setDefaultSubjectFees(
+                    defaultSubjectFees.map((s, i) =>
+                      i === editingSubject.index ? { ...s, fee: newFee } : s
+                    )
+                  );
+                  toast({
+                    title: "✓ Fee Updated",
+                    description: `${editingSubject.name}: PKR ${newFee.toLocaleString()}`,
+                  });
+                  setEditDialogOpen(false);
+                } else {
+                  toast({
+                    title: "Invalid Fee",
+                    description: "Please enter a valid positive number",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+            >
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Floating Save Button */}
       <div className="fixed bottom-6 right-6 z-50">

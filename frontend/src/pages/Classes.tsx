@@ -115,11 +115,21 @@ const Classes = () => {
   // Partner teacher names (auto-set to partner mode)
   const partnerNames = ["waqar", "zahid", "saud"];
 
-  // TASK 3: Fetch global subject fees from Settings
-  const { data: settingsData } = useQuery({
+  // TASK 3: Fetch global subject fees from Settings (Configuration)
+  const { data: settingsData, refetch: refetchSettings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => settingsApi.get(),
+    staleTime: 0, // Always fetch fresh data
+    refetchOnMount: "always", // Refetch every time component mounts
   });
+
+  // 🔍 COMPREHENSIVE DEBUG LOGGING
+  console.log("🔍 === SETTINGS DATA DEBUG ===");
+  console.log("Full settingsData object:", settingsData);
+  console.log("settingsData.data:", settingsData?.data);
+  console.log("settingsData.data.defaultSubjectFees:", settingsData?.data?.defaultSubjectFees);
+  console.log("Is Loading Settings?", isLoadingSettings);
+  console.log("=================================");
 
   const globalSubjectFees = settingsData?.data?.defaultSubjectFees || [];
 
@@ -129,6 +139,13 @@ const Classes = () => {
     label: subject.name,
     defaultFee: subject.fee,
   }));
+
+  // Debug log
+  console.log("📚 Global Subject Fees loaded:", {
+    count: globalSubjectFees.length,
+    subjects: globalSubjectFees,
+    subjectOptions: subjectOptions,
+  });
 
   // Fetch classes
   const { data, isLoading, isError } = useQuery({
@@ -747,74 +764,169 @@ const Classes = () => {
                   </span>
                 )}
               </div>
-              <div className="space-y-2">
-                {subjectOptions.map((subject) => {
-                  const isSelected = isSubjectSelected(subject.id);
-                  const currentFee = getSubjectFee(subject.id);
 
-                  return (
-                    <div
-                      key={subject.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                        isSelected
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-border hover:border-sky-300"
-                      }`}
-                    >
-                      {/* Checkbox */}
-                      <div
-                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${
-                          isSelected
-                            ? "bg-sky-500 border-sky-500"
-                            : "border-slate-300"
-                        }`}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                      >
-                        {isSelected && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
+              {/* Global Subject Checkboxes (if available) */}
+              {subjectOptions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Quick Select (Global Subjects)</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    {subjectOptions.map((subject) => {
+                      const isSelected = isSubjectSelected(subject.id);
+                      const currentFee = getSubjectFee(subject.id);
+
+                      return (
+                        <div
+                          key={subject.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
+                            }`}
+                        >
+                          {/* Checkbox */}
+                          <div
+                            className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
+                              ? "bg-sky-500 border-sky-500"
+                              : "border-slate-300"
+                              }`}
+                            onClick={() => handleSubjectToggle(subject.id)}
                           >
-                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                          </svg>
-                        )}
-                      </div>
+                            {isSelected && (
+                              <svg
+                                className="w-3 h-3 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                              </svg>
+                            )}
+                          </div>
 
-                      {/* Subject Name */}
-                      <span
-                        className={`flex-1 text-sm font-medium cursor-pointer ${
-                          isSelected ? "text-sky-700" : "text-foreground"
-                        }`}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                      >
-                        {subject.label}
-                      </span>
-
-                      {/* Fee Input */}
-                      {isSelected && (
-                        <div className="relative w-32">
-                          <Input
-                            type="number"
-                            value={currentFee || ""}
-                            onChange={(e) =>
-                              handleSubjectFeeChange(
-                                subject.id,
-                                Number(e.target.value) || 0,
-                              )
-                            }
-                            className="h-8 pr-12 text-right font-medium bg-white"
-                            placeholder="0"
-                          />
-                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                            PKR
+                          {/* Subject Name */}
+                          <span
+                            className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? "text-sky-700" : "text-foreground"
+                              }`}
+                            onClick={() => handleSubjectToggle(subject.id)}
+                          >
+                            {subject.label}
                           </span>
+
+                          {/* Fee Input */}
+                          {isSelected && (
+                            <div className="relative w-32">
+                              <Input
+                                type="number"
+                                value={currentFee || ""}
+                                onChange={(e) =>
+                                  handleSubjectFeeChange(
+                                    subject.id,
+                                    Number(e.target.value) || 0,
+                                  )
+                                }
+                                className="h-8 pr-12 text-right font-medium bg-white"
+                                placeholder="0"
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                                PKR
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Subjects Section */}
+              <div className="border-t pt-3 mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-muted-foreground">Add More Subjects</p>
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      // Check if already added
+                      if (formSubjects.some(s => s.name === value)) {
+                        toast.error("Subject already added");
+                        return;
+                      }
+
+                      // Find the subject from global settings to get default fee
+                      const globalSubject = subjectOptions.find(s => s.id === value);
+                      const defaultFee = globalSubject?.defaultFee || 0;
+
+                      setFormSubjects(prev => [...prev, { name: value, fee: defaultFee }]);
+                      toast.success(`Added: ${value} (PKR ${defaultFee.toLocaleString()})`);
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px] h-8 text-sky-600 border-sky-300 hover:bg-sky-50">
+                      <SelectValue placeholder="+ Add Subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjectOptions
+                        .filter(opt => !isSubjectSelected(opt.id))
+                        .map(opt => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label} (PKR {opt.defaultFee.toLocaleString()})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Display Custom Subjects (not in global list) */}
+                {formSubjects.filter(s => !subjectOptions.some(opt => opt.id === s.name)).length > 0 && (
+                  <div className="space-y-2">
+                    {formSubjects
+                      .filter(s => !subjectOptions.some(opt => opt.id === s.name))
+                      .map((subject, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-2 p-3 rounded-lg border border-indigo-200 bg-indigo-50"
+                        >
+                          <BookOpen className="h-4 w-4 text-indigo-600 shrink-0" />
+                          <span className="flex-1 text-sm font-medium text-indigo-900">
+                            {subject.name}
+                          </span>
+                          <div className="relative w-32">
+                            <Input
+                              type="number"
+                              value={subject.fee || ""}
+                              onChange={(e) =>
+                                handleSubjectFeeChange(subject.name, Number(e.target.value) || 0)
+                              }
+                              className="h-8 pr-12 text-right font-medium bg-white"
+                              placeholder="0"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                              PKR
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:bg-red-50"
+                            onClick={() => {
+                              setFormSubjects(prev => prev.filter(s => s.name !== subject.name));
+                              toast.success(`Removed: ${subject.name}`);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
+
+              {/* Empty State */}
+              {formSubjects.length === 0 && (
+                <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No subjects added yet</p>
+                  <p className="text-xs">Select from above or add custom subjects</p>
+                </div>
+              )}
             </div>
 
             {/* Status Selection */}
@@ -989,70 +1101,160 @@ const Classes = () => {
                   </span>
                 )}
               </div>
-              <div className="space-y-2">
-                {subjectOptions.map((subject) => {
-                  const isSelected = isSubjectSelected(subject.id);
-                  const currentFee = getSubjectFee(subject.id);
 
-                  return (
-                    <div
-                      key={subject.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                        isSelected
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-border hover:border-sky-300"
-                      }`}
-                    >
-                      <div
-                        className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${
-                          isSelected
-                            ? "bg-sky-500 border-sky-500"
-                            : "border-slate-300"
-                        }`}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                      >
-                        {isSelected && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
+              {/* Global Subject Checkboxes (if available) */}
+              {subjectOptions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Quick Select (Global Subjects)</p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    {subjectOptions.map((subject) => {
+                      const isSelected = isSubjectSelected(subject.id);
+                      const currentFee = getSubjectFee(subject.id);
+
+                      return (
+                        <div
+                          key={subject.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
+                            }`}
+                        >
+                          <div
+                            className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
+                              ? "bg-sky-500 border-sky-500"
+                              : "border-slate-300"
+                              }`}
+                            onClick={() => handleSubjectToggle(subject.id)}
                           >
-                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                          </svg>
-                        )}
-                      </div>
-                      y
-                      <span
-                        className={`flex-1 text-sm font-medium cursor-pointer ${
-                          isSelected ? "text-sky-700" : "text-foreground"
-                        }`}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                      >
-                        {subject.label}
-                      </span>
-                      {isSelected && (
-                        <div className="relative w-32">
-                          <Input
-                            type="number"
-                            value={currentFee || ""}
-                            onChange={(e) =>
-                              handleSubjectFeeChange(
-                                subject.id,
-                                Number(e.target.value) || 0,
-                              )
-                            }
-                            className="h-8 pr-12 text-right font-medium bg-white"
-                            placeholder="0"
-                          />
-                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                            PKR
+                            {isSelected && (
+                              <svg
+                                className="w-3 h-3 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                              </svg>
+                            )}
+                          </div>
+                          <span
+                            className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? "text-sky-700" : "text-foreground"
+                              }`}
+                            onClick={() => handleSubjectToggle(subject.id)}
+                          >
+                            {subject.label}
                           </span>
+                          {isSelected && (
+                            <div className="relative w-32">
+                              <Input
+                                type="number"
+                                value={currentFee || ""}
+                                onChange={(e) =>
+                                  handleSubjectFeeChange(
+                                    subject.id,
+                                    Number(e.target.value) || 0,
+                                  )
+                                }
+                                className="h-8 pr-12 text-right font-medium bg-white"
+                                placeholder="0"
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                                PKR
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Subjects Section */}
+              <div className="border-t pt-3 mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-muted-foreground">Add More Subjects</p>
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      if (formSubjects.some(s => s.name === value)) {
+                        toast.error("Subject already added");
+                        return;
+                      }
+
+                      const globalSubject = subjectOptions.find(s => s.id === value);
+                      const defaultFee = globalSubject?.defaultFee || 0;
+
+                      setFormSubjects(prev => [...prev, { name: value, fee: defaultFee }]);
+                      toast.success(`Added: ${value} (PKR ${defaultFee.toLocaleString()})`);
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px] h-8 text-sky-600 border-sky-300 hover:bg-sky-50">
+                      <SelectValue placeholder="+ Add Subject" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subjectOptions
+                        .filter(opt => !isSubjectSelected(opt.id))
+                        .map(opt => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label} (PKR {opt.defaultFee.toLocaleString()})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formSubjects.filter(s => !subjectOptions.some(opt => opt.id === s.name)).length > 0 && (
+                  <div className="space-y-2">
+                    {formSubjects
+                      .filter(s => !subjectOptions.some(opt => opt.id === s.name))
+                      .map((subject, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center gap-2 p-3 rounded-lg border border-indigo-200 bg-indigo-50"
+                        >
+                          <BookOpen className="h-4 w-4 text-indigo-600 shrink-0" />
+                          <span className="flex-1 text-sm font-medium text-indigo-900">
+                            {subject.name}
+                          </span>
+                          <div className="relative w-32">
+                            <Input
+                              type="number"
+                              value={subject.fee || ""}
+                              onChange={(e) =>
+                                handleSubjectFeeChange(subject.name, Number(e.target.value) || 0)
+                              }
+                              className="h-8 pr-12 text-right font-medium bg-white"
+                              placeholder="0"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
+                              PKR
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:bg-red-50"
+                            onClick={() => {
+                              setFormSubjects(prev => prev.filter(s => s.name !== subject.name));
+                              toast.success(`Removed: ${subject.name}`);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
+
+              {formSubjects.length === 0 && (
+                <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No subjects added yet</p>
+                  <p className="text-xs">Select from above or add custom subjects</p>
+                </div>
+              )}
             </div>
 
             {/* Status Selection */}

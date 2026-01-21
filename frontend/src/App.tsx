@@ -24,6 +24,11 @@ import PublicLanding from "./pages/PublicLanding";
 import Payroll from "./pages/Payroll";
 import PartnerSettlement from "./pages/PartnerSettlement";
 import Leads from "./pages/Leads";
+// Phase 2 & 3: Security & LMS
+import Gatekeeper from "./pages/Gatekeeper";
+import PublicRegister from "./pages/PublicRegister";
+import PendingApprovals from "./pages/PendingApprovals";
+import StudentPortal from "./pages/StudentPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +44,9 @@ const App = () => (
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/public-home" element={<PublicLanding />} />
+            {/* Phase 3: Public Registration & Student Portal */}
+            <Route path="/register" element={<PublicRegister />} />
+            <Route path="/student-portal" element={<StudentPortal />} />
 
             {/* Protected Routes */}
             <Route
@@ -174,6 +182,23 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Leads />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 2: Security Gates */}
+            <Route
+              path="/gatekeeper"
+              element={
+                <ProtectedRoute>
+                  <Gatekeeper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pending-approvals"
+              element={
+                <ProtectedRoute>
+                  <PendingApprovals />
                 </ProtectedRoute>
               }
             />

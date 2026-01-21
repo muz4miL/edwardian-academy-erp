@@ -64,6 +64,10 @@ const userRoutes = require("./routes/users");
 const websiteRoutes = require("./routes/website");
 const payrollRoutes = require("./routes/payroll");
 const leadRoutes = require("./routes/leads");
+// Phase 2 & 3: Security & LMS
+const gatekeeperRoutes = require("./routes/gatekeeper");
+const publicRoutes = require("./routes/public");
+const studentPortalRoutes = require("./routes/studentPortal");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -79,6 +83,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/website", websiteRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/leads", leadRoutes);
+// Phase 2 & 3: Security & LMS
+app.use("/api/gatekeeper", gatekeeperRoutes);
+app.use("/api/public", publicRoutes);
+app.use("/api/student-portal", studentPortalRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -97,6 +105,9 @@ app.get("/", (req, res) => {
       expenses: "/api/expenses",
       users: "/api/users",
       leads: "/api/leads",
+      gatekeeper: "/api/gatekeeper",
+      public: "/api/public",
+      studentPortal: "/api/student-portal",
     },
   });
 });

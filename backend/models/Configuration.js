@@ -28,6 +28,22 @@ const configurationSchema = new mongoose.Schema(
       zahid: { type: Number, default: 30, min: 0, max: 100 },
       saud: { type: Number, default: 30, min: 0, max: 100 },
     },
+
+    // Card 5: Master Subject Pricing - Global base fees synced across all modules
+    defaultSubjectFees: [
+      {
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        fee: {
+          type: Number,
+          default: 0,
+          min: [0, "Subject fee cannot be negative"],
+        },
+      },
+    ],
   },
   { timestamps: true },
 );
@@ -44,6 +60,18 @@ configurationSchema.pre("save", function (next) {
     this.salaryConfig.teacherShare + this.salaryConfig.academyShare;
   if (salaryTotal !== 100) {
     return next(new Error(`Salary split must total 100%, got ${salaryTotal}%`));
+  }
+
+  // Initialize default subject fees if new document and empty
+  if (this.isNew && (!this.defaultSubjectFees || this.defaultSubjectFees.length === 0)) {
+    this.defaultSubjectFees = [
+      { name: 'Biology', fee: 3000 },
+      { name: 'Physics', fee: 3000 },
+      { name: 'Chemistry', fee: 2500 },
+      { name: 'Mathematics', fee: 2500 },
+      { name: 'English', fee: 2000 },
+    ];
+    console.log('✅ Initialized configuration with Peshawar standard subject rates');
   }
 
   next();
