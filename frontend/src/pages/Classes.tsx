@@ -45,15 +45,16 @@ import {
   Loader2,
   Edit,
   Trash2,
-  DollarSign,
   Users,
-  Crown,
   User,
+  Calendar,
+  Clock,
+  Crown,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { classApi, settingsApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
-import { Switch } from "@/components/ui/switch";
+
 
 // Section options
 const sectionOptions = [
@@ -62,16 +63,33 @@ const sectionOptions = [
   "Morning",
   "Evening",
   "Weekend",
+  "Batch A",
+  "Batch B",
+  "Batch C",
 ];
 
-// Class name options
-const classNameOptions = [
+// Grade level options (enum from backend)
+const gradeLevelOptions = [
   "9th Grade",
   "10th Grade",
   "11th Grade",
   "12th Grade",
   "MDCAT Prep",
   "ECAT Prep",
+  "Foundation",
+  "O-Level",
+  "A-Level",
+];
+
+// Days of week for schedule
+const daysOfWeek = [
+  { value: "Mon", label: "Mon" },
+  { value: "Tue", label: "Tue" },
+  { value: "Wed", label: "Wed" },
+  { value: "Thu", label: "Thu" },
+  { value: "Fri", label: "Fri" },
+  { value: "Sat", label: "Sat" },
+  { value: "Sun", label: "Sun" },
 ];
 
 // Type for subject with fee
@@ -93,16 +111,21 @@ const Classes = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<any | null>(null);
 
-  // Form states
-  const [formClassName, setFormClassName] = useState("");
+  // Form states - Class Instance fields
+  const [formClassTitle, setFormClassTitle] = useState("");
+  const [formGradeLevel, setFormGradeLevel] = useState("");
   const [formSection, setFormSection] = useState("");
   const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
-  const [formBaseFee, setFormBaseFee] = useState("");
   const [formStatus, setFormStatus] = useState("active");
   const [formAssignedTeacher, setFormAssignedTeacher] = useState("");
-  const [formRevenueMode, setFormRevenueMode] = useState<
-    "standard" | "partner"
-  >("standard");
+
+
+  // Schedule fields
+  const [formDays, setFormDays] = useState<string[]>([]);
+  const [formStartTime, setFormStartTime] = useState("16:00");
+  const [formEndTime, setFormEndTime] = useState("18:00");
+  const [formRoomNumber, setFormRoomNumber] = useState("");
+
 
   // Fetch teachers for dropdown
   const { data: teachersData } = useQuery({
@@ -164,14 +187,22 @@ const Classes = () => {
     mutationFn: classApi.create,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
-      toast.success("Class Created", {
-        description: `${data.data.className} - ${data.data.section} has been created successfully.`,
+      toast.success("Class Instance Created", {
+        description: `"${data.data.classTitle}" has been created and added to timetable.`,
       });
       resetForm();
       setIsAddModalOpen(false);
     },
     onError: (error: any) => {
-      toast.error("Failed to create class", { description: error.message });
+      // Handle schedule conflict error (409)
+      if (error.message?.includes("Schedule Conflict")) {
+        toast.error("Schedule Conflict!", {
+          description: error.message,
+          duration: 6000,
+        });
+      } else {
+        toast.error("Failed to create class", { description: error.message });
+      }
     },
   });
 
@@ -181,17 +212,26 @@ const Classes = () => {
       classApi.update(id, data),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["classes"] });
-      toast.success("Class Updated", {
-        description: `${data.data.className} - ${data.data.section} has been updated successfully.`,
+      toast.success("Class Instance Updated", {
+        description: `"${data.data.classTitle}" has been updated.`,
       });
       resetForm();
       setIsEditModalOpen(false);
       setSelectedClass(null);
     },
     onError: (error: any) => {
-      toast.error("Failed to update class", { description: error.message });
+      // Handle schedule conflict error (409)
+      if (error.message?.includes("Schedule Conflict")) {
+        toast.error("Schedule Conflict!", {
+          description: error.message,
+          duration: 6000,
+        });
+      } else {
+        toast.error("Failed to update class", { description: error.message });
+      }
     },
   });
+
 
   // Delete mutation
   const deleteClassMutation = useMutation({
@@ -211,32 +251,42 @@ const Classes = () => {
 
   // Reset form
   const resetForm = () => {
-    setFormClassName("");
+    setFormClassTitle("");
+    setFormGradeLevel("");
     setFormSection("");
     setFormSubjects([]);
-    setFormBaseFee("");
     setFormStatus("active");
     setFormAssignedTeacher("");
-    setFormRevenueMode("standard");
+    // Schedule fields
+    setFormDays([]);
+    setFormStartTime("16:00");
+    setFormEndTime("18:00");
+    setFormRoomNumber("");
   };
 
   // Populate form for edit
   const populateFormForEdit = (classDoc: any) => {
-    setFormClassName(classDoc.className || "");
+    setFormClassTitle(classDoc.classTitle || "");
+    setFormGradeLevel(classDoc.gradeLevel || classDoc.className || "");
     setFormSection(classDoc.section || "");
     // Handle both old (string[]) and new (SubjectWithFee[]) format
     const subjects = (classDoc.subjects || []).map((s: any) => {
       if (typeof s === "string") {
-        return { name: s, fee: classDoc.baseFee || 0 };
+        return { name: s, fee: 0 };
       }
-      return { name: s.name, fee: s.fee || 0 };
+      return { name: s.name, fee: 0 };
     });
     setFormSubjects(subjects);
-    setFormBaseFee(String(classDoc.baseFee || ""));
     setFormStatus(classDoc.status || "active");
     setFormAssignedTeacher(classDoc.assignedTeacher || "");
-    setFormRevenueMode(classDoc.revenueMode || "standard");
+    // Schedule fields
+    setFormDays(classDoc.days || []);
+    setFormStartTime(classDoc.startTime || "16:00");
+    setFormEndTime(classDoc.endTime || "18:00");
+    setFormRoomNumber(classDoc.roomNumber || "");
   };
+
+
 
   // Handlers
   const handleEdit = (classDoc: any) => {
@@ -251,9 +301,17 @@ const Classes = () => {
   };
 
   const handleSubmitAdd = () => {
-    if (!formClassName || !formSection) {
+    // Validate required fields
+    if (!formClassTitle || !formGradeLevel || !formSection) {
       toast.error("Missing required fields", {
-        description: "Please fill in Class Name and Section.",
+        description: "Please fill in Class Title, Grade Level, and Section.",
+      });
+      return;
+    }
+
+    if (!formDays.length || !formStartTime || !formEndTime) {
+      toast.error("Missing schedule", {
+        description: "Please select days and set start/end times.",
       });
       return;
     }
@@ -263,15 +321,22 @@ const Classes = () => {
       (t: any) => t._id === formAssignedTeacher,
     );
 
+    // Send only subject names (fees looked up from Master Pricing at invoice time)
+    const subjectNames = formSubjects.map(s => ({ name: s.name, fee: 0 }));
+
     createClassMutation.mutate({
-      className: formClassName,
+      classTitle: formClassTitle,
+      gradeLevel: formGradeLevel,
       section: formSection,
-      subjects: formSubjects,
-      baseFee: Number(formBaseFee) || 0,
+      subjects: subjectNames,
       status: formStatus,
       assignedTeacher: formAssignedTeacher || undefined,
       teacherName: selectedTeacher?.name || undefined,
-      revenueMode: formRevenueMode,
+      // Schedule fields
+      days: formDays,
+      startTime: formStartTime,
+      endTime: formEndTime,
+      roomNumber: formRoomNumber || "TBD",
     });
   };
 
@@ -283,36 +348,32 @@ const Classes = () => {
       (t: any) => t._id === formAssignedTeacher,
     );
 
+    // Send only subject names (fees looked up from Master Pricing at invoice time)
+    const subjectNames = formSubjects.map(s => ({ name: s.name, fee: 0 }));
+
     updateClassMutation.mutate({
       id: selectedClass._id,
       data: {
-        className: formClassName,
+        classTitle: formClassTitle,
+        gradeLevel: formGradeLevel,
         section: formSection,
-        subjects: formSubjects,
-        baseFee: Number(formBaseFee) || 0,
+        subjects: subjectNames,
         status: formStatus,
         assignedTeacher: formAssignedTeacher || undefined,
         teacherName: selectedTeacher?.name || undefined,
-        revenueMode: formRevenueMode,
+        // Schedule fields
+        days: formDays,
+        startTime: formStartTime,
+        endTime: formEndTime,
+        roomNumber: formRoomNumber || "TBD",
       },
     });
   };
 
-  // Handle teacher selection - auto-set partner mode for partners
+
+  // Handle teacher selection (simplified - no revenue mode UI)
   const handleTeacherChange = (teacherId: string) => {
     setFormAssignedTeacher(teacherId);
-    const selectedTeacher = teachers.find((t: any) => t._id === teacherId);
-    if (selectedTeacher) {
-      const isPartner = partnerNames.some((name) =>
-        selectedTeacher.name?.toLowerCase().includes(name),
-      );
-      if (isPartner) {
-        setFormRevenueMode("partner");
-        toast.info(`${selectedTeacher.name} is a Partner`, {
-          description: "Revenue mode automatically set to 100% Partner",
-        });
-      }
-    }
   };
 
   // Toggle subject selection
@@ -321,22 +382,15 @@ const Classes = () => {
     if (exists) {
       setFormSubjects((prev) => prev.filter((s) => s.name !== subjectId));
     } else {
-      const subjectOption = subjectOptions.find((s) => s.id === subjectId);
       setFormSubjects((prev) => [
         ...prev,
         {
           name: subjectId,
-          fee: subjectOption?.defaultFee || Number(formBaseFee) || 0,
+          fee: 0, // Fee looked up from Master Pricing at invoice time
         },
+
       ]);
     }
-  };
-
-  // Update subject fee
-  const handleSubjectFeeChange = (subjectName: string, fee: number) => {
-    setFormSubjects((prev) =>
-      prev.map((s) => (s.name === subjectName ? { ...s, fee } : s)),
-    );
   };
 
   // Check if subject is selected
@@ -344,19 +398,7 @@ const Classes = () => {
     return formSubjects.some((s) => s.name === subjectId);
   };
 
-  // Get subject fee
-  const getSubjectFee = (subjectId: string) => {
-    const subject = formSubjects.find((s) => s.name === subjectId);
-    return subject?.fee || 0;
-  };
-
-  // Calculate total subject fees
-  const totalSubjectFees = formSubjects.reduce(
-    (sum, s) => sum + (s.fee || 0),
-    0,
-  );
-
-  // Calculate stats - TASK 2: Use real data from backend
+  // Calculate stats
   const activeClasses = classes.filter(
     (c: any) => c.status === "active",
   ).length;
@@ -364,20 +406,16 @@ const Classes = () => {
     (sum: number, c: any) => sum + (c.studentCount || 0),
     0,
   );
-  const totalRevenue = classes.reduce(
-    (sum: number, c: any) => sum + (c.currentRevenue || 0),
-    0,
-  );
 
-  // Helper to display subject fees in table
+  // Helper to display subjects in table (names only)
   const getSubjectDisplay = (classDoc: any) => {
     const subjects = classDoc.subjects || [];
     return subjects.slice(0, 2).map((s: any) => {
       const name = typeof s === "string" ? s : s.name;
-      const fee = typeof s === "object" ? s.fee : null;
-      return { name, fee };
+      return { name };
     });
   };
+
 
   return (
     <DashboardLayout title="Classes">
@@ -438,16 +476,13 @@ const Classes = () => {
         >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-              <DollarSign className="h-5 w-5 text-amber-600" />
+              <Calendar className="h-5 w-5 text-amber-600" />
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {totalRevenue.toLocaleString()}{" "}
-                <span className="text-sm font-normal text-muted-foreground">
-                  PKR
-                </span>
+                {activeClasses}
               </p>
-              <p className="text-sm text-muted-foreground">Revenue Collected</p>
+              <p className="text-sm text-muted-foreground">Active Classes</p>
             </div>
           </div>
         </div>
@@ -500,12 +535,9 @@ const Classes = () => {
                 <TableHead className="font-semibold">ID</TableHead>
                 <TableHead className="font-semibold">Class</TableHead>
                 <TableHead className="font-semibold">Section</TableHead>
-                <TableHead className="font-semibold">Subjects & Fees</TableHead>
+                <TableHead className="font-semibold">Subjects</TableHead>
                 <TableHead className="font-semibold text-center">
                   Students
-                </TableHead>
-                <TableHead className="font-semibold text-right">
-                  Financial Status
                 </TableHead>
                 <TableHead className="font-semibold text-center">
                   Status
@@ -536,8 +568,17 @@ const Classes = () => {
                         {classDoc.classId}
                       </span>
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {classDoc.className}
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-foreground">
+                          {classDoc.classTitle || `${classDoc.gradeLevel} - ${classDoc.section}`}
+                        </span>
+                        {classDoc.gradeLevel && (
+                          <span className="text-xs text-muted-foreground">
+                            {classDoc.gradeLevel}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
@@ -552,11 +593,6 @@ const Classes = () => {
                             className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs capitalize"
                           >
                             {subject.name}
-                            {subject.fee !== null && (
-                              <span className="ml-1 text-emerald-600 font-medium">
-                                ({subject.fee.toLocaleString()})
-                              </span>
-                            )}
                           </span>
                         ))}
                         {(classDoc.subjects || []).length > 2 && (
@@ -575,28 +611,6 @@ const Classes = () => {
                         <span className="text-[10px] text-muted-foreground">
                           enrolled
                         </span>
-                      </div>
-                    </TableCell>
-                    {/* TASK 3: Financial Status - Collected & Pending */}
-                    <TableCell className="text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            Collected:
-                          </span>
-                          <span className="font-semibold text-green-600">
-                            {(classDoc.currentRevenue || 0).toLocaleString()}{" "}
-                            PKR
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            Pending:
-                          </span>
-                          <span className="font-semibold text-amber-600">
-                            {(classDoc.totalPending || 0).toLocaleString()} PKR
-                          </span>
-                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
@@ -653,17 +667,28 @@ const Classes = () => {
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
+            {/* Class Title - Primary Identifier */}
+            <div className="space-y-2">
+              <Label className="font-semibold">Class Title * <span className="text-xs text-muted-foreground">(Unique identifier)</span></Label>
+              <Input
+                placeholder="e.g., 10th Medical Batch A"
+                value={formClassTitle}
+                onChange={(e) => setFormClassTitle(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Class Name *</Label>
-                <Select value={formClassName} onValueChange={setFormClassName}>
+                <Label>Grade Level *</Label>
+                <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select class" />
+                    <SelectValue placeholder="Select grade" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classNameOptions.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
+                    {gradeLevelOptions.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {level}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -685,6 +710,72 @@ const Classes = () => {
                 </Select>
               </div>
             </div>
+
+            {/* Schedule Section */}
+            <div className="space-y-3 p-4 bg-blue-50/50 rounded-lg border border-blue-200">
+              <Label className="font-semibold text-blue-700 flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Schedule *
+              </Label>
+
+              {/* Days Selection */}
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Select Days</Label>
+                <div className="flex flex-wrap gap-2">
+                  {daysOfWeek.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => {
+                        if (formDays.includes(day.value)) {
+                          setFormDays(formDays.filter(d => d !== day.value));
+                        } else {
+                          setFormDays([...formDays, day.value]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formDays.includes(day.value)
+                        ? "bg-blue-600 text-white"
+                        : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
+                        }`}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Time Selection */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">Start Time</Label>
+                  <Input
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">End Time</Label>
+                  <Input
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">Room</Label>
+                  <Input
+                    placeholder="e.g., Room 1"
+                    value={formRoomNumber}
+                    onChange={(e) => setFormRoomNumber(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
 
             {/* Assigned Professor */}
             <div className="space-y-2">
@@ -719,215 +810,79 @@ const Classes = () => {
               </Select>
             </div>
 
-            {/* Revenue Mode Toggle */}
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
-              <div className="space-y-1">
-                <Label className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Revenue Mode
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {formRevenueMode === "partner"
-                    ? "100% goes to the Professor (Partner)"
-                    : "70% Teacher / 30% Academy split"}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`text-sm ${formRevenueMode === "standard" ? "font-semibold text-blue-600" : "text-muted-foreground"}`}
-                >
-                  Standard
-                </span>
-                <Switch
-                  checked={formRevenueMode === "partner"}
-                  onCheckedChange={(checked) =>
-                    setFormRevenueMode(checked ? "partner" : "standard")
-                  }
-                  className="data-[state=checked]:bg-yellow-500"
-                />
-                <span
-                  className={`text-sm flex items-center gap-1 ${formRevenueMode === "partner" ? "font-semibold text-yellow-600" : "text-muted-foreground"}`}
-                >
-                  <Crown className="h-3 w-3" />
-                  Partner
-                </span>
-              </div>
-            </div>
-
-            {/* Subjects with Individual Fees */}
+            {/* Subjects Selection - Simplified (No Pricing) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Subjects & Pricing</Label>
+                <Label className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Subjects
+                </Label>
                 {formSubjects.length > 0 && (
-                  <span className="text-sm font-semibold text-green-600">
-                    Total: {totalSubjectFees.toLocaleString()} PKR
+                  <span className="text-xs text-muted-foreground">
+                    {formSubjects.length} subject{formSubjects.length !== 1 ? 's' : ''} selected
                   </span>
                 )}
               </div>
 
-              {/* Global Subject Checkboxes (if available) */}
-              {subjectOptions.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Quick Select (Global Subjects)</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                    {subjectOptions.map((subject) => {
-                      const isSelected = isSubjectSelected(subject.id);
-                      const currentFee = getSubjectFee(subject.id);
-
-                      return (
+              {/* Subject Checkboxes */}
+              {subjectOptions.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {subjectOptions.map((subject) => {
+                    const isSelected = isSubjectSelected(subject.id);
+                    return (
+                      <div
+                        key={subject.id}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected
+                          ? "border-sky-500 bg-sky-50"
+                          : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                          }`}
+                      >
+                        {/* Checkbox */}
                         <div
-                          key={subject.id}
-                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
+                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isSelected
+                            ? "bg-sky-500 border-sky-500"
+                            : "border-slate-300 bg-white"
                             }`}
                         >
-                          {/* Checkbox */}
-                          <div
-                            className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
-                              ? "bg-sky-500 border-sky-500"
-                              : "border-slate-300"
-                              }`}
-                            onClick={() => handleSubjectToggle(subject.id)}
-                          >
-                            {isSelected && (
-                              <svg
-                                className="w-3 h-3 text-white"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                              </svg>
-                            )}
-                          </div>
-
-                          {/* Subject Name */}
-                          <span
-                            className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? "text-sky-700" : "text-foreground"
-                              }`}
-                            onClick={() => handleSubjectToggle(subject.id)}
-                          >
-                            {subject.label}
-                          </span>
-
-                          {/* Fee Input */}
                           {isSelected && (
-                            <div className="relative w-32">
-                              <Input
-                                type="number"
-                                value={currentFee || ""}
-                                onChange={(e) =>
-                                  handleSubjectFeeChange(
-                                    subject.id,
-                                    Number(e.target.value) || 0,
-                                  )
-                                }
-                                className="h-8 pr-12 text-right font-medium bg-white"
-                                placeholder="0"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                                PKR
-                              </span>
-                            </div>
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                            </svg>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
-              {/* Custom Subjects Section */}
-              <div className="border-t pt-3 mt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted-foreground">Add More Subjects</p>
-                  <Select
-                    value=""
-                    onValueChange={(value) => {
-                      // Check if already added
-                      if (formSubjects.some(s => s.name === value)) {
-                        toast.error("Subject already added");
-                        return;
-                      }
-
-                      // Find the subject from global settings to get default fee
-                      const globalSubject = subjectOptions.find(s => s.id === value);
-                      const defaultFee = globalSubject?.defaultFee || 0;
-
-                      setFormSubjects(prev => [...prev, { name: value, fee: defaultFee }]);
-                      toast.success(`Added: ${value} (PKR ${defaultFee.toLocaleString()})`);
-                    }}
-                  >
-                    <SelectTrigger className="w-[200px] h-8 text-sky-600 border-sky-300 hover:bg-sky-50">
-                      <SelectValue placeholder="+ Add Subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {subjectOptions
-                        .filter(opt => !isSubjectSelected(opt.id))
-                        .map(opt => (
-                          <SelectItem key={opt.id} value={opt.id}>
-                            {opt.label} (PKR {opt.defaultFee.toLocaleString()})
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Display Custom Subjects (not in global list) */}
-                {formSubjects.filter(s => !subjectOptions.some(opt => opt.id === s.name)).length > 0 && (
-                  <div className="space-y-2">
-                    {formSubjects
-                      .filter(s => !subjectOptions.some(opt => opt.id === s.name))
-                      .map((subject, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center gap-2 p-3 rounded-lg border border-indigo-200 bg-indigo-50"
+                        {/* Subject Name */}
+                        <span
+                          className={`text-sm font-medium ${isSelected ? "text-sky-700" : "text-foreground"
+                            }`}
                         >
-                          <BookOpen className="h-4 w-4 text-indigo-600 shrink-0" />
-                          <span className="flex-1 text-sm font-medium text-indigo-900">
-                            {subject.name}
-                          </span>
-                          <div className="relative w-32">
-                            <Input
-                              type="number"
-                              value={subject.fee || ""}
-                              onChange={(e) =>
-                                handleSubjectFeeChange(subject.name, Number(e.target.value) || 0)
-                              }
-                              className="h-8 pr-12 text-right font-medium bg-white"
-                              placeholder="0"
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                              PKR
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:bg-red-50"
-                            onClick={() => {
-                              setFormSubjects(prev => prev.filter(s => s.name !== subject.name));
-                              toast.success(`Removed: ${subject.name}`);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Empty State */}
-              {formSubjects.length === 0 && (
+                          {subject.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
                 <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
                   <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No subjects added yet</p>
-                  <p className="text-xs">Select from above or add custom subjects</p>
+                  <p className="text-sm">No subjects configured</p>
+                  <p className="text-xs">Add subjects in Configuration → Subjects & Pricing</p>
                 </div>
               )}
+
+              {/* Empty State */}
+              {subjectOptions.length > 0 && formSubjects.length === 0 && (
+                <p className="text-xs text-amber-600 text-center">
+                  Please select at least one subject
+                </p>
+              )}
             </div>
+
 
             {/* Status Selection */}
             <div className="flex justify-center">
@@ -990,17 +945,28 @@ const Classes = () => {
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
+            {/* Class Title - Primary Identifier */}
+            <div className="space-y-2">
+              <Label className="font-semibold">Class Title * <span className="text-xs text-muted-foreground">(Unique identifier)</span></Label>
+              <Input
+                placeholder="e.g., 10th Medical Batch A"
+                value={formClassTitle}
+                onChange={(e) => setFormClassTitle(e.target.value)}
+                className="bg-background"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Class Name *</Label>
-                <Select value={formClassName} onValueChange={setFormClassName}>
+                <Label>Grade Level *</Label>
+                <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select class" />
+                    <SelectValue placeholder="Select grade" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classNameOptions.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
+                    {gradeLevelOptions.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {level}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1022,6 +988,72 @@ const Classes = () => {
                 </Select>
               </div>
             </div>
+
+            {/* Schedule Section */}
+            <div className="space-y-3 p-4 bg-blue-50/50 rounded-lg border border-blue-200">
+              <Label className="font-semibold text-blue-700 flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Schedule *
+              </Label>
+
+              {/* Days Selection */}
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Select Days</Label>
+                <div className="flex flex-wrap gap-2">
+                  {daysOfWeek.map((day) => (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => {
+                        if (formDays.includes(day.value)) {
+                          setFormDays(formDays.filter(d => d !== day.value));
+                        } else {
+                          setFormDays([...formDays, day.value]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formDays.includes(day.value)
+                        ? "bg-blue-600 text-white"
+                        : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
+                        }`}
+                    >
+                      {day.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Time Selection */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">Start Time</Label>
+                  <Input
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">End Time</Label>
+                  <Input
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm text-muted-foreground">Room</Label>
+                  <Input
+                    placeholder="e.g., Room 1"
+                    value={formRoomNumber}
+                    onChange={(e) => setFormRoomNumber(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
 
             {/* Assigned Professor */}
             <div className="space-y-2">
@@ -1056,206 +1088,79 @@ const Classes = () => {
               </Select>
             </div>
 
-            {/* Revenue Mode Toggle */}
-            <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
-              <div className="space-y-1">
-                <Label className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Revenue Mode
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {formRevenueMode === "partner"
-                    ? "100% goes to the Professor (Partner)"
-                    : "70% Teacher / 30% Academy split"}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`text-sm ${formRevenueMode === "standard" ? "font-semibold text-blue-600" : "text-muted-foreground"}`}
-                >
-                  Standard
-                </span>
-                <Switch
-                  checked={formRevenueMode === "partner"}
-                  onCheckedChange={(checked) =>
-                    setFormRevenueMode(checked ? "partner" : "standard")
-                  }
-                  className="data-[state=checked]:bg-yellow-500"
-                />
-                <span
-                  className={`text-sm flex items-center gap-1 ${formRevenueMode === "partner" ? "font-semibold text-yellow-600" : "text-muted-foreground"}`}
-                >
-                  <Crown className="h-3 w-3" />
-                  Partner
-                </span>
-              </div>
-            </div>
-
-            {/* Subjects with Individual Fees */}
+            {/* Subjects Selection - Simplified (No Pricing) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Subjects & Pricing</Label>
+                <Label className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Subjects
+                </Label>
                 {formSubjects.length > 0 && (
-                  <span className="text-sm font-semibold text-green-600">
-                    Total: {totalSubjectFees.toLocaleString()} PKR
+                  <span className="text-xs text-muted-foreground">
+                    {formSubjects.length} subject{formSubjects.length !== 1 ? 's' : ''} selected
                   </span>
                 )}
               </div>
 
-              {/* Global Subject Checkboxes (if available) */}
-              {subjectOptions.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Quick Select (Global Subjects)</p>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                    {subjectOptions.map((subject) => {
-                      const isSelected = isSubjectSelected(subject.id);
-                      const currentFee = getSubjectFee(subject.id);
-
-                      return (
+              {/* Subject Checkboxes */}
+              {subjectOptions.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {subjectOptions.map((subject) => {
+                    const isSelected = isSubjectSelected(subject.id);
+                    return (
+                      <div
+                        key={subject.id}
+                        onClick={() => handleSubjectToggle(subject.id)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected
+                          ? "border-sky-500 bg-sky-50"
+                          : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                          }`}
+                      >
+                        {/* Checkbox */}
                         <div
-                          key={subject.id}
-                          className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
+                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isSelected
+                            ? "bg-sky-500 border-sky-500"
+                            : "border-slate-300 bg-white"
                             }`}
                         >
-                          <div
-                            className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer shrink-0 ${isSelected
-                              ? "bg-sky-500 border-sky-500"
-                              : "border-slate-300"
-                              }`}
-                            onClick={() => handleSubjectToggle(subject.id)}
-                          >
-                            {isSelected && (
-                              <svg
-                                className="w-3 h-3 text-white"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                              </svg>
-                            )}
-                          </div>
-                          <span
-                            className={`flex-1 text-sm font-medium cursor-pointer ${isSelected ? "text-sky-700" : "text-foreground"
-                              }`}
-                            onClick={() => handleSubjectToggle(subject.id)}
-                          >
-                            {subject.label}
-                          </span>
                           {isSelected && (
-                            <div className="relative w-32">
-                              <Input
-                                type="number"
-                                value={currentFee || ""}
-                                onChange={(e) =>
-                                  handleSubjectFeeChange(
-                                    subject.id,
-                                    Number(e.target.value) || 0,
-                                  )
-                                }
-                                className="h-8 pr-12 text-right font-medium bg-white"
-                                placeholder="0"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                                PKR
-                              </span>
-                            </div>
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                            </svg>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
-              {/* Custom Subjects Section */}
-              <div className="border-t pt-3 mt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted-foreground">Add More Subjects</p>
-                  <Select
-                    value=""
-                    onValueChange={(value) => {
-                      if (formSubjects.some(s => s.name === value)) {
-                        toast.error("Subject already added");
-                        return;
-                      }
-
-                      const globalSubject = subjectOptions.find(s => s.id === value);
-                      const defaultFee = globalSubject?.defaultFee || 0;
-
-                      setFormSubjects(prev => [...prev, { name: value, fee: defaultFee }]);
-                      toast.success(`Added: ${value} (PKR ${defaultFee.toLocaleString()})`);
-                    }}
-                  >
-                    <SelectTrigger className="w-[200px] h-8 text-sky-600 border-sky-300 hover:bg-sky-50">
-                      <SelectValue placeholder="+ Add Subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {subjectOptions
-                        .filter(opt => !isSubjectSelected(opt.id))
-                        .map(opt => (
-                          <SelectItem key={opt.id} value={opt.id}>
-                            {opt.label} (PKR {opt.defaultFee.toLocaleString()})
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formSubjects.filter(s => !subjectOptions.some(opt => opt.id === s.name)).length > 0 && (
-                  <div className="space-y-2">
-                    {formSubjects
-                      .filter(s => !subjectOptions.some(opt => opt.id === s.name))
-                      .map((subject, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center gap-2 p-3 rounded-lg border border-indigo-200 bg-indigo-50"
+                        {/* Subject Name */}
+                        <span
+                          className={`text-sm font-medium ${isSelected ? "text-sky-700" : "text-foreground"
+                            }`}
                         >
-                          <BookOpen className="h-4 w-4 text-indigo-600 shrink-0" />
-                          <span className="flex-1 text-sm font-medium text-indigo-900">
-                            {subject.name}
-                          </span>
-                          <div className="relative w-32">
-                            <Input
-                              type="number"
-                              value={subject.fee || ""}
-                              onChange={(e) =>
-                                handleSubjectFeeChange(subject.name, Number(e.target.value) || 0)
-                              }
-                              className="h-8 pr-12 text-right font-medium bg-white"
-                              placeholder="0"
-                            />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium">
-                              PKR
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:bg-red-50"
-                            onClick={() => {
-                              setFormSubjects(prev => prev.filter(s => s.name !== subject.name));
-                              toast.success(`Removed: ${subject.name}`);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-
-              {formSubjects.length === 0 && (
+                          {subject.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
                 <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
                   <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No subjects added yet</p>
-                  <p className="text-xs">Select from above or add custom subjects</p>
+                  <p className="text-sm">No subjects configured</p>
+                  <p className="text-xs">Add subjects in Configuration → Subjects & Pricing</p>
                 </div>
               )}
+
+              {/* Empty State */}
+              {subjectOptions.length > 0 && formSubjects.length === 0 && (
+                <p className="text-xs text-amber-600 text-center">
+                  Please select at least one subject
+                </p>
+              )}
             </div>
+
 
             {/* Status Selection */}
             <div className="flex justify-center">

@@ -1,11 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const {
-    publicRegister,
-    getPendingRegistrations,
-    approveRegistration,
-    rejectRegistration,
-    getPendingCount,
+  publicRegister,
+  getPendingRegistrations,
+  approveRegistration,
+  rejectRegistration,
+  getPendingCount,
+  getNextStudentId,
+  updateStudentCredentials,
 } = require("../controllers/publicController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -26,15 +28,46 @@ router.post("/register", publicRegister);
 // ========================================
 
 // Get all pending registrations
-router.get("/pending", protect, restrictTo("OWNER", "OPERATOR"), getPendingRegistrations);
+router.get(
+  "/pending",
+  protect,
+  restrictTo("OWNER", "OPERATOR"),
+  getPendingRegistrations,
+);
 
 // Get pending count (for sidebar badge)
 router.get("/pending-count", protect, getPendingCount);
 
-// Approve a registration
-router.post("/approve/:id", protect, restrictTo("OWNER", "OPERATOR"), approveRegistration);
+// Get next available Student ID
+router.get(
+  "/next-id",
+  protect,
+  restrictTo("OWNER", "OPERATOR"),
+  getNextStudentId,
+);
 
-// Reject a registration  
-router.delete("/reject/:id", protect, restrictTo("OWNER", "OPERATOR"), rejectRegistration);
+// Approve a registration
+router.post(
+  "/approve/:id",
+  protect,
+  restrictTo("OWNER", "OPERATOR"),
+  approveRegistration,
+);
+
+// Reject a registration
+router.delete(
+  "/reject/:id",
+  protect,
+  restrictTo("OWNER", "OPERATOR"),
+  rejectRegistration,
+);
+
+// Update student credentials (ID/Password)
+router.patch(
+  "/update-credentials/:id",
+  protect,
+  restrictTo("OWNER", "OPERATOR"),
+  updateStudentCredentials,
+);
 
 module.exports = router;

@@ -24,11 +24,25 @@ const classSchema = new mongoose.Schema({
     unique: true,
   },
 
-  // Class name (e.g., "9th Grade", "10th Grade", "MDCAT Prep")
-  className: {
+  // ========== NEW: Class Instance Fields ==========
+
+  // Class Title - Primary unique identifier (e.g., "10th Medical Batch A")
+  classTitle: {
     type: String,
-    required: [true, "Class name is required"],
+    required: [true, "Class title is required"],
+    unique: true,
     trim: true,
+  },
+
+  // Grade Level - Enum for standardized grade selection
+  gradeLevel: {
+    type: String,
+    required: [true, "Grade level is required"],
+    enum: {
+      values: ["9th Grade", "10th Grade", "11th Grade", "12th Grade",
+        "MDCAT Prep", "ECAT Prep", "Foundation", "O-Level", "A-Level"],
+      message: "{VALUE} is not a valid grade level",
+    },
   },
 
   // Section (e.g., "Medical", "Engineering", "Evening", "Morning")
@@ -37,6 +51,53 @@ const classSchema = new mongoose.Schema({
     required: [true, "Section is required"],
     trim: true,
   },
+
+  // ========== SCHEDULE FIELDS ==========
+
+  // Days of the week this class runs
+  days: [{
+    type: String,
+    enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  }],
+
+  // Start Time (24h format, e.g., "16:00")
+  startTime: {
+    type: String,
+    required: [true, "Start time is required"],
+    match: [/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (use HH:MM)"],
+  },
+
+  // End Time (24h format, e.g., "18:00")
+  endTime: {
+    type: String,
+    required: [true, "End time is required"],
+    match: [/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (use HH:MM)"],
+  },
+
+  // Room Number (free text for flexibility)
+  roomNumber: {
+    type: String,
+    trim: true,
+    default: "TBD",
+  },
+
+  // ========== CAPACITY TRACKING ==========
+
+  // Maximum students allowed
+  maxCapacity: {
+    type: Number,
+    default: 30,
+    min: [1, "Capacity must be at least 1"],
+  },
+
+  // Current enrolled count (updated when students join)
+  enrolledCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
+  // ========== EXISTING FIELDS ==========
 
   // Assigned Teacher/Professor for this class
   assignedTeacher: {
@@ -84,6 +145,7 @@ const classSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
 
 // Pre-save hook to generate classId, update timestamp, and ensure subject fees
 classSchema.pre("save", async function () {
@@ -139,15 +201,37 @@ classSchema.pre("save", async function () {
   }
 });
 
-// Virtual for display name (e.g., "10th Grade - Medical")
+// Virtual for display name (uses classTitle as primary identifier)
 classSchema.virtual("displayName").get(function () {
-  return `${this.className} - ${this.section}`;
+  return this.classTitle || `${this.gradeLevel} - ${this.section}`;
+});
+
+// Virtual for schedule display (e.g., "Mon, Wed, Fri | 4:00-6:00 PM")
+classSchema.virtual("scheduleDisplay").get(function () {
+  const daysStr = this.days?.join(", ") || "TBD";
+  const timeStr = this.startTime && this.endTime
+    ? `${this.startTime} - ${this.endTime}`
+    : "TBD";
+  return `${daysStr} | ${timeStr}`;
+});
+
+// Virtual for full public display (e.g., "10th Medical Batch A | Mon, Wed, Fri | 4:00-6:00 PM")
+classSchema.virtual("fullDisplayName").get(function () {
+  return `${this.classTitle} | ${this.scheduleDisplay}`;
 });
 
 // Virtual for total fee (sum of all subject fees)
 classSchema.virtual("totalSubjectFees").get(function () {
   if (!this.subjects || !Array.isArray(this.subjects)) return 0;
   return this.subjects.reduce((sum, subject) => sum + (subject.fee || 0), 0);
+});
+
+// Virtual for capacity status
+classSchema.virtual("capacityStatus").get(function () {
+  const remaining = this.maxCapacity - this.enrolledCount;
+  if (remaining <= 0) return "FULL";
+  if (remaining <= 5) return "ALMOST_FULL";
+  return "AVAILABLE";
 });
 
 // Ensure virtuals are included in JSON output

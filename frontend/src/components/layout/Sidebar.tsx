@@ -19,6 +19,7 @@ import {
   Phone,
   ScanLine,
   UserCheck,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -77,6 +78,12 @@ const navItems = [
     label: "Gate Scanner",
     path: "/gatekeeper",
     permission: "dashboard",
+  },
+  {
+    icon: ClipboardCheck,
+    label: "Front Desk",
+    path: "/front-desk",
+    permission: "admissions",
   },
   {
     icon: UserCheck,
@@ -203,7 +210,7 @@ export function Sidebar() {
       {/* Collapse button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+        className="absolute bottom-4 left-1/2 z-50 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground shadow-lg transition-colors hover:bg-primary hover:text-primary-foreground"
       >
         {collapsed ? (
           <ChevronRight className="h-4 w-4" />

@@ -28,6 +28,7 @@ import Leads from "./pages/Leads";
 import Gatekeeper from "./pages/Gatekeeper";
 import PublicRegister from "./pages/PublicRegister";
 import PendingApprovals from "./pages/PendingApprovals";
+import VerificationHub from "./pages/VerificationHub";
 import StudentPortal from "./pages/StudentPortal";
 import NotFound from "./pages/NotFound";
 
@@ -199,6 +200,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <PendingApprovals />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/front-desk"
+              element={
+                <ProtectedRoute>
+                  <VerificationHub />
                 </ProtectedRoute>
               }
             />

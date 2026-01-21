@@ -1,17 +1,5 @@
-/**
- * Dashboard.tsx - Role-Based Dashboard Engine
- *
- * This is the GATEKEEPER that routes users to their appropriate dashboard:
- * - OWNER: Full financial visibility (Net Profit, Academy Cash, All Debts)
- * - PARTNER: Personal Portal (My Cash, My Expenses, My Earnings) - NO global stats
- * - OPERATOR/STAFF: Operational view (Student counts, Quick Actions) - ZERO financials
- *
- * SECURITY: Partners CANNOT see academy-wide revenue, net profit, or expenses.
- */
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,15 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Users,
   AlertCircle,
@@ -40,19 +19,7 @@ import {
   HandCoins,
   ClipboardCheck,
   GraduationCap,
-  TrendingUp,
-  TrendingDown,
-  History,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  Loader2,
 } from "lucide-react";
-
-// Import reusable modal components
-import { SettlementModal } from "@/components/finance/SettlementModal";
-import { AddExpenseDialog } from "@/components/finance/AddExpenseDialog";
-import { DayClosingModal } from "@/components/finance/DayClosingModal";
 
 // API Base URL
 const API_BASE_URL = "http://localhost:5000/api";
@@ -66,11 +33,7 @@ const OwnerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Modal states
-  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
-  const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
-  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   // Real stats from API
   const [stats, setStats] = useState({
@@ -121,6 +84,52 @@ const OwnerDashboard = () => {
     };
     fetchData();
   }, []);
+
+  // Handle End of Day Closing
+  const handleCloseDay = async () => {
+    const floatingAmount = stats.floatingCash || 0;
+
+    if (floatingAmount === 0) {
+      alert("❌ No floating cash to close. Collect some payments first!");
+      return;
+    }
+
+    const confirmed = confirm(
+      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsClosing(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: `Daily closing by ${user?.fullName}`,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSuccessMessage(data.message || "✅ Day closed successfully!");
+        // Refetch stats to show updated floating cash (should be 0 now)
+        await fetchStats();
+      } else {
+        setError(data.message || "Failed to close day");
+      }
+    } catch (err: any) {
+      console.error("Error closing day:", err);
+      setError("Network error. Please try again.");
+    } finally {
+      setIsClosing(false);
+    }
+  };
 
   const activeStudents = students.filter(
     (s: any) => s.status === "active",
@@ -294,17 +303,17 @@ const OwnerDashboard = () => {
           <div className="grid gap-4 sm:grid-cols-3">
             <Button
               size="lg"
-              onClick={() => setIsClosingModalOpen(true)}
-              className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+              onClick={handleCloseDay}
+              disabled={isClosing}
+              className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <DollarSign className="mr-2 h-5 w-5" />
-              End of Day Closing
+              {isClosing ? "Closing..." : "End of Day Closing"}
             </Button>
 
             <Button
               size="lg"
               variant="outline"
-              onClick={() => setIsExpenseDialogOpen(true)}
               className="w-full h-14 bg-white border-2 border-orange-400 text-orange-600 font-semibold hover:bg-orange-50 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
             >
               <FileText className="mr-2 h-5 w-5" />
@@ -314,7 +323,6 @@ const OwnerDashboard = () => {
             <Button
               size="lg"
               variant="outline"
-              onClick={() => setIsSettlementModalOpen(true)}
               className="w-full h-14 bg-green-50 border-2 border-green-400 text-green-600 font-semibold hover:bg-green-100 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
             >
               <HandCoins className="mr-2 h-5 w-5" />
@@ -324,71 +332,78 @@ const OwnerDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Modals */}
-      <DayClosingModal
-        isOpen={isClosingModalOpen}
-        onOpenChange={setIsClosingModalOpen}
-        floatingCash={stats.floatingCash}
-        userName={user?.fullName}
-        onSuccess={fetchStats}
-      />
-
-      <AddExpenseDialog
-        isOpen={isExpenseDialogOpen}
-        onOpenChange={setIsExpenseDialogOpen}
-      />
-
-      <SettlementModal
-        isOpen={isSettlementModalOpen}
-        onOpenChange={setIsSettlementModalOpen}
-      />
+      {error && (
+        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-yellow-800">
+                Demo Data Active
+              </p>
+              <p className="text-sm text-yellow-700">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };
 
 // ========================================
-// 🤝 PARTNER DASHBOARD COMPONENT (SECURED VIEW)
+// 🤝 PARTNER DASHBOARD COMPONENT
 // ========================================
 const PartnerDashboard = () => {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
 
-  // Modal states
-  const [isClosingModalOpen, setIsClosingModalOpen] = useState(false);
+  // Real stats from API
+  const [stats, setStats] = useState({
+    floatingCash: 0,
+    tuitionRevenue: 0,
+    expenseDebt: 0,
+  });
 
-  // Fetch Partner Portal Stats (PERSONALIZED - no global data exposed)
-  const {
-    data: portalStats,
-    isLoading: statsLoading,
-    refetch: refetchStats,
-  } = useQuery({
-    queryKey: ["partner-portal-stats"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE_URL}/finance/partner-portal-stats`, {
+  // Fetch dashboard stats
+  const fetchStats = async () => {
+    try {
+      // Fetch general stats
+      const res = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, {
         credentials: "include",
       });
-      if (!res.ok) {
-        // Fallback to old dashboard-stats for backwards compatibility
-        const fallbackRes = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, {
-          credentials: "include",
-        });
-        const fallbackData = await fallbackRes.json();
-        return {
-          cashInHand: fallbackData.data?.floatingCash || 0,
-          expenseLiability: 0,
-          totalEarnings: fallbackData.data?.tuitionRevenue || 0,
-          netPosition: 0,
-          todayStats: { amount: 0, count: 0 },
-          pendingExpenses: [],
-          settlementHistory: [],
-        };
-      }
       const data = await res.json();
-      return data.data;
-    },
-    staleTime: 1000 * 30,
-  });
+
+      // Fetch expense debt from Module 3 endpoint
+      let expenseDebt = 0;
+      try {
+        const debtRes = await fetch(
+          `${API_BASE_URL}/finance/partner-expense-debt`,
+          {
+            credentials: "include",
+          },
+        );
+        const debtData = await debtRes.json();
+        if (debtData.success) {
+          expenseDebt = debtData.data.totalDebt || 0;
+        }
+      } catch (debtErr) {
+        console.error("Error fetching expense debt:", debtErr);
+      }
+
+      if (data.success) {
+        setStats({
+          floatingCash: data.data.floatingCash || 0,
+          tuitionRevenue: data.data.tuitionRevenue || 0,
+          expenseDebt: expenseDebt,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching stats:", err);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -401,6 +416,7 @@ const PartnerDashboard = () => {
         if (studentsData.success) {
           setStudents(studentsData.data);
         }
+        await fetchStats();
         setLoading(false);
       } catch (err) {
         console.error("Error:", err);
@@ -410,11 +426,56 @@ const PartnerDashboard = () => {
     fetchData();
   }, []);
 
+  // Handle End of Day Closing
+  const handleCloseDay = async () => {
+    const floatingAmount = stats.floatingCash || 0;
+
+    if (floatingAmount === 0) {
+      alert("❌ No floating cash to close. Collect some payments first!");
+      return;
+    }
+
+    const confirmed = confirm(
+      `🔒 Confirm Daily Closing\n\nYou are about to lock PKR ${floatingAmount.toLocaleString()} into your verified balance.\n\nThis action cannot be undone. Continue?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsClosing(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: `Daily closing by ${user?.fullName}`,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSuccessMessage(data.message || "✅ Day closed successfully!");
+        await fetchStats();
+      } else {
+        setError(data.message || "Failed to close day");
+      }
+    } catch (err: any) {
+      console.error("Error closing day:", err);
+      setError("Network error. Please try again.");
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
   const activeStudents = students.filter(
     (s: any) => s.status === "active",
   ).length;
 
-  if (loading || statsLoading) {
+  if (loading) {
     return (
       <DashboardLayout title="Partner Dashboard">
         <div className="flex items-center justify-center h-96">
@@ -424,51 +485,81 @@ const PartnerDashboard = () => {
     );
   }
 
-  const stats = portalStats || {
-    cashInHand: 0,
-    expenseLiability: 0,
-    totalEarnings: 0,
-    netPosition: 0,
-    todayStats: { amount: 0, count: 0 },
-    pendingExpenses: [],
-    settlementHistory: [],
-  };
-
   return (
     <DashboardLayout title="Partner Dashboard">
-      {/* Partner Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-900 via-teal-800 to-cyan-900 p-8 shadow-2xl border-b-4 border-emerald-400">
+      {/* Royal Header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 p-8 shadow-2xl border-b-4 border-yellow-500">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2djRoNHYtNGgtNHptMC0yaDZ2Nmgtdi02eiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
         <div className="relative z-10">
           <h1 className="text-4xl font-bold text-white mb-2">
             Welcome,{" "}
-            <span className="text-emerald-300">
+            <span className="text-yellow-400">
               {user?.fullName || "Partner"}
             </span>
           </h1>
-          <p className="text-teal-200 text-lg">
-            Your personal financial dashboard
+          <p className="text-blue-200 text-lg">
+            Track your collections and manage your teaching revenue
           </p>
         </div>
       </div>
 
-      {/* Partner KPI Cards - PERSONALIZED DATA ONLY */}
+      {/* Success/Error Alerts */}
+      {successMessage && (
+        <div className="mt-6 bg-green-50 border-2 border-green-400 rounded-xl p-4 shadow-lg">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white">
+              ✓
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-green-900">Success!</p>
+              <p className="text-sm text-green-800">{successMessage}</p>
+            </div>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-green-600 hover:text-green-800"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-6 bg-red-50 border-2 border-red-400 rounded-xl p-4 shadow-lg">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-6 w-6 text-red-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-red-900">Error</p>
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 hover:text-red-800"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Partner KPI Cards */}
       <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {/* 1. Cash in Hand (Floating - needs closing) */}
+        {/* 1. Floating Cash (Orange - Needs Closing) */}
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-orange-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-600 mb-2">
-                Cash in Hand
+                Cash in Hand (Unverified)
               </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
                 PKR{" "}
-                {stats.cashInHand > 0
-                  ? stats.cashInHand.toLocaleString()
-                  : "0"}
+                {stats.floatingCash > 0
+                  ? Math.round(stats.floatingCash / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-orange-600 font-medium">
-                ⚠️ Unverified - Close Day
+                ⚠️ Needs End of Day Closing
               </p>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
@@ -477,75 +568,76 @@ const PartnerDashboard = () => {
           </div>
         </div>
 
-        {/* 2. My Expense Liability (What I owe) */}
+        {/* 2. Tuition Revenue (Green) */}
+        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-green-500">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-600 mb-2">
+                Total Tuition Revenue
+              </p>
+              <p className="text-4xl font-bold text-slate-900 mb-1">
+                PKR{" "}
+                {stats.tuitionRevenue > 0
+                  ? Math.round(stats.tuitionRevenue / 1000)
+                  : 0}
+                K
+              </p>
+              <p className="text-xs text-slate-500">Verified collections</p>
+            </div>
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
+              <GraduationCap className="h-7 w-7" />
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Expense Debt (Red - Warning) */}
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-red-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-600 mb-2">
-                Payable to Academy
+                Payable to Sir Waqar
               </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
                 PKR{" "}
-                {stats.expenseLiability > 0
-                  ? stats.expenseLiability.toLocaleString()
-                  : "0"}
+                {stats.expenseDebt > 0
+                  ? Math.round(stats.expenseDebt / 1000)
+                  : 0}
+                K
               </p>
               <p className="text-xs text-red-600 font-medium">
                 Your share of expenses
               </p>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-lg">
-              <TrendingDown className="h-7 w-7" />
+              <AlertCircle className="h-7 w-7" />
             </div>
           </div>
         </div>
 
-        {/* 3. Total Earnings (70% share) */}
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-green-500">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Total Earnings
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR{" "}
-                {stats.totalEarnings > 0
-                  ? Math.round(stats.totalEarnings / 1000)
-                  : 0}
-                K
-              </p>
-              <p className="text-xs text-slate-500">Your 70% share</p>
-            </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
-              <TrendingUp className="h-7 w-7" />
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Active Students */}
+        {/* 4. My Students */}
         <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-blue-500">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-600 mb-2">
-                My Students
+                Enrolled in my Subjects
               </p>
               <p className="text-4xl font-bold text-slate-900 mb-1">
                 {activeStudents > 0 ? activeStudents : "0"}
               </p>
-              <p className="text-xs text-slate-500">Enrolled in my subjects</p>
+              <p className="text-xs text-slate-500">Active students</p>
             </div>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
-              <GraduationCap className="h-7 w-7" />
+              <Users className="h-7 w-7" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Partner Quick Actions - LIMITED OPTIONS */}
+      {/* Partner Quick Actions - ONLY End of Day Closing */}
       <Card className="mt-8 border-slate-200 bg-white/95 backdrop-blur-sm shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
-            <ClipboardCheck className="h-6 w-6 text-emerald-600" />
+            <ClipboardCheck className="h-6 w-6 text-blue-600" />
             Quick Actions
           </CardTitle>
           <CardDescription className="text-slate-600">
@@ -556,244 +648,42 @@ const PartnerDashboard = () => {
           <div className="max-w-md">
             <Button
               size="lg"
-              onClick={() => setIsClosingModalOpen(true)}
-              className="w-full h-14 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:via-teal-700 hover:to-cyan-700 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+              onClick={handleCloseDay}
+              disabled={isClosing}
+              className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <DollarSign className="mr-2 h-5 w-5" />
-              Close Day & Handover Cash
+              {isClosing ? "Closing..." : "End of Day Closing"}
             </Button>
             <p className="text-sm text-slate-500 mt-3 text-center">
               Lock your floating cash of{" "}
               <span className="font-bold text-orange-600">
-                PKR {stats.cashInHand.toLocaleString()}
+                PKR {stats.floatingCash.toLocaleString()}
               </span>
             </p>
           </div>
         </CardContent>
       </Card>
-
-      {/* Financial History Table */}
-      {stats.settlementHistory && stats.settlementHistory.length > 0 && (
-        <Card className="mt-6 border-slate-200 bg-white/95 backdrop-blur-sm shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-              <History className="h-5 w-5 text-slate-600" />
-              My Settlement History
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50">
-                  <TableHead className="font-semibold">Date</TableHead>
-                  <TableHead className="font-semibold">Type</TableHead>
-                  <TableHead className="text-right font-semibold">Amount</TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats.settlementHistory.slice(0, 5).map((item: any) => (
-                  <TableRow key={item._id} className="hover:bg-slate-50">
-                    <TableCell className="whitespace-nowrap text-slate-600">
-                      {new Date(item.date).toLocaleDateString("en-PK", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        <Calendar className="h-3 w-3 mr-1" />
-                        {item.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-green-600">
-                      +PKR {item.amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          item.status === "VERIFIED"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
-                        }
-                      >
-                        {item.status === "VERIFIED" ? (
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                        ) : (
-                          <Clock className="h-3 w-3 mr-1" />
-                        )}
-                        {item.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Day Closing Modal */}
-      <DayClosingModal
-        isOpen={isClosingModalOpen}
-        onOpenChange={setIsClosingModalOpen}
-        floatingCash={stats.cashInHand}
-        userName={user?.fullName}
-        onSuccess={() => refetchStats()}
-      />
     </DashboardLayout>
   );
 };
 
 // ========================================
-// 👨‍💼 OPERATOR/STAFF DASHBOARD (NO FINANCIALS)
+// 👨‍💼 STAFF DASHBOARD COMPONENT (Fallback)
 // ========================================
-const OperatorDashboard = () => {
+const StaffDashboard = () => {
   const { user } = useAuth();
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const studentsRes = await fetch(`${API_BASE_URL}/students`, {
-          credentials: "include",
-        });
-        const studentsData = await studentsRes.json();
-        if (studentsData.success) {
-          setStudents(studentsData.data);
-        }
-        setLoading(false);
-      } catch (err) {
-        console.error("Error:", err);
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-
-  const activeStudents = students.filter(
-    (s: any) => s.status === "active",
-  ).length;
-
-  const pendingStudents = students.filter(
-    (s: any) => s.feeStatus === "pending" || s.feeStatus === "partial",
-  ).length;
-
-  if (loading) {
-    return (
-      <DashboardLayout title="Staff Dashboard">
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
-    );
-  }
 
   return (
     <DashboardLayout title="Staff Dashboard">
-      {/* Welcome Banner - NO MONEY */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 p-8 shadow-2xl">
-        <div className="relative z-10">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome, {user?.fullName || "Staff"}
-          </h1>
-          <p className="text-slate-300 text-lg">
-            Manage student operations and daily tasks
-          </p>
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-slate-700 mb-2">
+            Welcome, {user?.fullName}
+          </h2>
+          <p className="text-slate-500">Staff dashboard coming soon...</p>
         </div>
       </div>
-
-      {/* Operational Stats Only - NO FINANCIAL DATA */}
-      <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-2xl bg-white p-6 shadow-xl border-l-4 border-blue-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Active Students
-              </p>
-              <p className="text-4xl font-bold text-slate-900">
-                {activeStudents}
-              </p>
-              <p className="text-xs text-slate-500">Currently enrolled</p>
-            </div>
-            <div className="h-14 w-14 rounded-xl bg-blue-100 flex items-center justify-center">
-              <Users className="h-7 w-7 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-6 shadow-xl border-l-4 border-amber-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Fee Pending
-              </p>
-              <p className="text-4xl font-bold text-slate-900">
-                {pendingStudents}
-              </p>
-              <p className="text-xs text-slate-500">Need follow-up</p>
-            </div>
-            <div className="h-14 w-14 rounded-xl bg-amber-100 flex items-center justify-center">
-              <AlertCircle className="h-7 w-7 text-amber-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-6 shadow-xl border-l-4 border-green-500">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Total Students
-              </p>
-              <p className="text-4xl font-bold text-slate-900">
-                {students.length}
-              </p>
-              <p className="text-xs text-slate-500">In database</p>
-            </div>
-            <div className="h-14 w-14 rounded-xl bg-green-100 flex items-center justify-center">
-              <GraduationCap className="h-7 w-7 text-green-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Access */}
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardCheck className="h-5 w-5 text-slate-600" />
-            Quick Access
-          </CardTitle>
-          <CardDescription>
-            Navigate to common operations
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Button variant="outline" className="h-12" asChild>
-              <a href="/students">
-                <Users className="mr-2 h-4 w-4" />
-                View Students
-              </a>
-            </Button>
-            <Button variant="outline" className="h-12" asChild>
-              <a href="/admissions">
-                <GraduationCap className="mr-2 h-4 w-4" />
-                New Admission
-              </a>
-            </Button>
-            <Button variant="outline" className="h-12" asChild>
-              <a href="/timetable">
-                <Calendar className="mr-2 h-4 w-4" />
-                Timetable
-              </a>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </DashboardLayout>
   );
 };
@@ -834,8 +724,8 @@ const Dashboard = () => {
     return <PartnerDashboard />;
   }
 
-  // Fallback for STAFF, OPERATOR, or other roles
-  return <OperatorDashboard />;
+  // Fallback for STAFF or other roles
+  return <StaffDashboard />;
 };
 
 export default Dashboard;

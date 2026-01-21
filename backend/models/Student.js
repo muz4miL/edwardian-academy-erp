@@ -42,6 +42,11 @@ const studentSchema = new mongoose.Schema(
       type: String,
       select: false, // Hidden by default in queries
     },
+    // Plain text password for admin display (Front Desk can always see it)
+    plainPassword: {
+      type: String,
+      trim: true,
+    },
     // Enhanced status for student lifecycle
     studentStatus: {
       type: String,
@@ -206,34 +211,41 @@ studentSchema.pre("save", async function () {
     }
   }
 
-  // Generate studentId for new documents
+  // Generate studentId for new documents (numeric format: 260001, 260002, ...)
   if (this.isNew && !this.studentId) {
-    const count = await this.constructor.countDocuments();
-    console.log(`🛠️  Total students in DB: ${count}`);
+    // Find the highest existing numeric ID
+    const lastStudent = await this.constructor
+      .findOne({
+        studentId: { $exists: true, $ne: null, $regex: /^\\d+$/ },
+      })
+      .sort({ studentId: -1 })
+      .select("studentId")
+      .lean();
 
-    if (count === 0) {
-      this.studentId = "STU-001";
-      console.log("✅ GENERATED ID (First Student): STU-001");
+    if (
+      lastStudent &&
+      lastStudent.studentId &&
+      /^\\d+$/.test(lastStudent.studentId)
+    ) {
+      const lastNumber = parseInt(lastStudent.studentId, 10);
+      this.studentId = String(lastNumber + 1);
+      console.log(`✅ GENERATED NUMERIC ID: ${this.studentId}`);
     } else {
-      const lastStudent = await this.constructor
-        .findOne({})
+      // Check for old STU-XXX format as fallback
+      const lastOldStudent = await this.constructor
+        .findOne({ studentId: { $regex: /^STU-/ } })
         .sort({ createdAt: -1 })
         .select("studentId")
         .lean();
 
-      if (lastStudent && lastStudent.studentId) {
-        const match = lastStudent.studentId.match(/STU-(\d+)/);
-        if (match) {
-          const lastNumber = parseInt(match[1], 10);
-          const newNumber = String(lastNumber + 1).padStart(3, "0");
-          this.studentId = `STU-${newNumber}`;
-          console.log(`✅ GENERATED ID: STU-${newNumber}`);
-        } else {
-          this.studentId = "STU-001";
-        }
+      if (lastOldStudent) {
+        // There are old format IDs, start numeric from 260001
+        this.studentId = "260001";
       } else {
-        this.studentId = "STU-001";
+        // Fresh start
+        this.studentId = "260001";
       }
+      console.log("✅ GENERATED ID (Starting numeric): 260001");
     }
   }
 
@@ -288,7 +300,9 @@ studentSchema.methods.generateBarcodeId = async function () {
   if (this.barcodeId) return this.barcodeId;
 
   const year = new Date().getFullYear();
-  const count = await this.constructor.countDocuments({ barcodeId: { $exists: true, $ne: null } });
+  const count = await this.constructor.countDocuments({
+    barcodeId: { $exists: true, $ne: null },
+  });
   const sequence = String(count + 1).padStart(3, "0");
   this.barcodeId = `EDW-${year}-${sequence}`;
 
