@@ -39,39 +39,76 @@ const classSchema = new mongoose.Schema({
     type: String,
     required: [true, "Grade level is required"],
     enum: {
-      values: ["9th Grade", "10th Grade", "11th Grade", "12th Grade",
-        "MDCAT Prep", "ECAT Prep", "Foundation", "O-Level", "A-Level"],
+      values: [
+        "9th Grade",
+        "10th Grade",
+        "11th Grade",
+        "12th Grade",
+        "MDCAT Prep",
+        "ECAT Prep",
+        "Tuition Classes",
+      ],
       message: "{VALUE} is not a valid grade level",
     },
   },
 
-  // Section (e.g., "Medical", "Engineering", "Evening", "Morning")
-  section: {
+  // Group - Academic stream/category (e.g., "Pre-Medical", "Pre-Engineering")
+  group: {
     type: String,
-    required: [true, "Section is required"],
+    required: [true, "Group is required"],
+    enum: {
+      values: ["Pre-Medical", "Pre-Engineering", "Computer Science", "Arts"],
+      message: "{VALUE} is not a valid group",
+    },
+    trim: true,
+  },
+
+  // Shift - Optional timing category (e.g., "Morning", "Evening")
+  shift: {
+    type: String,
+    required: false,
+    enum: {
+      values: [
+        "Morning",
+        "Evening",
+        "Weekend",
+        "Batch A",
+        "Batch B",
+        "Batch C",
+      ],
+      message: "{VALUE} is not a valid shift",
+    },
     trim: true,
   },
 
   // ========== SCHEDULE FIELDS ==========
 
   // Days of the week this class runs
-  days: [{
-    type: String,
-    enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-  }],
+  days: [
+    {
+      type: String,
+      enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    },
+  ],
 
   // Start Time (24h format, e.g., "16:00")
   startTime: {
     type: String,
     required: [true, "Start time is required"],
-    match: [/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (use HH:MM)"],
+    match: [
+      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/,
+      "Invalid time format (use HH:MM)",
+    ],
   },
 
   // End Time (24h format, e.g., "18:00")
   endTime: {
     type: String,
     required: [true, "End time is required"],
-    match: [/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (use HH:MM)"],
+    match: [
+      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/,
+      "Invalid time format (use HH:MM)",
+    ],
   },
 
   // Room Number (free text for flexibility)
@@ -146,7 +183,6 @@ const classSchema = new mongoose.Schema({
   },
 });
 
-
 // Pre-save hook to generate classId, update timestamp, and ensure subject fees
 classSchema.pre("save", async function () {
   // Update timestamp
@@ -203,15 +239,19 @@ classSchema.pre("save", async function () {
 
 // Virtual for display name (uses classTitle as primary identifier)
 classSchema.virtual("displayName").get(function () {
-  return this.classTitle || `${this.gradeLevel} - ${this.section}`;
+  return (
+    this.classTitle ||
+    `${this.gradeLevel} - ${this.group}${this.shift ? ` (${this.shift})` : ""}`
+  );
 });
 
 // Virtual for schedule display (e.g., "Mon, Wed, Fri | 4:00-6:00 PM")
 classSchema.virtual("scheduleDisplay").get(function () {
   const daysStr = this.days?.join(", ") || "TBD";
-  const timeStr = this.startTime && this.endTime
-    ? `${this.startTime} - ${this.endTime}`
-    : "TBD";
+  const timeStr =
+    this.startTime && this.endTime
+      ? `${this.startTime} - ${this.endTime}`
+      : "TBD";
   return `${daysStr} | ${timeStr}`;
 });
 

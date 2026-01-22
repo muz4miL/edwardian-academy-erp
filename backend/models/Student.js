@@ -59,6 +59,35 @@ const studentSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // ========================================
+    // Print History for Receipt Versioning
+    // ========================================
+    printHistory: [
+      {
+        receiptId: {
+          type: String,
+          required: true,
+          index: true,
+        },
+        printedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        version: {
+          type: Number,
+          required: true,
+        },
+        printedBy: {
+          type: String,
+          trim: true,
+        },
+        reason: {
+          type: String,
+          enum: ["admission", "verification", "reprint", "lost"],
+          default: "admission",
+        },
+      },
+    ],
     // CNIC for verification
     cnic: {
       type: String,
@@ -213,39 +242,46 @@ studentSchema.pre("save", async function () {
 
   // Generate studentId for new documents (numeric format: 260001, 260002, ...)
   if (this.isNew && !this.studentId) {
-    // Find the highest existing numeric ID
-    const lastStudent = await this.constructor
-      .findOne({
-        studentId: { $exists: true, $ne: null, $regex: /^\\d+$/ },
-      })
-      .sort({ studentId: -1 })
-      .select("studentId")
-      .lean();
+    try {
+      // Use aggregation to find the actual highest numeric ID
+      const result = await this.constructor.aggregate([
+        {
+          $match: {
+            studentId: { $exists: true, $ne: null, $regex: /^\d+$/ },
+          },
+        },
+        {
+          $addFields: {
+            numericId: { $toLong: "$studentId" },
+          },
+        },
+        {
+          $sort: { numericId: -1 },
+        },
+        {
+          $limit: 1,
+        },
+        {
+          $project: { studentId: 1 },
+        },
+      ]);
 
-    if (
-      lastStudent &&
-      lastStudent.studentId &&
-      /^\\d+$/.test(lastStudent.studentId)
-    ) {
-      const lastNumber = parseInt(lastStudent.studentId, 10);
-      this.studentId = String(lastNumber + 1);
-      console.log(`✅ GENERATED NUMERIC ID: ${this.studentId}`);
-    } else {
-      // Check for old STU-XXX format as fallback
-      const lastOldStudent = await this.constructor
-        .findOne({ studentId: { $regex: /^STU-/ } })
-        .sort({ createdAt: -1 })
-        .select("studentId")
-        .lean();
-
-      if (lastOldStudent) {
-        // There are old format IDs, start numeric from 260001
-        this.studentId = "260001";
+      if (result.length > 0 && result[0].studentId) {
+        const lastNumber = parseInt(result[0].studentId, 10);
+        this.studentId = String(lastNumber + 1);
+        console.log(
+          `✅ GENERATED NUMERIC ID: ${this.studentId} (incremented from ${result[0].studentId})`,
+        );
       } else {
-        // Fresh start
+        // No numeric IDs found, start at 260001
         this.studentId = "260001";
+        console.log("✅ GENERATED ID (Starting numeric): 260001");
       }
-      console.log("✅ GENERATED ID (Starting numeric): 260001");
+    } catch (err) {
+      console.error("❌ Error generating studentId:", err);
+      // Fallback to timestamp-based ID to avoid crashes
+      this.studentId = `260${Date.now().toString().slice(-3)}`;
+      console.log(`⚠️ FALLBACK ID: ${this.studentId}`);
     }
   }
 

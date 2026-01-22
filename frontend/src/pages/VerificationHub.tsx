@@ -52,8 +52,12 @@ import {
   Save,
   Users,
   FileText,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
+// Import Print Receipt System
+import { usePrintReceipt } from "@/hooks/usePrintReceipt";
+import ReceiptTemplate from "@/components/print/ReceiptTemplate";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -96,6 +100,9 @@ export default function VerificationHub() {
   const [editStudentId, setEditStudentId] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  // Print Receipt Hook
+  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
 
   // Fetch all students (pending and active) - Refetch on mount and provide manual refresh
   const {
@@ -393,11 +400,10 @@ export default function VerificationHub() {
                     {foundStudent.studentName}
                   </CardTitle>
                   <Badge
-                    className={`text-sm px-3 py-1 ${
-                      foundStudent.studentStatus === "Active"
-                        ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                        : "bg-amber-100 text-amber-700 border-amber-300"
-                    }`}
+                    className={`text-sm px-3 py-1 ${foundStudent.studentStatus === "Active"
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                      : "bg-amber-100 text-amber-700 border-amber-300"
+                      }`}
                   >
                     {foundStudent.studentStatus === "Active" ? (
                       <>
@@ -495,15 +501,15 @@ export default function VerificationHub() {
                     </label>
                     <p className="text-base font-medium text-gray-900 mt-1">
                       {foundStudent.createdAt &&
-                      !isNaN(new Date(foundStudent.createdAt).getTime())
+                        !isNaN(new Date(foundStudent.createdAt).getTime())
                         ? new Date(foundStudent.createdAt).toLocaleDateString(
-                            "en-PK",
-                            {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            },
-                          )
+                          "en-PK",
+                          {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          },
+                        )
                         : "N/A"}
                     </p>
                   </div>
@@ -741,14 +747,14 @@ export default function VerificationHub() {
                         {activeTab === "active"
                           ? student.parentCell
                           : student.createdAt &&
-                              !isNaN(new Date(student.createdAt).getTime())
+                            !isNaN(new Date(student.createdAt).getTime())
                             ? new Date(student.createdAt).toLocaleDateString(
-                                "en-PK",
-                                {
-                                  day: "2-digit",
-                                  month: "short",
-                                },
-                              )
+                              "en-PK",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                              },
+                            )
                             : "N/A"}
                       </TableCell>
                       <TableCell className="text-right">
@@ -946,7 +952,7 @@ export default function VerificationHub() {
                         onClick={() => {
                           navigator.clipboard.writeText(
                             generatedCredentials.credentials?.username ||
-                              generatedCredentials.barcodeId,
+                            generatedCredentials.barcodeId,
                           );
                           toast.success("Copied!");
                         }}
@@ -996,6 +1002,18 @@ export default function VerificationHub() {
                   <Copy className="h-4 w-4 mr-2" />
                   Copy for WhatsApp
                 </Button>
+                <Button
+                  onClick={() => {
+                    if (generatedCredentials._id) {
+                      printReceipt(generatedCredentials._id, "verification");
+                    }
+                  }}
+                  disabled={isPrinting}
+                  className="flex-1 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 h-11"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  🖨️ Print Admission Slip
+                </Button>
               </div>
 
               {/* Footer */}
@@ -1006,7 +1024,7 @@ export default function VerificationHub() {
               </div>
 
               {/* Done Button */}
-              <div className="px-6 py-4 bg-gray-50 border-t">
+              <div className="px-6 py-4 bg-gray-50 border-t flex gap-3">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1014,9 +1032,21 @@ export default function VerificationHub() {
                     setGeneratedCredentials(null);
                     setFoundStudent(null); // Reset to show updated list
                   }}
-                  className="w-full h-11"
+                  className="flex-1 h-11"
                 >
                   Done
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (generatedCredentials?._id) {
+                      printReceipt(generatedCredentials._id, "verification");
+                    }
+                  }}
+                  disabled={isPrinting}
+                  className="flex-1 h-11 bg-sky-600 hover:bg-sky-700"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  🖨️ Print Admission Slip
                 </Button>
               </div>
             </div>
@@ -1115,6 +1145,17 @@ export default function VerificationHub() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden Receipt Template for Printing */}
+      <div style={{ display: "none" }}>
+        {printData && (
+          <ReceiptTemplate
+            ref={printRef}
+            student={printData.student}
+            receiptConfig={printData.receiptConfig}
+          />
+        )}
+      </div>
     </DashboardLayout>
   );
 }

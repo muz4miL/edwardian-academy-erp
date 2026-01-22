@@ -6,7 +6,7 @@ interface AdmissionSuccessModalProps {
     onClose: () => void;
     studentData: any;
     onNavigateToStudents: () => void;
-    onPrint: () => void;
+    onPrintReceipt: () => void; // Unified: Print admission slip with barcode
     onNewAdmission: () => void;
 }
 
@@ -15,7 +15,7 @@ export const AdmissionSuccessModal = ({
     onClose,
     studentData,
     onNavigateToStudents,
-    onPrint,
+    onPrintReceipt,
     onNewAdmission,
 }: AdmissionSuccessModalProps) => {
     return (
@@ -148,17 +148,17 @@ export const AdmissionSuccessModal = ({
                             <span>Students</span>
                         </button>
 
-                        {/* Print Button */}
+                        {/* Unified Print Button - Prints Admission Slip with Barcode */}
                         <button
                             type="button"
                             onClick={() => {
-                                console.log('✅ PRINT BUTTON CLICKED');
-                                onPrint();
+                                console.log('✅ PRINT ADMISSION SLIP CLICKED');
+                                onPrintReceipt();
                             }}
-                            className="flex-1 h-8 text-xs border border-sky-400 bg-white text-sky-600 hover:bg-sky-50 active:bg-sky-100 rounded-md flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                            className="flex-1 h-8 text-xs border border-sky-400 bg-sky-600 text-white hover:bg-sky-700 active:bg-sky-800 rounded-md flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                         >
                             <Printer className="h-3.5 w-3.5" />
-                            <span>Print</span>
+                            <span>🖨️ Print Admission Slip</span>
                         </button>
                     </div>
 

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { motion } from "framer-motion";
 import {
   Phone,
@@ -24,7 +27,10 @@ import {
   Twitter,
   Instagram,
   Youtube,
+  Send,
+  CheckCircle2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -62,6 +68,181 @@ const iconMap: Record<string, React.ReactNode> = {
   Star: <Star className="h-8 w-8" />,
   Award: <Award className="h-8 w-8" />,
 };
+
+// Inquiry Form Component
+function InquiryForm() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  const inquiryMutation = useMutation({
+    mutationFn: async (data: {
+      name: string;
+      email: string;
+      phone: string;
+      message: string;
+    }) => {
+      const response = await fetch(`${API_BASE_URL}/public/inquiry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.phone,
+          email: data.email || undefined,
+          interest: "General Inquiry",
+          remarks: data.message,
+          source: "Website Contact Form",
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to submit inquiry");
+      return response.json();
+    },
+    onSuccess: () => {
+      setSubmitted(true);
+      setName("");
+      setEmail("");
+      setPhone("");
+      setMessage("");
+      toast.success("Thank you!", {
+        description: "Our team will contact you soon.",
+        duration: 5000,
+      });
+      setTimeout(() => setSubmitted(false), 5000);
+    },
+    onError: (error: any) => {
+      toast.error("Submission Failed", {
+        description: error.message || "Please try again later.",
+        duration: 4000,
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !phone || !message) {
+      toast.error("Missing Information", {
+        description: "Please fill in all required fields.",
+        duration: 3000,
+      });
+      return;
+    }
+    inquiryMutation.mutate({ name, email, phone, message });
+  };
+
+  if (submitted) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-md mx-auto text-center py-12"
+      >
+        <div className="h-20 w-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center shadow-lg">
+          <CheckCircle2 className="h-10 w-10" />
+        </div>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Thank You!</h3>
+        <p className="text-gray-600">
+          Our staff will contact you shortly to assist with your inquiry.
+        </p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.form
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.6 }}
+      onSubmit={handleSubmit}
+      className="max-w-2xl mx-auto glass-card p-8 rounded-2xl shadow-xl"
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="space-y-2">
+          <Label htmlFor="inquiry-name" className="text-gray-700 font-semibold">
+            Full Name *
+          </Label>
+          <Input
+            id="inquiry-name"
+            placeholder="Enter your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="bg-white border-gray-300"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label
+            htmlFor="inquiry-phone"
+            className="text-gray-700 font-semibold"
+          >
+            Phone Number *
+          </Label>
+          <Input
+            id="inquiry-phone"
+            type="tel"
+            placeholder="03XX-XXXXXXX"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="bg-white border-gray-300"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2 mb-6">
+        <Label htmlFor="inquiry-email" className="text-gray-700 font-semibold">
+          Email Address (Optional)
+        </Label>
+        <Input
+          id="inquiry-email"
+          type="email"
+          placeholder="your.email@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="bg-white border-gray-300"
+        />
+      </div>
+
+      <div className="space-y-2 mb-6">
+        <Label
+          htmlFor="inquiry-message"
+          className="text-gray-700 font-semibold"
+        >
+          Your Message / Query *
+        </Label>
+        <Textarea
+          id="inquiry-message"
+          placeholder="How can we help you?"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          className="bg-white border-gray-300 resize-none h-32"
+          required
+        />
+      </div>
+
+      <Button
+        type="submit"
+        size="lg"
+        disabled={inquiryMutation.isPending}
+        className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white shadow-lg btn-glow-cyan"
+      >
+        {inquiryMutation.isPending ? (
+          <>
+            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+            Submitting...
+          </>
+        ) : (
+          <>
+            <Send className="h-5 w-5 mr-2" />
+            Send Message
+          </>
+        )}
+      </Button>
+    </motion.form>
+  );
+}
 
 export default function PublicLanding() {
   const [currentAnnouncement, setCurrentAnnouncement] = useState(0);
@@ -141,7 +322,7 @@ export default function PublicLanding() {
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo */}
+            {/* Logo with Dynamic Title */}
             <div className="flex items-center gap-3">
               <img
                 src="/logo.png"
@@ -150,7 +331,7 @@ export default function PublicLanding() {
               />
               <div className="flex flex-col">
                 <span className="text-lg font-bold text-gray-800 leading-tight">
-                  Edwardian
+                  {config?.heroSection?.title?.split("'")[0] || "Edwardian"}
                 </span>
                 <span className="text-lg font-bold text-gray-800 leading-tight">
                   Academy
@@ -161,42 +342,22 @@ export default function PublicLanding() {
               </span>
             </div>
 
-            {/* Navigation Links */}
-            <div className="hidden md:flex items-center gap-8">
-              <a
-                href="#home"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                Home
-              </a>
-
-              <a
-                href="#about"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                About Us
-              </a>
-              <a
-                href="#faculty"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                Instructors
-              </a>
-
-              <a
-                href="#contact"
-                className="text-gray-700 hover:text-cyan-600 transition-colors"
-              >
-                Contact
-              </a>
+            {/* Primary Action Buttons */}
+            <div className="flex items-center gap-3">
+              <Link to="/register">
+                <Button className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md btn-glow px-6">
+                  Register Now
+                </Button>
+              </Link>
+              <Link to="/student-portal">
+                <Button
+                  variant="outline"
+                  className="border-2 border-cyan-600 text-cyan-700 hover:bg-cyan-50 px-6"
+                >
+                  Student Portal
+                </Button>
+              </Link>
             </div>
-
-            {/* CTA Button */}
-            <Link to="/login">
-              <Button className="bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white shadow-md btn-glow">
-                START LEARNING
-              </Button>
-            </Link>
           </div>
         </div>
       </nav>
@@ -495,37 +656,20 @@ export default function PublicLanding() {
         </div>
       </section>
 
-      {/* Contact Section */}
+      {/* Contact Us Inquiry Form */}
       <section className="py-16 px-4 bg-white" id="contact">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Join Our Community
+              Contact Us
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Enter your email address to register to our newsletter
-              subscription delivered on regular basis!
+              Have a question or need assistance? Fill out the form below and
+              our team will get back to you shortly!
             </p>
           </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="max-w-md mx-auto mb-16"
-          >
-            <div className="flex gap-2 glass-card p-2 rounded-xl shadow-lg">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="flex-1 px-4 py-3 bg-transparent border-none focus:outline-none focus:ring-0"
-              />
-              <Button className="bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white px-8 btn-glow">
-                SUBSCRIBE
-              </Button>
-            </div>
-          </motion.div>
+          <InquiryForm />
 
           {/* Footer Content - Glassmorphism Cards */}
           <motion.div
@@ -551,26 +695,36 @@ export default function PublicLanding() {
               </p>
               <div className="flex gap-3">
                 <a
-                  href="#"
+                  href={config?.contactInfo?.facebook || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
+                  aria-label="Facebook"
+                  title="Follow us on Facebook"
                 >
                   <Facebook className="h-4 w-4" />
                 </a>
                 <a
                   href="#"
                   className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
+                  aria-label="Twitter"
+                  title="Follow us on Twitter"
                 >
                   <Twitter className="h-4 w-4" />
                 </a>
                 <a
                   href="#"
                   className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
+                  aria-label="Instagram"
+                  title="Follow us on Instagram"
                 >
                   <Instagram className="h-4 w-4" />
                 </a>
                 <a
                   href="#"
                   className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
+                  aria-label="YouTube"
+                  title="Subscribe on YouTube"
                 >
                   <Youtube className="h-4 w-4" />
                 </a>
@@ -602,19 +756,26 @@ export default function PublicLanding() {
                   <p className="font-semibold text-gray-900">Address</p>
                   <p className="text-gray-600">
                     {config?.contactInfo?.address ||
-                      "123 Fifth Avenue, New York, NY 10160"}
+                      "Opposite Islamia College Behind, Danishabad University Road Peshawar"}
                   </p>
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">Phone</p>
+                  <p className="font-semibold text-gray-900">Landline</p>
                   <p className="text-gray-600">
-                    {config?.contactInfo?.phone || "929-242-6868"}
+                    {config?.contactInfo?.phone || "091-5601600"}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">Mobile</p>
+                  <p className="text-gray-600">
+                    {config?.contactInfo?.mobile || "0300-0000000"}
                   </p>
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900">Email</p>
                   <p className="text-gray-600">
-                    {config?.contactInfo?.email || "contact@info.com"}
+                    {config?.contactInfo?.email ||
+                      "theedwardianacademy2017@gmail.com"}
                   </p>
                 </div>
               </div>

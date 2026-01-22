@@ -39,6 +39,7 @@ import {
   DollarSign,
   Receipt,
   CheckCircle,
+  Printer,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { studentApi, sessionApi } from "@/lib/api";
@@ -47,6 +48,9 @@ import { useNavigate } from "react-router-dom";
 // Import CRUD Modals
 import { ViewEditStudentModal } from "@/components/dashboard/ViewEditStudentModal";
 import { DeleteStudentDialog } from "@/components/dashboard/DeleteStudentDialog";
+// Import Print System
+import { usePrintReceipt } from "@/hooks/usePrintReceipt";
+import ReceiptTemplate from "@/components/print/ReceiptTemplate";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -70,6 +74,9 @@ const getSubjectName = (subject: any): string => {
 const Students = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Print Receipt Hook
+  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -484,6 +491,16 @@ const Students = () => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8 hover:bg-purple-50 hover:text-purple-600"
+                          onClick={() => printReceipt(student._id, "reprint")}
+                          disabled={isPrinting}
+                          title="Print Receipt"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="h-8 w-8 hover:bg-green-50 hover:text-green-600"
                           onClick={() => handleCollectFee(student)}
                           title="Collect Fee"
@@ -710,6 +727,17 @@ const Students = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Hidden Receipt Template for Printing */}
+      <div style={{ display: "none" }}>
+        {printData && (
+          <ReceiptTemplate
+            ref={printRef}
+            student={printData.student}
+            receiptConfig={printData.receiptConfig}
+          />
+        )}
+      </div>
     </DashboardLayout>
   );
 };

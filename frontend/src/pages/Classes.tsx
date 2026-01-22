@@ -55,11 +55,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { classApi, settingsApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
 
+// Group options (Academic streams - matches backend enum)
+const groupOptions = [
+  "Pre-Medical",
+  "Pre-Engineering",
+  "Computer Science",
+  "Arts",
+];
 
-// Section options
-const sectionOptions = [
-  "Medical",
-  "Engineering",
+// Shift options (Optional timing categories - matches backend enum)
+const shiftOptions = [
   "Morning",
   "Evening",
   "Weekend",
@@ -76,9 +81,7 @@ const gradeLevelOptions = [
   "12th Grade",
   "MDCAT Prep",
   "ECAT Prep",
-  "Foundation",
-  "O-Level",
-  "A-Level",
+  "Tuition Classes",
 ];
 
 // Days of week for schedule
@@ -114,18 +117,17 @@ const Classes = () => {
   // Form states - Class Instance fields
   const [formClassTitle, setFormClassTitle] = useState("");
   const [formGradeLevel, setFormGradeLevel] = useState("");
-  const [formSection, setFormSection] = useState("");
+  const [formGroup, setFormGroup] = useState("");
+  const [formShift, setFormShift] = useState("");
   const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
   const [formStatus, setFormStatus] = useState("active");
   const [formAssignedTeacher, setFormAssignedTeacher] = useState("");
-
 
   // Schedule fields
   const [formDays, setFormDays] = useState<string[]>([]);
   const [formStartTime, setFormStartTime] = useState("16:00");
   const [formEndTime, setFormEndTime] = useState("18:00");
   const [formRoomNumber, setFormRoomNumber] = useState("");
-
 
   // Fetch teachers for dropdown
   const { data: teachersData } = useQuery({
@@ -139,7 +141,11 @@ const Classes = () => {
   const partnerNames = ["waqar", "zahid", "saud"];
 
   // TASK 3: Fetch global subject fees from Settings (Configuration)
-  const { data: settingsData, refetch: refetchSettings, isLoading: isLoadingSettings } = useQuery({
+  const {
+    data: settingsData,
+    refetch: refetchSettings,
+    isLoading: isLoadingSettings,
+  } = useQuery({
     queryKey: ["settings"],
     queryFn: () => settingsApi.get(),
     staleTime: 0, // Always fetch fresh data
@@ -150,7 +156,10 @@ const Classes = () => {
   console.log("🔍 === SETTINGS DATA DEBUG ===");
   console.log("Full settingsData object:", settingsData);
   console.log("settingsData.data:", settingsData?.data);
-  console.log("settingsData.data.defaultSubjectFees:", settingsData?.data?.defaultSubjectFees);
+  console.log(
+    "settingsData.data.defaultSubjectFees:",
+    settingsData?.data?.defaultSubjectFees,
+  );
   console.log("Is Loading Settings?", isLoadingSettings);
   console.log("=================================");
 
@@ -232,7 +241,6 @@ const Classes = () => {
     },
   });
 
-
   // Delete mutation
   const deleteClassMutation = useMutation({
     mutationFn: classApi.delete,
@@ -253,7 +261,8 @@ const Classes = () => {
   const resetForm = () => {
     setFormClassTitle("");
     setFormGradeLevel("");
-    setFormSection("");
+    setFormGroup("");
+    setFormShift("");
     setFormSubjects([]);
     setFormStatus("active");
     setFormAssignedTeacher("");
@@ -268,7 +277,8 @@ const Classes = () => {
   const populateFormForEdit = (classDoc: any) => {
     setFormClassTitle(classDoc.classTitle || "");
     setFormGradeLevel(classDoc.gradeLevel || classDoc.className || "");
-    setFormSection(classDoc.section || "");
+    setFormGroup(classDoc.group || "");
+    setFormShift(classDoc.shift || "");
     // Handle both old (string[]) and new (SubjectWithFee[]) format
     const subjects = (classDoc.subjects || []).map((s: any) => {
       if (typeof s === "string") {
@@ -286,8 +296,6 @@ const Classes = () => {
     setFormRoomNumber(classDoc.roomNumber || "");
   };
 
-
-
   // Handlers
   const handleEdit = (classDoc: any) => {
     setSelectedClass(classDoc);
@@ -302,9 +310,9 @@ const Classes = () => {
 
   const handleSubmitAdd = () => {
     // Validate required fields
-    if (!formClassTitle || !formGradeLevel || !formSection) {
+    if (!formClassTitle || !formGradeLevel || !formGroup) {
       toast.error("Missing required fields", {
-        description: "Please fill in Class Title, Grade Level, and Section.",
+        description: "Please fill in Class Title, Grade Level, and Group.",
       });
       return;
     }
@@ -322,12 +330,13 @@ const Classes = () => {
     );
 
     // Send only subject names (fees looked up from Master Pricing at invoice time)
-    const subjectNames = formSubjects.map(s => ({ name: s.name, fee: 0 }));
+    const subjectNames = formSubjects.map((s) => ({ name: s.name, fee: 0 }));
 
     createClassMutation.mutate({
       classTitle: formClassTitle,
       gradeLevel: formGradeLevel,
-      section: formSection,
+      group: formGroup,
+      shift: formShift || undefined,
       subjects: subjectNames,
       status: formStatus,
       assignedTeacher: formAssignedTeacher || undefined,
@@ -349,14 +358,15 @@ const Classes = () => {
     );
 
     // Send only subject names (fees looked up from Master Pricing at invoice time)
-    const subjectNames = formSubjects.map(s => ({ name: s.name, fee: 0 }));
+    const subjectNames = formSubjects.map((s) => ({ name: s.name, fee: 0 }));
 
     updateClassMutation.mutate({
       id: selectedClass._id,
       data: {
         classTitle: formClassTitle,
         gradeLevel: formGradeLevel,
-        section: formSection,
+        group: formGroup,
+        shift: formShift || undefined,
         subjects: subjectNames,
         status: formStatus,
         assignedTeacher: formAssignedTeacher || undefined,
@@ -369,7 +379,6 @@ const Classes = () => {
       },
     });
   };
-
 
   // Handle teacher selection (simplified - no revenue mode UI)
   const handleTeacherChange = (teacherId: string) => {
@@ -388,7 +397,6 @@ const Classes = () => {
           name: subjectId,
           fee: 0, // Fee looked up from Master Pricing at invoice time
         },
-
       ]);
     }
   };
@@ -415,7 +423,6 @@ const Classes = () => {
       return { name };
     });
   };
-
 
   return (
     <DashboardLayout title="Classes">
@@ -534,7 +541,7 @@ const Classes = () => {
               <TableRow className="bg-secondary hover:bg-secondary">
                 <TableHead className="font-semibold">ID</TableHead>
                 <TableHead className="font-semibold">Class</TableHead>
-                <TableHead className="font-semibold">Section</TableHead>
+                <TableHead className="font-semibold">Group / Shift</TableHead>
                 <TableHead className="font-semibold">Subjects</TableHead>
                 <TableHead className="font-semibold text-center">
                   Students
@@ -571,7 +578,8 @@ const Classes = () => {
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium text-foreground">
-                          {classDoc.classTitle || `${classDoc.gradeLevel} - ${classDoc.section}`}
+                          {classDoc.classTitle ||
+                            `${classDoc.gradeLevel} - ${classDoc.group}${classDoc.shift ? ` (${classDoc.shift})` : ""}`}
                         </span>
                         {classDoc.gradeLevel && (
                           <span className="text-xs text-muted-foreground">
@@ -581,9 +589,16 @@ const Classes = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
-                        {classDoc.section}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className="px-2 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
+                          {classDoc.group}
+                        </span>
+                        {classDoc.shift && (
+                          <span className="px-2 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-medium">
+                            {classDoc.shift}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -669,7 +684,12 @@ const Classes = () => {
           <div className="grid gap-4 py-4">
             {/* Class Title - Primary Identifier */}
             <div className="space-y-2">
-              <Label className="font-semibold">Class Title * <span className="text-xs text-muted-foreground">(Unique identifier)</span></Label>
+              <Label className="font-semibold">
+                Class Title *{" "}
+                <span className="text-xs text-muted-foreground">
+                  (Unique identifier)
+                </span>
+              </Label>
               <Input
                 placeholder="e.g., 10th Medical Batch A"
                 value={formClassTitle}
@@ -681,7 +701,10 @@ const Classes = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Grade Level *</Label>
-                <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
+                <Select
+                  value={formGradeLevel}
+                  onValueChange={setFormGradeLevel}
+                >
                   <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select grade" />
                   </SelectTrigger>
@@ -695,15 +718,15 @@ const Classes = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Section *</Label>
-                <Select value={formSection} onValueChange={setFormSection}>
+                <Label>Group *</Label>
+                <Select value={formGroup} onValueChange={setFormGroup}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select section" />
+                    <SelectValue placeholder="Select group" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sectionOptions.map((section) => (
-                      <SelectItem key={section} value={section}>
-                        {section}
+                    {groupOptions.map((group) => (
+                      <SelectItem key={group} value={group}>
+                        {group}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -720,7 +743,9 @@ const Classes = () => {
 
               {/* Days Selection */}
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Select Days</Label>
+                <Label className="text-sm text-muted-foreground">
+                  Select Days
+                </Label>
                 <div className="flex flex-wrap gap-2">
                   {daysOfWeek.map((day) => (
                     <button
@@ -728,15 +753,16 @@ const Classes = () => {
                       type="button"
                       onClick={() => {
                         if (formDays.includes(day.value)) {
-                          setFormDays(formDays.filter(d => d !== day.value));
+                          setFormDays(formDays.filter((d) => d !== day.value));
                         } else {
                           setFormDays([...formDays, day.value]);
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formDays.includes(day.value)
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
-                        }`}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                        formDays.includes(day.value)
+                          ? "bg-blue-600 text-white"
+                          : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
+                      }`}
                     >
                       {day.label}
                     </button>
@@ -747,7 +773,9 @@ const Classes = () => {
               {/* Time Selection */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">Start Time</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    Start Time
+                  </Label>
                   <Input
                     type="time"
                     value={formStartTime}
@@ -756,7 +784,9 @@ const Classes = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">End Time</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    End Time
+                  </Label>
                   <Input
                     type="time"
                     value={formEndTime}
@@ -775,7 +805,6 @@ const Classes = () => {
                 </div>
               </div>
             </div>
-
 
             {/* Assigned Professor */}
             <div className="space-y-2">
@@ -819,7 +848,8 @@ const Classes = () => {
                 </Label>
                 {formSubjects.length > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    {formSubjects.length} subject{formSubjects.length !== 1 ? 's' : ''} selected
+                    {formSubjects.length} subject
+                    {formSubjects.length !== 1 ? "s" : ""} selected
                   </span>
                 )}
               </div>
@@ -833,17 +863,19 @@ const Classes = () => {
                       <div
                         key={subject.id}
                         onClick={() => handleSubjectToggle(subject.id)}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-border hover:border-sky-300 hover:bg-sky-50/50"
-                          }`}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                        }`}
                       >
                         {/* Checkbox */}
                         <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isSelected
-                            ? "bg-sky-500 border-sky-500"
-                            : "border-slate-300 bg-white"
-                            }`}
+                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? "bg-sky-500 border-sky-500"
+                              : "border-slate-300 bg-white"
+                          }`}
                         >
                           {isSelected && (
                             <svg
@@ -858,8 +890,9 @@ const Classes = () => {
 
                         {/* Subject Name */}
                         <span
-                          className={`text-sm font-medium ${isSelected ? "text-sky-700" : "text-foreground"
-                            }`}
+                          className={`text-sm font-medium ${
+                            isSelected ? "text-sky-700" : "text-foreground"
+                          }`}
                         >
                           {subject.label}
                         </span>
@@ -871,7 +904,9 @@ const Classes = () => {
                 <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
                   <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No subjects configured</p>
-                  <p className="text-xs">Add subjects in Configuration → Subjects & Pricing</p>
+                  <p className="text-xs">
+                    Add subjects in Configuration → Subjects & Pricing
+                  </p>
                 </div>
               )}
 
@@ -882,7 +917,6 @@ const Classes = () => {
                 </p>
               )}
             </div>
-
 
             {/* Status Selection */}
             <div className="flex justify-center">
@@ -947,7 +981,12 @@ const Classes = () => {
           <div className="grid gap-4 py-4">
             {/* Class Title - Primary Identifier */}
             <div className="space-y-2">
-              <Label className="font-semibold">Class Title * <span className="text-xs text-muted-foreground">(Unique identifier)</span></Label>
+              <Label className="font-semibold">
+                Class Title *{" "}
+                <span className="text-xs text-muted-foreground">
+                  (Unique identifier)
+                </span>
+              </Label>
               <Input
                 placeholder="e.g., 10th Medical Batch A"
                 value={formClassTitle}
@@ -959,7 +998,10 @@ const Classes = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Grade Level *</Label>
-                <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
+                <Select
+                  value={formGradeLevel}
+                  onValueChange={setFormGradeLevel}
+                >
                   <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select grade" />
                   </SelectTrigger>
@@ -973,15 +1015,15 @@ const Classes = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Section *</Label>
-                <Select value={formSection} onValueChange={setFormSection}>
+                <Label>Group *</Label>
+                <Select value={formGroup} onValueChange={setFormGroup}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select section" />
+                    <SelectValue placeholder="Select group" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sectionOptions.map((section) => (
-                      <SelectItem key={section} value={section}>
-                        {section}
+                    {groupOptions.map((group) => (
+                      <SelectItem key={group} value={group}>
+                        {group}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -998,7 +1040,9 @@ const Classes = () => {
 
               {/* Days Selection */}
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Select Days</Label>
+                <Label className="text-sm text-muted-foreground">
+                  Select Days
+                </Label>
                 <div className="flex flex-wrap gap-2">
                   {daysOfWeek.map((day) => (
                     <button
@@ -1006,15 +1050,16 @@ const Classes = () => {
                       type="button"
                       onClick={() => {
                         if (formDays.includes(day.value)) {
-                          setFormDays(formDays.filter(d => d !== day.value));
+                          setFormDays(formDays.filter((d) => d !== day.value));
                         } else {
                           setFormDays([...formDays, day.value]);
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${formDays.includes(day.value)
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
-                        }`}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                        formDays.includes(day.value)
+                          ? "bg-blue-600 text-white"
+                          : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
+                      }`}
                     >
                       {day.label}
                     </button>
@@ -1025,7 +1070,9 @@ const Classes = () => {
               {/* Time Selection */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">Start Time</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    Start Time
+                  </Label>
                   <Input
                     type="time"
                     value={formStartTime}
@@ -1034,7 +1081,9 @@ const Classes = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-sm text-muted-foreground">End Time</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    End Time
+                  </Label>
                   <Input
                     type="time"
                     value={formEndTime}
@@ -1053,7 +1102,6 @@ const Classes = () => {
                 </div>
               </div>
             </div>
-
 
             {/* Assigned Professor */}
             <div className="space-y-2">
@@ -1097,7 +1145,8 @@ const Classes = () => {
                 </Label>
                 {formSubjects.length > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    {formSubjects.length} subject{formSubjects.length !== 1 ? 's' : ''} selected
+                    {formSubjects.length} subject
+                    {formSubjects.length !== 1 ? "s" : ""} selected
                   </span>
                 )}
               </div>
@@ -1111,17 +1160,19 @@ const Classes = () => {
                       <div
                         key={subject.id}
                         onClick={() => handleSubjectToggle(subject.id)}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-border hover:border-sky-300 hover:bg-sky-50/50"
-                          }`}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                        }`}
                       >
                         {/* Checkbox */}
                         <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isSelected
-                            ? "bg-sky-500 border-sky-500"
-                            : "border-slate-300 bg-white"
-                            }`}
+                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
+                            isSelected
+                              ? "bg-sky-500 border-sky-500"
+                              : "border-slate-300 bg-white"
+                          }`}
                         >
                           {isSelected && (
                             <svg
@@ -1136,8 +1187,9 @@ const Classes = () => {
 
                         {/* Subject Name */}
                         <span
-                          className={`text-sm font-medium ${isSelected ? "text-sky-700" : "text-foreground"
-                            }`}
+                          className={`text-sm font-medium ${
+                            isSelected ? "text-sky-700" : "text-foreground"
+                          }`}
                         >
                           {subject.label}
                         </span>
@@ -1149,7 +1201,9 @@ const Classes = () => {
                 <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
                   <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">No subjects configured</p>
-                  <p className="text-xs">Add subjects in Configuration → Subjects & Pricing</p>
+                  <p className="text-xs">
+                    Add subjects in Configuration → Subjects & Pricing
+                  </p>
                 </div>
               )}
 
@@ -1160,7 +1214,6 @@ const Classes = () => {
                 </p>
               )}
             </div>
-
 
             {/* Status Selection */}
             <div className="flex justify-center">

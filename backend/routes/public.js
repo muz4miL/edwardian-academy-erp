@@ -8,6 +8,7 @@ const {
   getPendingCount,
   getNextStudentId,
   updateStudentCredentials,
+  publicInquiry,
 } = require("../controllers/publicController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -22,6 +23,9 @@ const { protect, restrictTo } = require("../middleware/authMiddleware");
 
 // Student self-registration
 router.post("/register", publicRegister);
+
+// Public inquiry submission (Contact Form)
+router.post("/inquiry", publicInquiry);
 
 // ========================================
 // PROTECTED ROUTES (Admin approval)

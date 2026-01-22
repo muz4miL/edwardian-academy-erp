@@ -38,7 +38,7 @@ import {
   Lock,
   Calculator,
   Package,
-  Printer
+  Printer,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { studentApi, classApi, sessionApi } from "@/lib/api";
@@ -46,6 +46,13 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
+// Import Print Receipt System
+import { usePrintReceipt } from "@/hooks/usePrintReceipt";
+import ReceiptTemplate from "@/components/print/ReceiptTemplate";
+
+// API Base URL for config fetch
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // TASK 1: Draft Persistence Key
 const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";
@@ -56,9 +63,18 @@ interface SubjectWithFee {
   fee: number;
 }
 
+// Type for global config subject pricing
+interface GlobalSubjectFee {
+  name: string;
+  fee: number;
+}
+
 const Admissions = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  // Print Receipt Hook
+  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
 
   // Fetch Active Classes and Sessions
   const { data: classesData } = useQuery({
@@ -71,6 +87,21 @@ const Admissions = () => {
     queryFn: () => sessionApi.getAll(), // Fetch ALL sessions (active, upcoming, completed)
   });
 
+  // Fetch Global Config for Master Subject Pricing
+  const { data: configData } = useQuery({
+    queryKey: ["global-config"],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE_URL}/api/config`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch config");
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const globalSubjectFees: GlobalSubjectFee[] =
+    configData?.data?.defaultSubjectFees || [];
   const classes = classesData?.data || [];
   const sessions = sessionsData?.data || [];
 
@@ -85,7 +116,7 @@ const Admissions = () => {
   const [studentCell, setStudentCell] = useState("");
   const [address, setAddress] = useState("");
   const [admissionDate, setAdmissionDate] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [totalFee, setTotalFee] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
@@ -126,13 +157,15 @@ const Admissions = () => {
         setParentCell(draft.parentCell || "");
         setStudentCell(draft.studentCell || "");
         setAddress(draft.address || "");
-        setAdmissionDate(draft.admissionDate || new Date().toISOString().split("T")[0]);
+        setAdmissionDate(
+          draft.admissionDate || new Date().toISOString().split("T")[0],
+        );
         setTotalFee(draft.totalFee || "");
         setPaidAmount(draft.paidAmount || "");
         setIsCustomFeeMode(draft.isCustomFeeMode || false);
-        console.log('✅ Draft loaded from localStorage');
+        console.log("✅ Draft loaded from localStorage");
       } catch (error) {
-        console.error('❌ Error loading draft:', error);
+        console.error("❌ Error loading draft:", error);
       }
     }
   }, []);
@@ -186,8 +219,10 @@ const Admissions = () => {
   useEffect(() => {
     if (sessions.length > 0 && !quickSessionId) {
       // Prefer active, then upcoming, then any session
-      const activeSession = sessions.find((s: any) => s.status === 'active');
-      const upcomingSession = sessions.find((s: any) => s.status === 'upcoming');
+      const activeSession = sessions.find((s: any) => s.status === "active");
+      const upcomingSession = sessions.find(
+        (s: any) => s.status === "upcoming",
+      );
       const defaultSession = activeSession || upcomingSession || sessions[0];
 
       if (defaultSession) {
@@ -202,29 +237,59 @@ const Admissions = () => {
       const selectedClass = getQuickSelectedClass();
       if (selectedClass) {
         // Calculate total from subjects or use baseFee
-        const subjectTotal = (selectedClass.subjects || []).reduce((sum: number, s: any) => {
-          if (typeof s === 'object' && s.fee) return sum + s.fee;
-          return sum;
-        }, 0);
+        const subjectTotal = (selectedClass.subjects || []).reduce(
+          (sum: number, s: any) => {
+            if (typeof s === "object" && s.fee) return sum + s.fee;
+            return sum;
+          },
+          0,
+        );
         setQuickTotalFee(String(subjectTotal || selectedClass.baseFee || 0));
       }
     }
   }, [quickClassId, classes]);
 
   // Get selected class
-  const getSelectedClass = () => classes.find((c: any) => c._id === selectedClassId);
-  const getQuickSelectedClass = () => classes.find((c: any) => c._id === quickClassId);
+  const getSelectedClass = () =>
+    classes.find((c: any) => c._id === selectedClassId);
+  const getQuickSelectedClass = () =>
+    classes.find((c: any) => c._id === quickClassId);
 
-  // TASK 3: Get subjects with fees from selected class
+  // Get classes filtered by group (cascading select)
+  const getFilteredClasses = () => {
+    if (!group) return classes;
+    // Filter classes by the new 'group' field (exact match with backend enum)
+    return classes.filter((c: any) => {
+      const classGroup = c.group || "";
+      const selectedGroup = group;
+
+      // Direct match with the new group field
+      return classGroup === selectedGroup;
+    });
+  };
+
+  const filteredClasses = getFilteredClasses();
+
+  // REFACTORED: Get subjects with fees from GLOBAL CONFIG (Master Subject Pricing)
   const getClassSubjectsWithFees = (): SubjectWithFee[] => {
     const selectedClass = getSelectedClass();
     if (!selectedClass || !selectedClass.subjects) return [];
 
     return selectedClass.subjects.map((s: any) => {
-      if (typeof s === 'string') {
-        return { name: s, fee: selectedClass.baseFee || 0 };
+      const subjectName = typeof s === "string" ? s : s.name;
+
+      // First try to get fee from class definition
+      let fee = typeof s === "object" ? s.fee : 0;
+
+      // If fee is 0 or undefined, look up from global config
+      if (!fee || fee === 0) {
+        const globalSubject = globalSubjectFees.find(
+          (gs) => gs.name.toLowerCase() === subjectName.toLowerCase(),
+        );
+        fee = globalSubject?.fee || 0;
       }
-      return { name: s.name, fee: s.fee || 0 };
+
+      return { name: subjectName, fee };
     });
   };
 
@@ -233,7 +298,7 @@ const Admissions = () => {
   // Calculate total fee based on selected subjects
   const calculateSubjectBasedFee = () => {
     return classSubjects
-      .filter(s => selectedSubjects.includes(s.name))
+      .filter((s) => selectedSubjects.includes(s.name))
       .reduce((sum, s) => sum + (s.fee || 0), 0);
   };
 
@@ -243,7 +308,17 @@ const Admissions = () => {
       const calculatedFee = calculateSubjectBasedFee();
       setTotalFee(String(calculatedFee));
     }
-  }, [selectedSubjects, selectedClassId, isCustomFeeMode]);
+  }, [selectedSubjects, selectedClassId, isCustomFeeMode, globalSubjectFees]);
+
+  // Reset class selection when group changes (cascading behavior)
+  useEffect(() => {
+    if (group) {
+      // Clear class selection when group changes
+      setSelectedClassId("");
+      setSelectedSubjects([]);
+      setTotalFee("");
+    }
+  }, [group]);
 
   // Reset subjects when class changes
   useEffect(() => {
@@ -254,7 +329,7 @@ const Admissions = () => {
       const selectedClass = getSelectedClass();
       if (selectedClass?.subjects?.length > 0) {
         const subjectNames = selectedClass.subjects.map((s: any) =>
-          typeof s === 'string' ? s : s.name
+          typeof s === "string" ? s : s.name,
         );
         setSelectedSubjects(subjectNames);
       }
@@ -266,13 +341,13 @@ const Admissions = () => {
     setSelectedSubjects((prev) =>
       prev.includes(subjectName)
         ? prev.filter((id) => id !== subjectName)
-        : [...prev, subjectName]
+        : [...prev, subjectName],
     );
   };
 
   // Get fee for a subject
   const getSubjectFee = (subjectName: string): number => {
-    const subject = classSubjects.find(s => s.name === subjectName);
+    const subject = classSubjects.find((s) => s.name === subjectName);
     return subject?.fee || 0;
   };
 
@@ -289,7 +364,7 @@ const Admissions = () => {
         ...defaults,
         ...opts,
         particleCount: Math.floor(count * particleRatio),
-        colors: ['#0ea5e9', '#38bdf8', '#cbd5e1', '#e2e8f0'],
+        colors: ["#0ea5e9", "#38bdf8", "#cbd5e1", "#e2e8f0"],
       });
     }
 
@@ -315,7 +390,7 @@ const Admissions = () => {
 
       // TASK 3: Clear draft after successful save (Safety Flush)
       localStorage.removeItem(ADMISSION_DRAFT_KEY);
-      console.log('🗑️ Draft cleared after successful save');
+      console.log("🗑️ Draft cleared after successful save");
 
       triggerConfetti();
       setSuccessModalOpen(true);
@@ -332,7 +407,13 @@ const Admissions = () => {
     const selectedClass = getSelectedClass();
 
     // Validation
-    if (!studentName || !fatherName || !selectedClassId || !group || !parentCell) {
+    if (
+      !studentName ||
+      !fatherName ||
+      !selectedClassId ||
+      !group ||
+      !parentCell
+    ) {
       toast.error("Missing Information", {
         description: "Please fill in all required fields",
         duration: 3000,
@@ -366,17 +447,28 @@ const Admissions = () => {
     // Prepare student data
     // TASK 1 FIX: Transform subjects from string array to objects with locked pricing
     const subjectsWithFees = selectedSubjects.map((subjectName) => {
-      const subject = classSubjects.find(s => s.name === subjectName);
+      const subject = classSubjects.find((s) => s.name === subjectName);
       return {
         name: subjectName,
         fee: subject?.fee || 0,
       };
     });
 
+    // Ensure we have a valid class name
+    const classTitle =
+      selectedClass?.classTitle || selectedClass?.className || "";
+    if (!classTitle) {
+      toast.error("Class Selection Required", {
+        description: "Please select a valid class from the dropdown",
+        duration: 3000,
+      });
+      return;
+    }
+
     const studentData = {
       studentName,
       fatherName,
-      class: selectedClass?.className || "",
+      class: classTitle,
       group,
       subjects: subjectsWithFees, // Send as array of {name, fee} objects
       parentCell,
@@ -389,7 +481,7 @@ const Admissions = () => {
       sessionRef: selectedSessionId || undefined,
     };
 
-    console.log('📤 Sending Student Data to Backend:', studentData);
+    console.log("📤 Sending Student Data to Backend:", studentData);
     createStudentMutation.mutate(studentData);
   };
 
@@ -404,11 +496,13 @@ const Admissions = () => {
     }
 
     const selectedClass = getQuickSelectedClass();
+    const classTitle =
+      selectedClass?.classTitle || selectedClass?.className || "TBD";
 
     const quickData = {
       studentName: quickName,
       fatherName: "To be updated",
-      class: selectedClass?.className || "TBD",
+      class: classTitle,
       group: "Pre-Medical",
       subjects: [],
       parentCell: quickParentCell,
@@ -452,17 +546,25 @@ const Admissions = () => {
 
     // Clear localStorage draft
     localStorage.removeItem(ADMISSION_DRAFT_KEY);
-    console.log('🗑️ Draft manually cleared via Cancel');
+    console.log("🗑️ Draft manually cleared via Cancel");
   };
 
   // Get balance - TASK 1: Use Math.max to prevent negative balance
-  const balance = totalFee && paidAmount
-    ? Math.max(0, Number(totalFee) - Number(paidAmount)).toString()
-    : totalFee || "0";
+  const balance =
+    totalFee && paidAmount
+      ? Math.max(0, Number(totalFee) - Number(paidAmount)).toString()
+      : totalFee || "0";
 
-  // Print admission slip handler
+  // Print admission slip handler (legacy - for old slip)
   const handlePrintSlip = () => {
     window.print();
+  };
+
+  // Print receipt handler (new - for barcode receipt)
+  const handlePrintReceipt = () => {
+    if (savedStudent?._id) {
+      printReceipt(savedStudent._id, "admission");
+    }
   };
 
   // Calculated fee display
@@ -526,22 +628,31 @@ const Admissions = () => {
               {/* Session Dropdown - Show All Sessions */}
               <div className="space-y-2">
                 <Label htmlFor="session">Academic Session</Label>
-                <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                <Select
+                  value={selectedSessionId}
+                  onValueChange={setSelectedSessionId}
+                >
                   <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select session" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
                     {sessions.length === 0 ? (
-                      <SelectItem value="none" disabled>No sessions available</SelectItem>
+                      <SelectItem value="none" disabled>
+                        No sessions available
+                      </SelectItem>
                     ) : (
                       sessions.map((session: any) => (
                         <SelectItem key={session._id} value={session._id}>
                           {session.sessionName}
-                          {session.status === 'active' && (
-                            <span className="ml-2 text-green-600 text-xs">(Active)</span>
+                          {session.status === "active" && (
+                            <span className="ml-2 text-green-600 text-xs">
+                              (Active)
+                            </span>
                           )}
-                          {session.status === 'upcoming' && (
-                            <span className="ml-2 text-sky-600 text-xs">(Upcoming)</span>
+                          {session.status === "upcoming" && (
+                            <span className="ml-2 text-sky-600 text-xs">
+                              (Upcoming)
+                            </span>
                           )}
                         </SelectItem>
                       ))
@@ -563,28 +674,42 @@ const Admissions = () => {
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
                     <SelectItem value="Pre-Medical">Pre-Medical</SelectItem>
-                    <SelectItem value="Pre-Engineering">Pre-Engineering</SelectItem>
+                    <SelectItem value="Pre-Engineering">
+                      Pre-Engineering
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Class Dropdown */}
+              {/* Class Dropdown - Filtered by Group */}
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="class">Class *</Label>
                 <Select
                   value={selectedClassId}
                   onValueChange={setSelectedClassId}
+                  disabled={!group}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select class" />
+                    <SelectValue
+                      placeholder={
+                        group ? "Select class" : "Select group first"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent className="bg-popover">
-                    {classes.length === 0 ? (
-                      <SelectItem value="none" disabled>No active classes</SelectItem>
+                    {!group ? (
+                      <SelectItem value="none" disabled>
+                        Please select a group first
+                      </SelectItem>
+                    ) : filteredClasses.length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        No classes for {group}
+                      </SelectItem>
                     ) : (
-                      classes.map((cls: any) => (
+                      filteredClasses.map((cls: any) => (
                         <SelectItem key={cls._id} value={cls._id}>
-                          {cls.className} - {cls.section}
+                          {cls.classTitle || cls.className}{" "}
+                          {cls.section && `- ${cls.section}`}
                         </SelectItem>
                       ))
                     )}
@@ -606,28 +731,38 @@ const Admissions = () => {
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {classSubjects.map((subject) => {
-                      const isSelected = selectedSubjects.includes(subject.name);
+                      const isSelected = selectedSubjects.includes(
+                        subject.name,
+                      );
 
                       return (
                         <div
                           key={subject.name}
                           className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
+                              ? "border-sky-500 bg-sky-50"
+                              : "border-border hover:border-sky-300"
                             }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
                           <div className="flex items-center gap-3">
                             <Checkbox
                               checked={isSelected}
-                              onCheckedChange={() => handleSubjectToggle(subject.name)}
+                              onCheckedChange={() =>
+                                handleSubjectToggle(subject.name)
+                              }
                             />
-                            <span className={`font-medium ${isSelected ? 'text-sky-700' : 'text-foreground'}`}>
+                            <span
+                              className={`font-medium ${isSelected ? "text-sky-700" : "text-foreground"}`}
+                            >
                               {subject.name}
                             </span>
                           </div>
-                          <span className={`text-sm font-semibold ${isSelected ? 'text-green-600' : 'text-muted-foreground'
-                            }`}>
+                          <span
+                            className={`text-sm font-semibold ${isSelected
+                                ? "text-green-600"
+                                : "text-muted-foreground"
+                              }`}
+                          >
                             {subject.fee.toLocaleString()} PKR
                           </span>
                         </div>
@@ -635,7 +770,8 @@ const Admissions = () => {
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Fee is calculated based on selected subjects. Select all subjects the student will study.
+                    Fee is calculated based on selected subjects. Select all
+                    subjects the student will study.
                   </p>
                 </div>
               )}
@@ -698,7 +834,9 @@ const Admissions = () => {
                   <Package className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Custom Fee (Lump Sum)</p>
-                    <p className="text-xs text-muted-foreground">Override calculated fee</p>
+                    <p className="text-xs text-muted-foreground">
+                      Override calculated fee
+                    </p>
                   </div>
                 </div>
                 <Switch
@@ -731,10 +869,10 @@ const Admissions = () => {
                     onChange={(e) => setTotalFee(e.target.value)}
                     readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
                     className={`${isCustomFeeMode
-                      ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'
-                      : !isCustomFeeMode && selectedSubjects.length > 0
-                        ? 'border-sky-300 bg-sky-50 cursor-not-allowed'
-                        : ''
+                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                        : !isCustomFeeMode && selectedSubjects.length > 0
+                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
+                          : ""
                       }`}
                   />
                   {!isCustomFeeMode && selectedSubjects.length > 0 && (
@@ -751,20 +889,28 @@ const Admissions = () => {
                 {/* Fee Breakdown */}
                 {selectedSubjects.length > 0 && (
                   <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-100">
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Fee Breakdown:</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      Fee Breakdown:
+                    </p>
                     <div className="space-y-0.5">
                       {classSubjects
-                        .filter(s => selectedSubjects.includes(s.name))
-                        .map(s => (
-                          <div key={s.name} className="flex justify-between text-xs">
+                        .filter((s) => selectedSubjects.includes(s.name))
+                        .map((s) => (
+                          <div
+                            key={s.name}
+                            className="flex justify-between text-xs"
+                          >
                             <span className="text-slate-600">{s.name}</span>
-                            <span className="font-medium text-slate-700">{s.fee.toLocaleString()} PKR</span>
+                            <span className="font-medium text-slate-700">
+                              {s.fee.toLocaleString()} PKR
+                            </span>
                           </div>
-                        ))
-                      }
+                        ))}
                       <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-200 mt-1">
                         <span className="text-foreground">Total</span>
-                        <span className="text-green-600">{calculatedFee.toLocaleString()} PKR</span>
+                        <span className="text-green-600">
+                          {calculatedFee.toLocaleString()} PKR
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -787,7 +933,9 @@ const Admissions = () => {
                       const paidNum = Number(value);
                       const totalNum = Number(totalFee);
                       if (paidNum > totalNum) {
-                        setFeeValidationError("Received amount cannot exceed total fee");
+                        setFeeValidationError(
+                          "Received amount cannot exceed total fee",
+                        );
                       } else {
                         setFeeValidationError("");
                       }
@@ -795,7 +943,11 @@ const Admissions = () => {
                       setFeeValidationError("");
                     }
                   }}
-                  className={feeValidationError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  className={
+                    feeValidationError
+                      ? "border-red-500 focus-visible:ring-red-500"
+                      : ""
+                  }
                 />
                 {feeValidationError && (
                   <p className="text-xs text-red-600 flex items-center gap-1 font-medium">
@@ -880,7 +1032,9 @@ const Admissions = () => {
           </DialogHeader>
           <div className="space-y-3 py-3">
             <div className="space-y-1.5">
-              <Label htmlFor="quick-name" className="text-sm">Student Name *</Label>
+              <Label htmlFor="quick-name" className="text-sm">
+                Student Name *
+              </Label>
               <Input
                 id="quick-name"
                 placeholder="Enter full name"
@@ -894,25 +1048,28 @@ const Admissions = () => {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-sm">Session</Label>
-                {sessions.find((s: any) => s._id === quickSessionId) && (() => {
-                  const selected = sessions.find((s: any) => s._id === quickSessionId);
-                  if (selected?.status === 'active') {
-                    return (
-                      <span className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Active
-                      </span>
+                {sessions.find((s: any) => s._id === quickSessionId) &&
+                  (() => {
+                    const selected = sessions.find(
+                      (s: any) => s._id === quickSessionId,
                     );
-                  } else if (selected?.status === 'upcoming') {
-                    return (
-                      <span className="text-xs text-sky-600 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Upcoming
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
+                    if (selected?.status === "active") {
+                      return (
+                        <span className="text-xs text-green-600 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Active
+                        </span>
+                      );
+                    } else if (selected?.status === "upcoming") {
+                      return (
+                        <span className="text-xs text-sky-600 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Upcoming
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
               </div>
               <Select value={quickSessionId} onValueChange={setQuickSessionId}>
                 <SelectTrigger className="h-9 bg-background">
@@ -920,13 +1077,17 @@ const Admissions = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {sessions.length === 0 ? (
-                    <SelectItem value="none" disabled>No sessions available</SelectItem>
+                    <SelectItem value="none" disabled>
+                      No sessions available
+                    </SelectItem>
                   ) : (
                     sessions.map((session: any) => (
                       <SelectItem key={session._id} value={session._id}>
                         {session.sessionName}
-                        {session.status === 'active' && (
-                          <span className="ml-2 text-green-600 text-xs">(Current)</span>
+                        {session.status === "active" && (
+                          <span className="ml-2 text-green-600 text-xs">
+                            (Current)
+                          </span>
                         )}
                       </SelectItem>
                     ))
@@ -937,7 +1098,9 @@ const Admissions = () => {
 
             {/* TASK 2: Class with fee sync */}
             <div className="space-y-1.5">
-              <Label htmlFor="quick-class" className="text-sm">Class *</Label>
+              <Label htmlFor="quick-class" className="text-sm">
+                Class *
+              </Label>
               <Select value={quickClassId} onValueChange={setQuickClassId}>
                 <SelectTrigger className="h-9 bg-background">
                   <SelectValue placeholder="Select class" />
@@ -953,7 +1116,9 @@ const Admissions = () => {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="quick-parent" className="text-sm">Parent Cell *</Label>
+              <Label htmlFor="quick-parent" className="text-sm">
+                Parent Cell *
+              </Label>
               <Input
                 id="quick-parent"
                 placeholder="03XX-XXXXXXX"
@@ -969,9 +1134,7 @@ const Admissions = () => {
                 <div className="flex items-center justify-between">
                   <Label className="text-sm">Total Fee</Label>
                   {quickClassId && (
-                    <span className="text-xs text-sky-600">
-                      Auto-filled
-                    </span>
+                    <span className="text-xs text-sky-600">Auto-filled</span>
                   )}
                 </div>
                 <Input
@@ -997,7 +1160,9 @@ const Admissions = () => {
                       const paidNum = Number(value);
                       const totalNum = Number(quickTotalFee);
                       if (paidNum > totalNum) {
-                        setQuickFeeValidationError("Received amount cannot exceed total fee");
+                        setQuickFeeValidationError(
+                          "Received amount cannot exceed total fee",
+                        );
                       } else {
                         setQuickFeeValidationError("");
                       }
@@ -1029,7 +1194,9 @@ const Admissions = () => {
             </Button>
             <Button
               onClick={handleQuickAdd}
-              disabled={createStudentMutation.isPending || !!quickFeeValidationError}
+              disabled={
+                createStudentMutation.isPending || !!quickFeeValidationError
+              }
               className="flex-1 bg-sky-600 hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
@@ -1053,6 +1220,7 @@ const Admissions = () => {
         studentData={savedStudent}
         onNavigateToStudents={() => navigate("/students")}
         onPrint={handlePrintSlip}
+        onPrintReceipt={handlePrintReceipt}
         onNewAdmission={handleCancel}
       />
 
@@ -1060,6 +1228,17 @@ const Admissions = () => {
       {savedStudent && (
         <AdmissionSlip student={savedStudent} session={savedSession} />
       )}
+
+      {/* Hidden Receipt Template for Printing */}
+      <div style={{ display: "none" }}>
+        {printData && (
+          <ReceiptTemplate
+            ref={printRef}
+            student={printData.student}
+            receiptConfig={printData.receiptConfig}
+          />
+        )}
+      </div>
     </DashboardLayout>
   );
 };

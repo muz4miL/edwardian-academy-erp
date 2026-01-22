@@ -5,6 +5,8 @@ const { protect } = require("../middleware/authMiddleware");
 const {
   collectFee,
   getFeeHistory,
+  trackPrint,
+  findByToken,
 } = require("../controllers/studentController");
 
 // ========================================
@@ -20,6 +22,20 @@ router.post("/:id/collect-fee", protect, collectFee);
 // @desc    Get fee payment history for a student
 // @access  Protected
 router.get("/:id/fee-history", protect, getFeeHistory);
+
+// ========================================
+// RECEIPT PRINTING & BARCODE ROUTES
+// ========================================
+
+// @route   POST /api/students/:id/print
+// @desc    Generate unique receipt ID and track print
+// @access  Protected
+router.post("/:id/print", protect, trackPrint);
+
+// @route   GET /api/students/by-token/:token
+// @desc    Find student by receipt token (for Gate Scanner)
+// @access  Public (Gate needs fast access)
+router.get("/by-token/:token", findByToken);
 
 // ========================================
 // EXISTING STUDENT CRUD ROUTES

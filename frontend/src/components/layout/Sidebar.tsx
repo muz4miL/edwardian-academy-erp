@@ -86,13 +86,6 @@ const navItems = [
     permission: "admissions",
   },
   {
-    icon: UserCheck,
-    label: "Approvals",
-    path: "/pending-approvals",
-    permission: "admissions",
-    badge: true, // Show pending count
-  },
-  {
     icon: Settings,
     label: "Configuration",
     path: "/configuration",

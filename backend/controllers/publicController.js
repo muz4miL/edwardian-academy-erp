@@ -1,6 +1,7 @@
 const Student = require("../models/Student");
 const Class = require("../models/Class");
 const Session = require("../models/Session");
+const Lead = require("../models/Lead");
 
 /**
  * Public Registration Controller
@@ -15,23 +16,49 @@ const Session = require("../models/Session");
  * Starts at 260001 if no students exist
  */
 const generateNumericStudentId = async () => {
-  // Find the highest existing numeric ID
-  const lastStudent = await Student.findOne({
-    barcodeId: { $exists: true, $ne: null, $regex: /^\d+$/ },
-  })
-    .sort({ barcodeId: -1 })
-    .select("barcodeId")
-    .lean();
+  try {
+    // Use aggregation to find the actual highest numeric ID
+    const result = await Student.aggregate([
+      {
+        $match: {
+          studentId: { $exists: true, $ne: null, $regex: /^\d+$/ },
+        },
+      },
+      {
+        $addFields: {
+          numericId: { $toLong: "$studentId" },
+        },
+      },
+      {
+        $sort: { numericId: -1 },
+      },
+      {
+        $limit: 1,
+      },
+      {
+        $project: { studentId: 1 },
+      },
+    ]);
 
-  if (lastStudent && lastStudent.barcodeId) {
-    const lastId = parseInt(lastStudent.barcodeId, 10);
-    if (!isNaN(lastId)) {
-      return String(lastId + 1);
+    if (result.length > 0 && result[0].studentId) {
+      const lastNumber = parseInt(result[0].studentId, 10);
+      const nextId = String(lastNumber + 1);
+      console.log(
+        `🔢 Generated next ID: ${nextId} (incremented from ${result[0].studentId})`,
+      );
+      return nextId;
     }
-  }
 
-  // Start at 260001 if no numeric IDs exist
-  return "260001";
+    // No numeric IDs found, start at 260001
+    console.log("🔢 Starting fresh with ID: 260001");
+    return "260001";
+  } catch (err) {
+    console.error("❌ Error generating numeric student ID:", err);
+    // Fallback to timestamp-based ID to avoid crashes
+    const fallbackId = `260${Date.now().toString().slice(-3)}`;
+    console.log(`⚠️ Using fallback ID: ${fallbackId}`);
+    return fallbackId;
+  }
 };
 
 // @desc    Public student registration
@@ -61,16 +88,18 @@ exports.publicRegister = async (req, res) => {
       });
     }
 
-    // Check for duplicate registration by phone
+    // Check for duplicate registration - Allow siblings (same phone, different name)
+    // Only block if EXACT SAME student name + phone combination exists
     const existingStudent = await Student.findOne({
       parentCell,
+      studentName: { $regex: new RegExp(`^${studentName.trim()}$`, "i") }, // Case-insensitive match
       studentStatus: { $in: ["Active", "Pending"] },
     });
 
     if (existingStudent) {
       return res.status(409).json({
         success: false,
-        message: "A registration with this phone number already exists",
+        message: "This student is already registered with this phone number",
         existingStudentId: existingStudent.studentId,
       });
     }
@@ -422,6 +451,49 @@ exports.updateStudentCredentials = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error updating credentials",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Public inquiry submission (Contact Form)
+// @route   POST /api/public/inquiry
+// @access  Public (No Login Required)
+exports.publicInquiry = async (req, res) => {
+  try {
+    const { name, phone, email, interest, remarks, source } = req.body;
+
+    // Validation
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Name and phone are required fields",
+      });
+    }
+
+    // Create inquiry/lead record
+    const inquiry = await Lead.create({
+      name,
+      phone,
+      email: email || undefined,
+      source: source || "Website Contact Form",
+      interest: interest || "General Inquiry",
+      remarks: remarks || "",
+      status: "New",
+    });
+
+    console.log(`📧 New public inquiry from: ${name} (${phone})`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Thank you! Our team will contact you soon.",
+      data: inquiry,
+    });
+  } catch (error) {
+    console.error("❌ Error in publicInquiry:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error submitting inquiry",
       error: error.message,
     });
   }

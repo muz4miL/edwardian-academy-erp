@@ -1,413 +1,698 @@
 /**
- * Gatekeeper - Smart Gate Scanner Module
- * 
- * Physical security interface for barcode scanning at entry points.
- * Hardware: Barcode scanner that types digits rapidly without pressing Enter.
+ * SMART GATE SCANNER - Full-Screen Security Terminal
+ *
+ * Professional gate security interface for barcode scanning at entry points.
+ * Designed for readability from 5+ feet away with instant audio/visual feedback.
+ *
+ * Features:
+ * - Full-screen immersive mode (no sidebar distractions)
+ * - Sub-200ms response time
+ * - Audio feedback (success chime / denial buzzer)
+ * - Massive text readable from distance
+ * - Supports numeric IDs (260001, 260002...)
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
-    Shield,
-    CheckCircle2,
-    XCircle,
-    AlertTriangle,
-    Loader2,
-    Search,
-    User,
-    Clock,
-    CreditCard,
-    RefreshCw,
+  Shield,
+  ShieldCheck,
+  ShieldX,
+  ShieldAlert,
+  User,
+  Scan,
+  Volume2,
+  VolumeX,
+  Fingerprint,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
+// ==================== TYPES ====================
 interface ScanResult {
-    success: boolean;
-    status: "success" | "defaulter" | "partial" | "blocked" | "unknown" | "error";
-    message: string;
-    student?: {
-        _id: string;
-        studentId: string;
-        barcodeId: string;
-        name: string;
-        fatherName: string;
-        class: string;
-        group: string;
-        photo?: string;
-        feeStatus: string;
-        totalFee: number;
-        paidAmount: number;
-        balance: number;
-        studentStatus: string;
-        session: string;
-    };
-    scannedAt?: string;
+  success: boolean;
+  status: "success" | "defaulter" | "partial" | "blocked" | "unknown" | "error" | "too_early";
+  message: string;
+  reason?: string; // Detailed rejection reason (e.g., "TOO EARLY", "OFF SCHEDULE")
+  student?: {
+    _id: string;
+    studentId: string;
+    barcodeId: string;
+    name: string;
+    fatherName: string;
+    class: string;
+    group: string;
+    photo?: string;
+    feeStatus: string;
+    totalFee: number;
+    paidAmount: number;
+    balance: number;
+    studentStatus: string;
+    session: string;
+  };
+  scannedAt?: string;
+  currentTime?: string; // Current time when scanned
+  classStartTime?: string; // Expected class start time
 }
 
-// Debounce hook for rapid input detection
-function useDebounce(callback: (value: string) => void, delay: number) {
-    const timeoutRef = useRef<NodeJS.Timeout>();
-    const lastInputTimeRef = useRef<number>(0);
-    const inputBufferRef = useRef<string>("");
+type TerminalState = "standby" | "scanning" | "success" | "denied" | "warning";
 
-    return useCallback((value: string) => {
-        const now = Date.now();
-        const timeSinceLastInput = now - lastInputTimeRef.current;
+// ==================== AUDIO FEEDBACK ====================
+const createBeep = (
+  frequency: number,
+  duration: number,
+  type: OscillatorType = "sine",
+) => {
+  try {
+    const audioCtx = new (
+      window.AudioContext || (window as any).webkitAudioContext
+    )();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
-        // If input is coming rapidly (< 50ms between keystrokes), it's likely a scanner
-        if (timeSinceLastInput < 50) {
-            inputBufferRef.current = value;
-        } else {
-            inputBufferRef.current = value;
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.frequency.value = frequency;
+    oscillator.type = type;
+    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(
+      0.01,
+      audioCtx.currentTime + duration,
+    );
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + duration);
+  } catch (e) {
+    console.log("Audio not available");
+  }
+};
+
+const playSuccessSound = () => {
+  // Pleasant two-tone chime for ALLOWED
+  createBeep(880, 0.12);
+  setTimeout(() => createBeep(1320, 0.18), 80);
+};
+
+const playDeniedSound = () => {
+  // Deep buzzer for DENIED
+  createBeep(150, 0.5, "square");
+};
+
+const playWarningSound = () => {
+  // Alert tone for partial/warning states
+  createBeep(440, 0.15, "triangle");
+  setTimeout(() => createBeep(440, 0.15, "triangle"), 180);
+};
+
+// ==================== DEBOUNCE HOOK ====================
+function useRapidInput(callback: (value: string) => void, delay: number = 150) {
+  const timeoutRef = useRef<NodeJS.Timeout>();
+  const lastInputTimeRef = useRef<number>(0);
+
+  return useCallback(
+    (value: string) => {
+      const now = Date.now();
+      lastInputTimeRef.current = now;
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        // Auto-trigger for 6+ digit numeric IDs (260001 format)
+        if (value.length >= 6 && /^\d+$/.test(value)) {
+          callback(value);
         }
-
-        lastInputTimeRef.current = now;
-
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
-
-        timeoutRef.current = setTimeout(() => {
-            // Auto-trigger if 8+ characters (barcode length)
-            if (inputBufferRef.current.length >= 8) {
-                callback(inputBufferRef.current);
-            }
-        }, delay);
-    }, [callback, delay]);
+      }, delay);
+    },
+    [callback, delay],
+  );
 }
 
+// ==================== MAIN COMPONENT ====================
 export default function Gatekeeper() {
-    const [scanInput, setScanInput] = useState("");
-    const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-    const [isIdle, setIsIdle] = useState(true);
-    const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [scanInput, setScanInput] = useState("");
+  const [terminalState, setTerminalState] = useState<TerminalState>("standby");
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isMounted, setIsMounted] = useState(true);
 
-    // Focus input on mount and after each scan
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, [scanResult]);
-
-    // Auto-clear result after 10 seconds
-    useEffect(() => {
-        if (scanResult && scanResult.status !== "error") {
-            const timer = setTimeout(() => {
-                handleReset();
-            }, 10000);
-            return () => clearTimeout(timer);
-        }
-    }, [scanResult]);
-
-    // Scan mutation
-    const scanMutation = useMutation({
-        mutationFn: async (barcodeId: string) => {
-            const res = await fetch(`${API_BASE_URL}/api/gatekeeper/scan`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ barcodeId }),
-            });
-            return res.json();
-        },
-        onSuccess: (data) => {
-            setScanResult(data);
-            setIsIdle(false);
-            setScanInput("");
-        },
-        onError: () => {
-            setScanResult({
-                success: false,
-                status: "error",
-                message: "Connection error. Try again.",
-            });
-            setIsIdle(false);
-        },
-    });
-
-    // Handle scan trigger
-    const handleScan = useCallback((value: string) => {
-        if (value.trim().length >= 3) {
-            scanMutation.mutate(value.trim());
-        }
-    }, [scanMutation]);
-
-    // Debounced input handler (500ms delay, auto-triggers on 8+ chars)
-    const debouncedScan = useDebounce(handleScan, 500);
-
-    // Manual verify button
-    const handleManualVerify = () => {
-        if (scanInput.trim().length >= 3) {
-            handleScan(scanInput.trim());
-        }
+  // Cleanup on unmount - prevent state updates after navigation
+  useEffect(() => {
+    setIsMounted(true);
+    return () => {
+      setIsMounted(false);
     };
+  }, []);
 
-    // Reset to idle state
-    const handleReset = () => {
-        setScanResult(null);
-        setScanInput("");
-        setIsIdle(true);
-        inputRef.current?.focus();
+  // Update clock every second
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Keep input focused at all times
+  useEffect(() => {
+    const focusInput = () => {
+      if (inputRef.current && terminalState === "standby") {
+        inputRef.current.focus();
+      }
     };
-
-    // Get status styling
-    const getStatusStyles = () => {
-        if (!scanResult) return {};
-
-        switch (scanResult.status) {
-            case "success":
-                return {
-                    bg: "bg-gradient-to-br from-emerald-500 to-green-600",
-                    icon: CheckCircle2,
-                    iconColor: "text-white",
-                    textColor: "text-white",
-                };
-            case "partial":
-                return {
-                    bg: "bg-gradient-to-br from-amber-500 to-orange-600",
-                    icon: AlertTriangle,
-                    iconColor: "text-white",
-                    textColor: "text-white",
-                };
-            case "defaulter":
-                return {
-                    bg: "bg-gradient-to-br from-red-500 to-rose-600",
-                    icon: AlertTriangle,
-                    iconColor: "text-white",
-                    textColor: "text-white",
-                };
-            case "blocked":
-            case "unknown":
-            case "error":
-                return {
-                    bg: "bg-gradient-to-br from-red-600 to-red-800",
-                    icon: XCircle,
-                    iconColor: "text-white",
-                    textColor: "text-white",
-                };
-            default:
-                return {
-                    bg: "bg-gray-100",
-                    icon: Shield,
-                    iconColor: "text-gray-600",
-                    textColor: "text-gray-800",
-                };
-        }
+    focusInput();
+    const interval = setInterval(focusInput, 500);
+    document.addEventListener("click", focusInput);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("click", focusInput);
     };
+  }, [terminalState]);
 
-    const styles = getStatusStyles();
-    const StatusIcon = styles.icon || Shield;
+  // Auto-reset to standby after result display
+  useEffect(() => {
+    if (terminalState !== "standby" && terminalState !== "scanning") {
+      const timeout = setTimeout(() => {
+        resetTerminal();
+      }, 5000); // 5 seconds display time
+      return () => clearTimeout(timeout);
+    }
+  }, [terminalState]);
+
+  // API Mutation with mount check
+  const scanMutation = useMutation({
+    mutationFn: async (barcode: string) => {
+      if (isMounted) setTerminalState("scanning");
+      const response = await fetch(`${API_BASE_URL}/api/gatekeeper/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode }),
+      });
+      if (!response.ok) throw new Error("Scan failed");
+      return response.json();
+    },
+    onSuccess: (data: ScanResult) => {
+      if (!isMounted) return; // Prevent state updates if unmounted
+
+      setScanResult(data);
+
+      if (data.status === "success") {
+        setTerminalState("success");
+        if (soundEnabled) playSuccessSound();
+      } else if (data.status === "partial") {
+        setTerminalState("warning");
+        if (soundEnabled) playWarningSound();
+      } else if (
+        data.status === "too_early" ||
+        data.reason?.includes("TOO EARLY") ||
+        data.reason?.includes("OFF SCHEDULE")
+      ) {
+        // Handle schedule-based rejection with amber/orange state
+        setTerminalState("warning"); // Use warning state for amber styling
+        if (soundEnabled) playWarningSound();
+      } else {
+        setTerminalState("denied");
+        if (soundEnabled) playDeniedSound();
+      }
+      setScanInput("");
+    },
+    onError: () => {
+      if (!isMounted) return; // Prevent state updates if unmounted
+
+      setScanResult({
+        success: false,
+        status: "error",
+        message: "SCAN ERROR - TRY AGAIN",
+      });
+      setTerminalState("denied");
+      if (soundEnabled) playDeniedSound();
+      setScanInput("");
+    },
+  });
+
+  const debouncedScan = useRapidInput((value: string) => {
+    if (value.length >= 6 && isMounted) {
+      scanMutation.mutate(value);
+    }
+  }, 150);
+
+  const handleManualSubmit = () => {
+    if (scanInput.length >= 5 && isMounted) {
+      scanMutation.mutate(scanInput);
+    }
+  };
+
+  const resetTerminal = () => {
+    if (!isMounted) return; // Prevent state updates if unmounted
+    setTerminalState("standby");
+    setScanResult(null);
+    setScanInput("");
+    setTimeout(() => {
+      if (isMounted && inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
+  };
+
+  // ==================== RENDER STATES ====================
+
+  // STANDBY STATE - Dark theme with pulsing shield
+  if (terminalState === "standby" || terminalState === "scanning") {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {/* Top Bar */}
+        <div className="flex items-center justify-between px-8 py-4 border-b border-slate-700/50">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors mr-2"
+              title="Back to Dashboard"
+              aria-label="Back to Dashboard"
+            >
+              <ArrowLeft className="h-6 w-6 text-slate-400 hover:text-white" />
+            </button>
+            <Shield className="h-8 w-8 text-cyan-400" />
+            <span className="text-2xl font-bold text-white tracking-wider">
+              SMART GATE
+            </span>
+            <span className="px-3 py-1 bg-cyan-500/20 text-cyan-400 text-sm font-semibold rounded-full border border-cyan-500/30">
+              SECURITY TERMINAL
+            </span>
+          </div>
+          <div className="flex items-center gap-6">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSoundEnabled(!soundEnabled);
+              }}
+              className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors"
+              title={soundEnabled ? "Mute sounds" : "Enable sounds"}
+              aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
+            >
+              {soundEnabled ? (
+                <Volume2 className="h-6 w-6 text-cyan-400" />
+              ) : (
+                <VolumeX className="h-6 w-6 text-slate-500" />
+              )}
+            </button>
+            <div className="text-right">
+              <p className="text-3xl font-mono font-bold text-white">
+                {currentTime.toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </p>
+              <p className="text-sm text-slate-400">
+                {currentTime.toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Center Content */}
+        <div className="flex-1 flex flex-col items-center justify-center px-8">
+          {/* Pulsing Shield */}
+          <div
+            className={cn(
+              "relative mb-12",
+              terminalState === "scanning" && "animate-pulse",
+            )}
+          >
+            <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" />
+            <div
+              className={cn(
+                "relative h-48 w-48 rounded-full flex items-center justify-center",
+                "bg-gradient-to-br from-slate-700 to-slate-800",
+                "border-4 border-cyan-500/30",
+                "shadow-[0_0_60px_rgba(34,211,238,0.3)]",
+                terminalState === "standby" &&
+                "animate-[pulse_3s_ease-in-out_infinite]",
+              )}
+            >
+              {terminalState === "scanning" ? (
+                <Scan className="h-24 w-24 text-cyan-400 animate-pulse" />
+              ) : (
+                <Fingerprint className="h-24 w-24 text-cyan-400" />
+              )}
+            </div>
+          </div>
+
+          {/* Status Text */}
+          <h1
+            className={cn(
+              "text-6xl font-black mb-4 tracking-wider",
+              terminalState === "scanning"
+                ? "text-cyan-400 animate-pulse"
+                : "text-white",
+            )}
+          >
+            {terminalState === "scanning" ? "SCANNING..." : "READY TO SCAN"}
+          </h1>
+          <p className="text-2xl text-slate-400 mb-12">
+            {terminalState === "scanning"
+              ? "Verifying credentials..."
+              : "Present student ID card to barcode scanner"}
+          </p>
+
+          {/* Scanner Input */}
+          <div className="w-full max-w-2xl">
+            <div className="relative">
+              <Scan className="absolute left-6 top-1/2 -translate-y-1/2 h-8 w-8 text-slate-500" />
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={scanInput}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "");
+                  setScanInput(value);
+                  debouncedScan(value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleManualSubmit();
+                }}
+                placeholder="Scan or enter Student ID..."
+                className={cn(
+                  "w-full h-24 pl-20 pr-6 text-4xl font-mono tracking-[0.3em]",
+                  "bg-slate-800/80 border-2 border-slate-600",
+                  "rounded-2xl text-white placeholder-slate-500",
+                  "focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/20",
+                  "transition-all duration-200",
+                )}
+                autoComplete="off"
+                autoFocus
+              />
+              {scanInput && (
+                <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                  <span className="text-lg text-slate-500 font-mono">
+                    {scanInput.length} digits
+                  </span>
+                </div>
+              )}
+            </div>
+            <p className="text-center text-slate-500 mt-6 text-xl">
+              Auto-scan on barcode input • Press Enter for manual verify
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-8 py-4 border-t border-slate-700/50 flex items-center justify-between">
+          <span className="text-slate-500 text-lg">Edwardian Academy</span>
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-slate-500">System Online</span>
+          </div>
+          <span className="text-slate-500">Smart Gate v2.0</span>
+        </div>
+      </div>
+    );
+  }
+
+  // SUCCESS STATE - Full-Screen Green Welcome
+  if (terminalState === "success" && scanResult?.student) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-600 flex flex-col cursor-pointer"
+        onClick={resetTerminal}
+      >
+        {/* Flash overlay animation */}
+        <div className="absolute inset-0 bg-white/30 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
+
+        {/* Content */}
+        <div className="relative flex-1 flex flex-col items-center justify-center px-8">
+          {/* Success Icon */}
+          <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+            <div className="h-44 w-44 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+              <ShieldCheck className="h-28 w-28 text-white drop-shadow-lg" />
+            </div>
+          </div>
+
+          {/* WELCOME Message */}
+          <h1 className="text-8xl font-black text-white mb-8 tracking-wider drop-shadow-lg">
+            ✓ WELCOME
+          </h1>
+
+          {/* Student Photo & Name */}
+          <div className="flex items-center gap-10 mb-10">
+            {scanResult.student.photo ? (
+              <img
+                src={scanResult.student.photo}
+                alt={scanResult.student.name}
+                className="h-36 w-36 rounded-full object-cover border-4 border-white shadow-2xl"
+              />
+            ) : (
+              <div className="h-36 w-36 rounded-full bg-white/30 flex items-center justify-center border-4 border-white shadow-xl">
+                <User className="h-20 w-20 text-white" />
+              </div>
+            )}
+            <div className="text-left">
+              <h2 className="text-6xl font-bold text-white drop-shadow-lg">
+                {scanResult.student.name}
+              </h2>
+              <p className="text-2xl text-white/80 mt-2">
+                S/O {scanResult.student.fatherName}
+              </p>
+            </div>
+          </div>
+
+          {/* Class & ID Info */}
+          <div className="flex items-center gap-16 bg-white/10 rounded-3xl px-16 py-8 backdrop-blur-sm">
+            <div className="text-center">
+              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
+                Class
+              </p>
+              <p className="text-5xl font-bold text-white">
+                {scanResult.student.class}
+              </p>
+              <p className="text-xl text-white/80 mt-1">
+                {scanResult.student.group}
+              </p>
+            </div>
+            <div className="w-px h-24 bg-white/30" />
+            <div className="text-center">
+              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
+                Student ID
+              </p>
+              <p className="text-5xl font-mono font-bold text-white tracking-wider">
+                {scanResult.student.studentId}
+              </p>
+            </div>
+            <div className="w-px h-24 bg-white/30" />
+            <div className="text-center">
+              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
+                Fee Status
+              </p>
+              <p className="text-5xl font-bold text-white">✓ CLEAR</p>
+            </div>
+          </div>
+
+          {/* Timestamp */}
+          <p className="mt-14 text-2xl text-white/60">
+            {new Date().toLocaleTimeString()} • Tap anywhere to scan next
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // WARNING STATE - Amber for Partial Payment (Still Allowed) OR TOO EARLY (Schedule-based)
+  if (terminalState === "warning" && scanResult?.student) {
+    const isTooEarly =
+      scanResult.status === "too_early" ||
+      scanResult.reason?.includes("TOO EARLY") ||
+      scanResult.reason?.includes("OFF SCHEDULE");
 
     return (
-        <DashboardLayout title="Gatekeeper">
-            <div className="min-h-[calc(100vh-120px)] flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">🚪 Smart Gate</h1>
-                        <p className="text-gray-500">Security verification scanner</p>
-                    </div>
-                    <Button variant="outline" onClick={handleReset}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Reset
-                    </Button>
-                </div>
+      <div
+        className={`fixed inset-0 z-50 ${isTooEarly
+            ? "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
+            : "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
+          } flex flex-col cursor-pointer`}
+        onClick={resetTerminal}
+      >
+        <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
 
-                {/* Main Scanner Area */}
-                <div className="flex-1 flex flex-col items-center justify-center">
-                    {isIdle ? (
-                        /* IDLE STATE - Ready to Scan */
-                        <div className="w-full max-w-2xl text-center">
-                            <div className="mb-8">
-                                <div className="h-32 w-32 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6 animate-pulse">
-                                    <Shield className="h-16 w-16 text-gray-400" />
-                                </div>
-                                <h2 className="text-4xl font-bold text-gray-800 mb-2">Ready to Scan</h2>
-                                <p className="text-gray-500 text-lg">
-                                    Scan student ID card or enter barcode manually
-                                </p>
-                            </div>
-
-                            {/* Scanner Input */}
-                            <div className="relative mb-6">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-6 w-6 text-gray-400" />
-                                <Input
-                                    ref={inputRef}
-                                    type="text"
-                                    placeholder="Waiting for barcode scan..."
-                                    value={scanInput}
-                                    onChange={(e) => {
-                                        setScanInput(e.target.value);
-                                        debouncedScan(e.target.value);
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            handleManualVerify();
-                                        }
-                                    }}
-                                    className="h-16 pl-14 text-2xl font-mono tracking-wider bg-white border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                                    autoFocus
-                                />
-                            </div>
-
-                            <Button
-                                onClick={handleManualVerify}
-                                disabled={scanInput.length < 3 || scanMutation.isPending}
-                                className="h-14 px-8 text-lg bg-indigo-600 hover:bg-indigo-700"
-                            >
-                                {scanMutation.isPending ? (
-                                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                                ) : (
-                                    <Shield className="h-5 w-5 mr-2" />
-                                )}
-                                VERIFY
-                            </Button>
-                        </div>
-                    ) : (
-                        /* RESULT STATE - Show Verification Result */
-                        <div
-                            className={cn(
-                                "w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden transition-all duration-500",
-                                styles.bg
-                            )}
-                        >
-                            {/* Result Header */}
-                            <div className="p-8 text-center">
-                                <StatusIcon className={cn("h-20 w-20 mx-auto mb-4", styles.iconColor)} />
-                                <h2 className={cn("text-3xl font-bold mb-2", styles.textColor)}>
-                                    {scanResult?.message}
-                                </h2>
-                                {scanResult?.scannedAt && (
-                                    <p className={cn("text-sm opacity-80", styles.textColor)}>
-                                        <Clock className="h-4 w-4 inline mr-1" />
-                                        {new Date(scanResult.scannedAt).toLocaleTimeString()}
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Student Details */}
-                            {scanResult?.student && (
-                                <div className="bg-white p-8">
-                                    <div className="flex items-start gap-6">
-                                        {/* Photo */}
-                                        <div className="flex-shrink-0">
-                                            {scanResult.student.photo ? (
-                                                <img
-                                                    src={scanResult.student.photo}
-                                                    alt={scanResult.student.name}
-                                                    className="h-32 w-32 rounded-2xl object-cover border-4 border-gray-200"
-                                                />
-                                            ) : (
-                                                <div className="h-32 w-32 rounded-2xl bg-gray-100 flex items-center justify-center border-4 border-gray-200">
-                                                    <User className="h-16 w-16 text-gray-400" />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Info */}
-                                        <div className="flex-1">
-                                            <h3 className="text-3xl font-bold text-gray-900 mb-1">
-                                                {scanResult.student.name}
-                                            </h3>
-                                            <p className="text-gray-500 text-lg mb-4">
-                                                S/O {scanResult.student.fatherName}
-                                            </p>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Class</p>
-                                                    <p className="text-lg font-semibold text-gray-800">
-                                                        {scanResult.student.class} ({scanResult.student.group})
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Student ID</p>
-                                                    <p className="text-lg font-semibold text-gray-800 font-mono">
-                                                        {scanResult.student.barcodeId || scanResult.student.studentId}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Fee Status Card */}
-                                        <div className={cn(
-                                            "flex-shrink-0 p-6 rounded-2xl text-center min-w-[180px]",
-                                            scanResult.student.feeStatus === "paid"
-                                                ? "bg-emerald-50 border-2 border-emerald-200"
-                                                : scanResult.student.feeStatus === "partial"
-                                                    ? "bg-amber-50 border-2 border-amber-200"
-                                                    : "bg-red-50 border-2 border-red-200"
-                                        )}>
-                                            <CreditCard className={cn(
-                                                "h-8 w-8 mx-auto mb-2",
-                                                scanResult.student.feeStatus === "paid"
-                                                    ? "text-emerald-600"
-                                                    : scanResult.student.feeStatus === "partial"
-                                                        ? "text-amber-600"
-                                                        : "text-red-600"
-                                            )} />
-                                            <p className={cn(
-                                                "text-lg font-bold uppercase",
-                                                scanResult.student.feeStatus === "paid"
-                                                    ? "text-emerald-700"
-                                                    : scanResult.student.feeStatus === "partial"
-                                                        ? "text-amber-700"
-                                                        : "text-red-700"
-                                            )}>
-                                                {scanResult.student.feeStatus === "paid"
-                                                    ? "FEES PAID"
-                                                    : scanResult.student.feeStatus === "partial"
-                                                        ? "PARTIAL"
-                                                        : "PENDING"}
-                                            </p>
-                                            {scanResult.student.balance > 0 && (
-                                                <p className="text-sm text-gray-600 mt-1">
-                                                    Balance: PKR {scanResult.student.balance.toLocaleString()}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="mt-8 flex justify-center">
-                                        <Button
-                                            onClick={handleReset}
-                                            size="lg"
-                                            className="h-14 px-12 text-lg bg-gray-900 hover:bg-gray-800"
-                                        >
-                                            <RefreshCw className="h-5 w-5 mr-2" />
-                                            Scan Next
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Error State - No Student Data */}
-                            {!scanResult?.student && (
-                                <div className="bg-white/10 p-8 text-center">
-                                    <Button
-                                        onClick={handleReset}
-                                        size="lg"
-                                        variant="outline"
-                                        className="h-14 px-12 text-lg border-white/30 text-white hover:bg-white/10"
-                                    >
-                                        <RefreshCw className="h-5 w-5 mr-2" />
-                                        Try Again
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Footer Instructions */}
-                <div className="mt-8 text-center text-gray-400 text-sm">
-                    <p>Scanner auto-detects rapid input • Press Enter for manual verification</p>
-                </div>
+        <div className="relative flex-1 flex flex-col items-center justify-center px-8">
+          {/* Warning Icon */}
+          <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+            <div className="h-44 w-44 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+              <ShieldAlert className="h-28 w-28 text-white drop-shadow-lg" />
             </div>
-        </DashboardLayout>
+          </div>
+
+          {/* Message */}
+          <h1 className="text-7xl font-black text-white mb-4 tracking-wider drop-shadow-lg">
+            {isTooEarly ? "⏰ TOO EARLY" : "⚠ ALLOWED"}
+          </h1>
+          <p className="text-4xl text-white/90 mb-10 font-semibold">
+            {isTooEarly
+              ? "CLASS NOT STARTED YET"
+              : "PARTIAL FEE - BALANCE DUE"}
+          </p>
+
+          {/* Student Info */}
+          <div className="flex items-center gap-8 mb-10">
+            {scanResult.student.photo ? (
+              <img
+                src={scanResult.student.photo}
+                alt={scanResult.student.name}
+                className="h-32 w-32 rounded-full object-cover border-4 border-white shadow-2xl"
+              />
+            ) : (
+              <div className="h-32 w-32 rounded-full bg-white/30 flex items-center justify-center border-4 border-white">
+                <User className="h-16 w-16 text-white" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-5xl font-bold text-white">
+                {scanResult.student.name}
+              </h2>
+              <p className="text-2xl text-white/80 mt-1">
+                {scanResult.student.class} • {scanResult.student.group}
+              </p>
+            </div>
+          </div>
+
+          {/* Schedule Info for TOO EARLY or Balance for Partial */}
+          {isTooEarly && (scanResult.currentTime || scanResult.classStartTime) ? (
+            <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
+              <p className="text-xl text-white/80 text-center mb-4 uppercase tracking-wider">
+                Schedule Information
+              </p>
+              <div className="grid grid-cols-2 gap-8">
+                {scanResult.currentTime && (
+                  <div className="text-center">
+                    <p className="text-sm text-white/70 uppercase mb-1">
+                      Current Time
+                    </p>
+                    <p className="text-4xl font-bold text-white font-mono">
+                      {scanResult.currentTime}
+                    </p>
+                  </div>
+                )}
+                {scanResult.classStartTime && (
+                  <div className="text-center">
+                    <p className="text-sm text-white/70 uppercase mb-1">
+                      Class Starts At
+                    </p>
+                    <p className="text-4xl font-bold text-emerald-300 font-mono">
+                      {scanResult.classStartTime}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="text-center text-white/80 mt-4 text-lg">
+                Please wait until class time
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
+              <p className="text-xl text-white/80 text-center mb-2 uppercase tracking-wider">
+                Outstanding Balance
+              </p>
+              <p className="text-6xl font-bold text-white text-center">
+                PKR {scanResult.student.balance?.toLocaleString() || "0"}
+              </p>
+            </div>
+          )}
+
+          <p className="mt-12 text-2xl text-white/60">
+            Tap anywhere to scan next
+          </p>
+        </div>
+      </div>
     );
+  }
+
+  // DENIED STATE - Full-Screen Red Access Denied
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-gradient-to-br from-red-700 via-red-600 to-rose-700 flex flex-col cursor-pointer"
+      onClick={resetTerminal}
+    >
+      {/* Flash overlay */}
+      <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
+
+      <div className="relative flex-1 flex flex-col items-center justify-center px-8">
+        {/* Denied Icon */}
+        <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+          <div className="h-48 w-48 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+            <ShieldX className="h-32 w-32 text-white drop-shadow-lg" />
+          </div>
+        </div>
+
+        {/* ACCESS DENIED */}
+        <h1 className="text-8xl font-black text-white mb-8 tracking-wider drop-shadow-lg">
+          ✕ DENIED
+        </h1>
+
+        {/* Reason */}
+        <div className="bg-white/20 rounded-3xl px-20 py-10 backdrop-blur-sm mb-10">
+          <p className="text-5xl font-bold text-white text-center">
+            {scanResult?.status === "unknown" && "UNKNOWN ID"}
+            {scanResult?.status === "defaulter" && "FEE DEFAULTER"}
+            {scanResult?.status === "blocked" && "ACCOUNT BLOCKED"}
+            {scanResult?.status === "error" && "SCAN ERROR"}
+            {!scanResult?.status && "VERIFICATION FAILED"}
+          </p>
+          {scanResult?.message && (
+            <p className="text-2xl text-white/80 text-center mt-4">
+              {scanResult.message}
+            </p>
+          )}
+        </div>
+
+        {/* Student Info if available */}
+        {scanResult?.student && (
+          <div className="flex items-center gap-8 mb-8">
+            {scanResult.student.photo ? (
+              <img
+                src={scanResult.student.photo}
+                alt={scanResult.student.name}
+                className="h-28 w-28 rounded-full object-cover border-4 border-white/50 opacity-80"
+              />
+            ) : (
+              <div className="h-28 w-28 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/50">
+                <User className="h-14 w-14 text-white/80" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-4xl font-bold text-white/90">
+                {scanResult.student.name}
+              </h2>
+              <p className="text-xl text-white/70">
+                {scanResult.student.class} • ID: {scanResult.student.studentId}
+              </p>
+              {scanResult.student.balance > 0 && (
+                <p className="text-2xl text-white/80 mt-2">
+                  Outstanding: PKR {scanResult.student.balance.toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Instructions */}
+        <p className="text-2xl text-white/60">
+          Contact Front Desk • Tap to retry
+        </p>
+      </div>
+    </div>
+  );
 }

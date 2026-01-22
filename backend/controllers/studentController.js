@@ -534,3 +534,126 @@ exports.getFeeHistory = async (req, res) => {
     });
   }
 };
+
+// @desc    Track Receipt Print & Generate Unique Receipt ID
+// @route   POST /api/students/:id/print
+// @access  Protected
+exports.trackPrint = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason = "reprint", printedBy = "System" } = req.body;
+
+    const student = await Student.findById(id).populate("classRef");
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Calculate next version number
+    const currentPrintCount = student.printHistory?.length || 0;
+    const version = currentPrintCount + 1;
+
+    // Generate unique receipt ID: TOKEN-[StudentId]-[Random4Chars]-V[Version]
+    const randomChars = Math.random()
+      .toString(36)
+      .substring(2, 6)
+      .toUpperCase();
+    const receiptId = `TOKEN-${student.studentId}-${randomChars}-V${version}`;
+
+    // Create print record
+    const printRecord = {
+      receiptId,
+      printedAt: new Date(),
+      version,
+      printedBy,
+      reason,
+    };
+
+    // Push to print history
+    student.printHistory = student.printHistory || [];
+    student.printHistory.push(printRecord);
+    student.reprintCount = version;
+
+    await student.save();
+
+    console.log(
+      `🖨️ Receipt printed for ${student.studentName}: ${receiptId} (Version ${version})`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Receipt generated (Version ${version})`,
+      data: {
+        receiptId,
+        version,
+        isOriginal: version === 1,
+        printedAt: printRecord.printedAt,
+        student: {
+          _id: student._id,
+          studentId: student.studentId,
+          studentName: student.studentName,
+          fatherName: student.fatherName,
+          class: student.class,
+          group: student.group,
+          parentCell: student.parentCell,
+          studentCell: student.studentCell,
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          feeStatus: student.feeStatus,
+          admissionDate: student.admissionDate,
+          subjects: student.subjects,
+          classRef: student.classRef,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error tracking print:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate receipt",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Find student by Receipt Token (for Gatekeeper)
+// @route   GET /api/students/by-token/:token
+// @access  Public (Gate Scanner)
+exports.findByToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Try to find student by receipt token in printHistory
+    const student = await Student.findOne({
+      "printHistory.receiptId": token,
+    }).populate("classRef");
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid token - No student found",
+      });
+    }
+
+    // Find which receipt was used
+    const usedReceipt = student.printHistory.find((p) => p.receiptId === token);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        student,
+        usedReceipt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error finding by token:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Token lookup failed",
+      error: error.message,
+    });
+  }
+};
