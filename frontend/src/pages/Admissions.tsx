@@ -46,9 +46,8 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
-// Import Print Receipt System
-import { usePrintReceipt } from "@/hooks/usePrintReceipt";
-import ReceiptTemplate from "@/components/print/ReceiptTemplate";
+// Import PDF Receipt System (replaces react-to-print)
+import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 // API Base URL for config fetch
 const API_BASE_URL =
@@ -73,8 +72,8 @@ const Admissions = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // Print Receipt Hook
-  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
+  // PDF Receipt Hook (replaces react-to-print)
+  const { isPrinting, generatePDF } = usePDFReceipt();
 
   // Fetch Active Classes and Sessions
   const { data: classesData } = useQuery({
@@ -444,6 +443,22 @@ const Admissions = () => {
 
     setFeeValidationError("");
 
+    // Calculate discount if custom fee mode is active
+    let discountAmount = 0;
+    if (isCustomFeeMode && selectedSubjects.length > 0) {
+      // Calculate standard total from subjects
+      const standardTotal = classSubjects
+        .filter((s) => selectedSubjects.includes(s.name))
+        .reduce((sum, s) => sum + (s.fee || 0), 0);
+
+      const customTotal = Number(totalFee);
+      discountAmount = Math.max(0, standardTotal - customTotal);
+
+      console.log(
+        `🎓 Discount Calculation: Standard ${standardTotal} - Custom ${customTotal} = ${discountAmount}`,
+      );
+    }
+
     // Prepare student data
     // TASK 1 FIX: Transform subjects from string array to objects with locked pricing
     const subjectsWithFees = selectedSubjects.map((subjectName) => {
@@ -477,6 +492,7 @@ const Admissions = () => {
       admissionDate: new Date(admissionDate),
       totalFee: Number(totalFee),
       paidAmount: Number(paidAmount) || 0,
+      discountAmount, // Include discount in payload
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
     };
@@ -555,31 +571,11 @@ const Admissions = () => {
       ? Math.max(0, Number(totalFee) - Number(paidAmount)).toString()
       : totalFee || "0";
 
-
-
-  // Print receipt handler (new - for barcode receipt)
+  // Print receipt handler - Opens PDF in new tab (no DOM visibility issues)
   const handlePrintReceipt = async () => {
     if (savedStudent?._id) {
-      // Show loading toast
-      const loadingToast = toast.loading("Generating admission slip with barcode...", {
-        description: "Please wait while we prepare your receipt",
-      });
-
-      try {
-        await printReceipt(savedStudent._id, "admission");
-
-        // Keep toast visible while the 1s rendering delay happens in background
-        setTimeout(() => {
-          toast.dismiss(loadingToast);
-          toast.success("Ready to print!", { duration: 2000 });
-        }, 1200); // 1.2s delay to match the hook's 1s delay + buffer
-
-      } catch (error) {
-        toast.dismiss(loadingToast);
-        toast.error("Failed to generate receipt", {
-          description: "Please try again",
-        });
-      }
+      // generatePDF handles all loading states and toasts internally
+      await generatePDF(savedStudent._id, "admission");
     }
   };
 
@@ -754,10 +750,11 @@ const Admissions = () => {
                       return (
                         <div
                           key={subject.name}
-                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
-                            }`}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-sky-500 bg-sky-50"
+                              : "border-border hover:border-sky-300"
+                          }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
                           <div className="flex items-center gap-3">
@@ -774,10 +771,11 @@ const Admissions = () => {
                             </span>
                           </div>
                           <span
-                            className={`text-sm font-semibold ${isSelected
-                              ? "text-green-600"
-                              : "text-muted-foreground"
-                              }`}
+                            className={`text-sm font-semibold ${
+                              isSelected
+                                ? "text-green-600"
+                                : "text-muted-foreground"
+                            }`}
                           >
                             {subject.fee.toLocaleString()} PKR
                           </span>
@@ -884,12 +882,13 @@ const Admissions = () => {
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
                     readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
-                    className={`${isCustomFeeMode
-                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                      : !isCustomFeeMode && selectedSubjects.length > 0
-                        ? "border-sky-300 bg-sky-50 cursor-not-allowed"
-                        : ""
-                      }`}
+                    className={`${
+                      isCustomFeeMode
+                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                        : !isCustomFeeMode && selectedSubjects.length > 0
+                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
+                          : ""
+                    }`}
                   />
                   {!isCustomFeeMode && selectedSubjects.length > 0 && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -984,6 +983,36 @@ const Admissions = () => {
                   className="bg-secondary"
                 />
               </div>
+
+              {/* Discount Display - Only show when custom fee is active and there's a discount */}
+              {isCustomFeeMode &&
+                selectedSubjects.length > 0 &&
+                (() => {
+                  const standardTotal = classSubjects
+                    .filter((s) => selectedSubjects.includes(s.name))
+                    .reduce((sum, s) => sum + (s.fee || 0), 0);
+                  const customTotal = Number(totalFee) || 0;
+                  const discount = Math.max(0, standardTotal - customTotal);
+
+                  return discount > 0 ? (
+                    <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-green-800">
+                            Discount / Scholarship Applied
+                          </span>
+                        </div>
+                        <span className="text-lg font-bold text-green-600">
+                          PKR {discount.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-green-700 mt-1">
+                        Standard: {standardTotal.toLocaleString()} → Custom:{" "}
+                        {customTotal.toLocaleString()}
+                      </p>
+                    </div>
+                  ) : null;
+                })()}
             </div>
           </div>
 
@@ -1239,23 +1268,12 @@ const Admissions = () => {
         onNewAdmission={handleCancel}
       />
 
-      {/* Hidden Print Slip Component */}
+      {/* Hidden Print Slip Component (legacy - kept for reference) */}
       {savedStudent && (
         <AdmissionSlip student={savedStudent} session={savedSession} />
       )}
 
-      {/* Hidden Receipt Template for Printing */}
-      {/* Changed to fixed positioning ON-SCREEN but transparent. prevents browser culling optimizations. */}
-      {/* pointer-events: none ensures it doesn't block clicks */}
-      <div style={{ position: "fixed", left: "0", top: "0", opacity: 0, zIndex: -100, pointerEvents: "none" }}>
-        {printData && (
-          <ReceiptTemplate
-            ref={printRef}
-            student={printData.student}
-            receiptConfig={printData.receiptConfig}
-          />
-        )}
-      </div>
+      {/* PDF Receipt is now generated programmatically - no hidden DOM template needed */}
     </DashboardLayout>
   );
 };

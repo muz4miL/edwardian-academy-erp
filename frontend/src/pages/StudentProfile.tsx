@@ -5,17 +5,14 @@ import {
   Phone,
   MapPin,
   Mail,
-  Calendar,
   User,
   GraduationCap,
   BookOpen,
   CreditCard,
-  Receipt,
   Printer,
   Clock,
   CheckCircle,
   AlertCircle,
-  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,14 +26,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { DigitalIDCard } from "@/components/student/DigitalIDCard";
+import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -44,6 +35,9 @@ const API_BASE_URL =
 export default function StudentProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // PDF Receipt Hook for printing admission slip
+  const { isPrinting, generatePDF } = usePDFReceipt();
 
   // Fetch student details
   const { data: studentData, isLoading: studentLoading } = useQuery({
@@ -173,7 +167,21 @@ export default function StudentProfile() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (student._id) {
+                  generatePDF(student._id, "reprint");
+                }
+              }}
+              disabled={isPrinting}
+              className="gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              {isPrinting ? "Generating..." : "Print Slip"}
+            </Button>
             {getStatusBadge(student.status)}
             {getFeeStatusBadge(student.feeStatus)}
           </div>

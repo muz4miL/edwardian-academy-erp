@@ -41,6 +41,12 @@ const feeRecordSchema = new mongoose.Schema(
       required: [true, "Amount is required"],
       min: [1, "Amount must be at least 1"],
     },
+    // Discount applied (scholarship/special pricing)
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     // Month for which the fee is paid (e.g., "January 2026")
     month: {
       type: String,

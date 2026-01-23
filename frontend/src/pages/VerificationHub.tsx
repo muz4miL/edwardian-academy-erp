@@ -11,6 +11,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -53,11 +54,13 @@ import {
   Users,
   FileText,
   Printer,
+  CreditCard,
+  Package,
+  Calculator,
 } from "lucide-react";
 import { toast } from "sonner";
-// Import Print Receipt System
-import { usePrintReceipt } from "@/hooks/usePrintReceipt";
-import ReceiptTemplate from "@/components/print/ReceiptTemplate";
+// Import PDF Receipt System (replaces react-to-print)
+import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -85,6 +88,8 @@ interface ClassInstance {
   days: string[];
   startTime: string;
   endTime: string;
+  subjects?: Array<{ name: string; fee?: number } | string>;
+  baseFee?: number;
 }
 
 export default function VerificationHub() {
@@ -101,8 +106,14 @@ export default function VerificationHub() {
   const [editPassword, setEditPassword] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-  // Print Receipt Hook
-  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
+  // Fee collection state for approval
+  const [collectFee, setCollectFee] = useState(true);
+  const [feeAmount, setFeeAmount] = useState("");
+  const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
+  const [standardFeeTotal, setStandardFeeTotal] = useState(0);
+
+  // PDF Receipt Hook (replaces react-to-print)
+  const { isPrinting, generatePDF } = usePDFReceipt();
 
   // Fetch all students (pending and active) - Refetch on mount and provide manual refresh
   const {
@@ -173,12 +184,32 @@ export default function VerificationHub() {
 
   // Approve mutation
   const approveMutation = useMutation({
-    mutationFn: async ({ id, classId }: { id: string; classId: string }) => {
+    mutationFn: async ({
+      id,
+      classId,
+      collectFee,
+      paidAmount,
+      customFee,
+      customTotal,
+    }: {
+      id: string;
+      classId: string;
+      collectFee: boolean;
+      paidAmount: number;
+      customFee: boolean;
+      customTotal?: number;
+    }) => {
       const res = await fetch(`${API_BASE_URL}/api/public/approve/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ classId }),
+        body: JSON.stringify({
+          classId,
+          collectFee,
+          paidAmount,
+          customFee,
+          customTotal,
+        }),
       });
       if (!res.ok) throw new Error("Failed to approve");
       return res.json();
@@ -187,12 +218,16 @@ export default function VerificationHub() {
       // Immediately refetch the student list to update table
       await refetchStudents();
 
-      // Show credentials modal
+      // Show credentials modal - data.data now includes _id from backend
       setGeneratedCredentials(data.data);
       setCredentialsDialogOpen(true);
 
       setApproveDialogOpen(false);
       setSelectedClassId("");
+      setCollectFee(true);
+      setFeeAmount("");
+      setIsCustomFeeMode(false);
+      setStandardFeeTotal(0);
 
       // Update foundStudent with the new Active status data
       if (data.data) {
@@ -206,9 +241,18 @@ export default function VerificationHub() {
 
   const handleApprove = () => {
     if (foundStudent && selectedClassId) {
+      const paidAmount = collectFee ? parseFloat(feeAmount) || 0 : 0;
+      const customTotal = isCustomFeeMode
+        ? parseFloat(feeAmount) || 0
+        : undefined;
+
       approveMutation.mutate({
         id: foundStudent._id,
         classId: selectedClassId,
+        collectFee,
+        paidAmount,
+        customFee: isCustomFeeMode,
+        customTotal,
       });
     } else {
       toast.error("Please select a class");
@@ -400,10 +444,11 @@ export default function VerificationHub() {
                     {foundStudent.studentName}
                   </CardTitle>
                   <Badge
-                    className={`text-sm px-3 py-1 ${foundStudent.studentStatus === "Active"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                      : "bg-amber-100 text-amber-700 border-amber-300"
-                      }`}
+                    className={`text-sm px-3 py-1 ${
+                      foundStudent.studentStatus === "Active"
+                        ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                        : "bg-amber-100 text-amber-700 border-amber-300"
+                    }`}
                   >
                     {foundStudent.studentStatus === "Active" ? (
                       <>
@@ -501,15 +546,15 @@ export default function VerificationHub() {
                     </label>
                     <p className="text-base font-medium text-gray-900 mt-1">
                       {foundStudent.createdAt &&
-                        !isNaN(new Date(foundStudent.createdAt).getTime())
+                      !isNaN(new Date(foundStudent.createdAt).getTime())
                         ? new Date(foundStudent.createdAt).toLocaleDateString(
-                          "en-PK",
-                          {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          },
-                        )
+                            "en-PK",
+                            {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )
                         : "N/A"}
                     </p>
                   </div>
@@ -747,14 +792,14 @@ export default function VerificationHub() {
                         {activeTab === "active"
                           ? student.parentCell
                           : student.createdAt &&
-                            !isNaN(new Date(student.createdAt).getTime())
+                              !isNaN(new Date(student.createdAt).getTime())
                             ? new Date(student.createdAt).toLocaleDateString(
-                              "en-PK",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                              },
-                            )
+                                "en-PK",
+                                {
+                                  day: "2-digit",
+                                  month: "short",
+                                },
+                              )
                             : "N/A"}
                       </TableCell>
                       <TableCell className="text-right">
@@ -823,7 +868,34 @@ export default function VerificationHub() {
                 </label>
                 <Select
                   value={selectedClassId}
-                  onValueChange={setSelectedClassId}
+                  onValueChange={(value) => {
+                    setSelectedClassId(value);
+                    // Auto-calculate fee from selected class
+                    const selectedClass = activeClasses.find(
+                      (c) => c._id === value,
+                    );
+                    if (selectedClass) {
+                      // Calculate standard total from subjects or use baseFee
+                      const totalFee =
+                        selectedClass.subjects?.reduce(
+                          (sum: number, s: any) => {
+                            return (
+                              sum + (typeof s === "object" ? s.fee || 0 : 0)
+                            );
+                          },
+                          0,
+                        ) ||
+                        selectedClass.baseFee ||
+                        0;
+
+                      setStandardFeeTotal(totalFee);
+
+                      // Only auto-populate if NOT in custom fee mode
+                      if (!isCustomFeeMode) {
+                        setFeeAmount(String(totalFee));
+                      }
+                    }
+                  }}
                 >
                   <SelectTrigger className="h-11 bg-white border-gray-200 rounded-xl">
                     <SelectValue placeholder="Select a class/batch" />
@@ -849,6 +921,163 @@ export default function VerificationHub() {
                 </p>
               </div>
 
+              {/* Finance Section - Full Card */}
+              <div className="border-t pt-4 space-y-4">
+                <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-green-600" />
+                  Fee & Payment Details
+                </h4>
+
+                {/* Custom Fee Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/50">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        Custom Fee (Override)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Apply discount or special pricing
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={isCustomFeeMode}
+                    onCheckedChange={(checked) => {
+                      setIsCustomFeeMode(checked);
+                      // Reset to standard when toggling off
+                      if (!checked && standardFeeTotal > 0) {
+                        setFeeAmount(String(standardFeeTotal));
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Standard Fee Display */}
+                {standardFeeTotal > 0 && (
+                  <div className="bg-blue-50 rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-blue-700">
+                        Standard Total Fee
+                      </span>
+                      <span className="text-sm font-bold text-blue-900">
+                        PKR {standardFeeTotal.toLocaleString()}
+                      </span>
+                    </div>
+                    {isCustomFeeMode && (
+                      <p className="text-xs text-blue-600">
+                        <Calculator className="inline h-3 w-3 mr-1" />
+                        Override below to apply discount
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Fee Amount Input */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    {isCustomFeeMode
+                      ? "Custom Fee Amount (PKR)"
+                      : "Total Fee (PKR)"}
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Enter amount"
+                    value={feeAmount}
+                    onChange={(e) => setFeeAmount(e.target.value)}
+                    readOnly={!isCustomFeeMode && standardFeeTotal > 0}
+                    className={`h-10 ${
+                      isCustomFeeMode
+                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                        : standardFeeTotal > 0
+                          ? "border-blue-300 bg-blue-50 cursor-not-allowed"
+                          : "bg-white border-gray-200"
+                    }`}
+                  />
+                </div>
+
+                {/* Discount Display */}
+                {isCustomFeeMode &&
+                  standardFeeTotal > 0 &&
+                  (() => {
+                    const customTotal = Number(feeAmount) || 0;
+                    const discount = Math.max(
+                      0,
+                      standardFeeTotal - customTotal,
+                    );
+
+                    return discount > 0 ? (
+                      <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-green-800">
+                            Discount / Scholarship
+                          </span>
+                          <span className="text-lg font-bold text-green-600">
+                            PKR {discount.toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-green-700 mt-1">
+                          {standardFeeTotal.toLocaleString()} →{" "}
+                          {customTotal.toLocaleString()}
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
+
+                {/* Collect Fee Toggle */}
+                <div className="flex items-center justify-between border-t pt-3">
+                  <label className="text-sm font-medium text-gray-700">
+                    Collect Payment Now?
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs ${collectFee ? "text-green-600" : "text-gray-400"}`}
+                    >
+                      {collectFee ? "Yes" : "No"}
+                    </span>
+                    <button
+                      type="button"
+                      title={
+                        collectFee
+                          ? "Disable fee collection"
+                          : "Enable fee collection"
+                      }
+                      aria-label="Toggle fee collection"
+                      onClick={() => setCollectFee(!collectFee)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        collectFee ? "bg-green-500" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          collectFee ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Payment Amount (only if collecting fee) */}
+                {collectFee && (
+                  <div className="bg-green-50 rounded-lg p-3 space-y-2">
+                    <label className="text-xs font-medium text-green-700">
+                      Amount Received (PKR)
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="Enter amount received"
+                      value={feeAmount}
+                      onChange={(e) => setFeeAmount(e.target.value)}
+                      className="h-10 bg-white border-green-200 focus:border-green-400"
+                    />
+                    <p className="text-xs text-green-600">
+                      Receipt will show "PAID" status if full amount is
+                      collected
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <Button
@@ -856,6 +1085,10 @@ export default function VerificationHub() {
                   onClick={() => {
                     setApproveDialogOpen(false);
                     setSelectedClassId("");
+                    setCollectFee(true);
+                    setFeeAmount("");
+                    setIsCustomFeeMode(false);
+                    setStandardFeeTotal(0);
                   }}
                   className="flex-1"
                   disabled={approveMutation.isPending}
@@ -952,7 +1185,7 @@ export default function VerificationHub() {
                         onClick={() => {
                           navigator.clipboard.writeText(
                             generatedCredentials.credentials?.username ||
-                            generatedCredentials.barcodeId,
+                              generatedCredentials.barcodeId,
                           );
                           toast.success("Copied!");
                         }}
@@ -990,41 +1223,42 @@ export default function VerificationHub() {
               </div>
 
               {/* Action Buttons */}
-              <div className="px-6 pb-5 flex gap-3">
-                <Button
-                  onClick={() => {
-                    const text = `*Edwardian Academy*\n\n🎓 Student: ${generatedCredentials.studentName}\n👤 Username: ${generatedCredentials.credentials?.username || generatedCredentials.barcodeId}\n🔐 Password: ${generatedCredentials.credentials?.password}\n\n🌐 Login: ${window.location.origin}/student-portal`;
-                    navigator.clipboard.writeText(text);
-                    toast.success("Copied for WhatsApp!");
-                  }}
-                  className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 h-11"
-                >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy for WhatsApp
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (generatedCredentials._id) {
-                      printReceipt(generatedCredentials._id, "verification");
-                    }
-                  }}
-                  disabled={isPrinting}
-                  className="flex-1 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 h-11"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  🖨️ Print Admission Slip
-                </Button>
-              </div>
-
-              {/* Footer */}
-              <div className="bg-amber-50 border-t border-amber-100 px-6 py-3">
-                <p className="text-xs text-amber-700 text-center">
+              <div className="px-6 pb-4 space-y-3">
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => {
+                      const text = `*Edwardian Academy*\n\n🎓 Student: ${generatedCredentials.studentName}\n👤 Username: ${generatedCredentials.credentials?.username || generatedCredentials.barcodeId}\n🔐 Password: ${generatedCredentials.credentials?.password}\n\n🌐 Login: ${window.location.origin}/student-portal`;
+                      navigator.clipboard.writeText(text);
+                      toast.success("Copied for WhatsApp!");
+                    }}
+                    variant="outline"
+                    className="flex-1 h-11 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy for WhatsApp
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (generatedCredentials._id) {
+                        generatePDF(generatedCredentials._id, "verification");
+                      } else {
+                        toast.error("Student ID not available");
+                      }
+                    }}
+                    disabled={isPrinting}
+                    className="flex-1 h-11 bg-sky-600 hover:bg-sky-700"
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    {isPrinting ? "Generating..." : "Print Admission Slip"}
+                  </Button>
+                </div>
+                <p className="text-xs text-amber-600 text-center">
                   ⚠️ Share credentials with parent via WhatsApp or in-person
                 </p>
               </div>
 
               {/* Done Button */}
-              <div className="px-6 py-4 bg-gray-50 border-t flex gap-3">
+              <div className="px-6 py-3 bg-gray-50 border-t">
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1032,21 +1266,9 @@ export default function VerificationHub() {
                     setGeneratedCredentials(null);
                     setFoundStudent(null); // Reset to show updated list
                   }}
-                  className="flex-1 h-11"
+                  className="w-full h-10"
                 >
                   Done
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (generatedCredentials?._id) {
-                      printReceipt(generatedCredentials._id, "verification");
-                    }
-                  }}
-                  disabled={isPrinting}
-                  className="flex-1 h-11 bg-sky-600 hover:bg-sky-700"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  🖨️ Print Admission Slip
                 </Button>
               </div>
             </div>
@@ -1146,16 +1368,7 @@ export default function VerificationHub() {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden Receipt Template for Printing */}
-      <div style={{ display: "none" }}>
-        {printData && (
-          <ReceiptTemplate
-            ref={printRef}
-            student={printData.student}
-            receiptConfig={printData.receiptConfig}
-          />
-        )}
-      </div>
+      {/* PDF Receipt is now generated programmatically - no hidden DOM template needed */}
     </DashboardLayout>
   );
 }

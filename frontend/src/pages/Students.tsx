@@ -48,9 +48,8 @@ import { useNavigate } from "react-router-dom";
 // Import CRUD Modals
 import { ViewEditStudentModal } from "@/components/dashboard/ViewEditStudentModal";
 import { DeleteStudentDialog } from "@/components/dashboard/DeleteStudentDialog";
-// Import Print System
-import { usePrintReceipt } from "@/hooks/usePrintReceipt";
-import ReceiptTemplate from "@/components/print/ReceiptTemplate";
+// Import PDF Receipt System (replaces react-to-print)
+import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
@@ -75,8 +74,8 @@ const Students = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Print Receipt Hook
-  const { printRef, printData, isPrinting, printReceipt } = usePrintReceipt();
+  // PDF Receipt Hook (replaces react-to-print)
+  const { isPrinting, generatePDF } = usePDFReceipt();
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -492,7 +491,7 @@ const Students = () => {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 hover:bg-purple-50 hover:text-purple-600"
-                          onClick={() => printReceipt(student._id, "reprint")}
+                          onClick={() => generatePDF(student._id, "reprint")}
                           disabled={isPrinting}
                           title="Print Receipt"
                         >
@@ -728,16 +727,7 @@ const Students = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden Receipt Template for Printing */}
-      <div style={{ display: "none" }}>
-        {printData && (
-          <ReceiptTemplate
-            ref={printRef}
-            student={printData.student}
-            receiptConfig={printData.receiptConfig}
-          />
-        )}
-      </div>
+      {/* PDF Receipt is now generated programmatically - no hidden DOM template needed */}
     </DashboardLayout>
   );
 };

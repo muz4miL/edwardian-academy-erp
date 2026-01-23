@@ -163,6 +163,12 @@ const studentSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Discount/Scholarship amount applied at admission
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     admissionDate: {
       type: Date,
       default: Date.now,

@@ -218,7 +218,8 @@ exports.getPendingRegistrations = async (req, res) => {
 // @access  Protected (OWNER, OPERATOR)
 exports.approveRegistration = async (req, res) => {
   try {
-    const { classId } = req.body;
+    const { classId, collectFee, paidAmount, customFee, customTotal } =
+      req.body;
     const student = await Student.findById(req.params.id);
 
     if (!student) {
@@ -235,14 +236,45 @@ exports.approveRegistration = async (req, res) => {
       });
     }
 
-    // If classId provided, update the student's class assignment
+    // If classId provided, update the student's class assignment and get fee info
+    let classDoc = null;
+    let standardTotal = 0;
     if (classId) {
-      const classDoc = await require("../models/Class").findById(classId);
+      classDoc = await require("../models/Class").findById(classId);
       if (classDoc) {
         student.classRef = classDoc._id;
         student.class = classDoc.classTitle || classDoc.name;
+
+        // Calculate standard total fee from class subjects
+        if (classDoc.subjects && classDoc.subjects.length > 0) {
+          standardTotal = classDoc.subjects.reduce((sum, s) => {
+            const fee = typeof s === "object" ? s.fee || 0 : 0;
+            return sum + fee;
+          }, 0);
+        }
+        standardTotal = standardTotal || classDoc.baseFee || 0;
+
+        // Copy subjects from class
+        student.subjects = classDoc.subjects || [];
+        student.group = classDoc.group || student.group;
       }
     }
+
+    // Calculate discount if custom fee is applied
+    let discountAmount = 0;
+    let finalTotalFee = standardTotal;
+
+    if (customFee && customTotal !== undefined) {
+      // Custom fee mode: discount = standard - custom
+      finalTotalFee = Number(customTotal);
+      discountAmount = Math.max(0, standardTotal - finalTotalFee);
+      console.log(
+        `🎓 Custom Fee Applied: Standard ${standardTotal} → Custom ${finalTotalFee} (Discount: ${discountAmount})`,
+      );
+    }
+
+    student.totalFee = finalTotalFee;
+    student.discountAmount = discountAmount;
 
     // Generate numeric barcode ID (for barcode scanner compatibility)
     const numericId = await generateNumericStudentId();
@@ -257,11 +289,35 @@ exports.approveRegistration = async (req, res) => {
       .slice(0, 4);
     const defaultPassword = `${namePart}${phoneDigits}`;
 
-    // Update student
+    // Update student status
     student.studentStatus = "Active";
     student.status = "active";
     student.password = defaultPassword;
     student.plainPassword = defaultPassword; // Store readable version for Front Desk display
+
+    // Handle fee collection if provided
+    if (collectFee && paidAmount && paidAmount > 0) {
+      student.paidAmount = paidAmount;
+      student.admissionDate = new Date();
+
+      // Determine fee status
+      if (paidAmount >= student.totalFee) {
+        student.feeStatus = "paid";
+      } else if (paidAmount > 0) {
+        student.feeStatus = "partial";
+      } else {
+        student.feeStatus = "pending";
+      }
+
+      console.log(
+        `💰 Fee collected: PKR ${paidAmount} for ${student.studentName}`,
+      );
+    } else {
+      // No fee collected
+      student.paidAmount = 0;
+      student.feeStatus = "pending";
+      student.admissionDate = new Date();
+    }
 
     await student.save();
 
@@ -274,17 +330,28 @@ exports.approveRegistration = async (req, res) => {
     console.log(`   Student: ${student.studentName}`);
     console.log(`   Login ID: ${student.barcodeId}`);
     console.log(`   Password: ${defaultPassword}`);
+    console.log(`   Fee Status: ${student.feeStatus}`);
     console.log(`   ⚠️  Admin must share these credentials with the student`);
 
+    // Return FULL student object including _id for print functionality
     return res.status(200).json({
       success: true,
       message: `✅ ${student.studentName} approved successfully!`,
       data: {
+        _id: student._id, // CRITICAL: Include _id for print functionality
         studentId: student.studentId,
         barcodeId: student.barcodeId,
         studentName: student.studentName,
         fatherName: student.fatherName,
         parentCell: student.parentCell,
+        class: student.class,
+        group: student.group,
+        subjects: student.subjects,
+        totalFee: student.totalFee,
+        paidAmount: student.paidAmount,
+        discountAmount: student.discountAmount,
+        feeStatus: student.feeStatus,
+        admissionDate: student.admissionDate,
         status: student.studentStatus,
         credentials: {
           username: student.barcodeId,

@@ -74,6 +74,7 @@ exports.createStudent = async (req, res) => {
       admissionDate,
       totalFee,
       paidAmount,
+      discountAmount,
       classRef,
       sessionRef,
     } = req.body;
@@ -134,6 +135,7 @@ exports.createStudent = async (req, res) => {
       parentCell: parentCell.trim(),
       totalFee: Number(totalFee),
       paidAmount: Number(paidAmount) || 0,
+      discountAmount: Number(discountAmount) || 0,
     };
 
     // Optional fields
