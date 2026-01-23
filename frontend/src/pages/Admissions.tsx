@@ -555,15 +555,31 @@ const Admissions = () => {
       ? Math.max(0, Number(totalFee) - Number(paidAmount)).toString()
       : totalFee || "0";
 
-  // Print admission slip handler (legacy - for old slip)
-  const handlePrintSlip = () => {
-    window.print();
-  };
+
 
   // Print receipt handler (new - for barcode receipt)
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     if (savedStudent?._id) {
-      printReceipt(savedStudent._id, "admission");
+      // Show loading toast
+      const loadingToast = toast.loading("Generating admission slip with barcode...", {
+        description: "Please wait while we prepare your receipt",
+      });
+
+      try {
+        await printReceipt(savedStudent._id, "admission");
+
+        // Keep toast visible while the 1s rendering delay happens in background
+        setTimeout(() => {
+          toast.dismiss(loadingToast);
+          toast.success("Ready to print!", { duration: 2000 });
+        }, 1200); // 1.2s delay to match the hook's 1s delay + buffer
+
+      } catch (error) {
+        toast.dismiss(loadingToast);
+        toast.error("Failed to generate receipt", {
+          description: "Please try again",
+        });
+      }
     }
   };
 
@@ -739,8 +755,8 @@ const Admissions = () => {
                         <div
                           key={subject.name}
                           className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                              ? "border-sky-500 bg-sky-50"
-                              : "border-border hover:border-sky-300"
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
                             }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
@@ -759,8 +775,8 @@ const Admissions = () => {
                           </div>
                           <span
                             className={`text-sm font-semibold ${isSelected
-                                ? "text-green-600"
-                                : "text-muted-foreground"
+                              ? "text-green-600"
+                              : "text-muted-foreground"
                               }`}
                           >
                             {subject.fee.toLocaleString()} PKR
@@ -869,10 +885,10 @@ const Admissions = () => {
                     onChange={(e) => setTotalFee(e.target.value)}
                     readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
                     className={`${isCustomFeeMode
-                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                        : !isCustomFeeMode && selectedSubjects.length > 0
-                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
-                          : ""
+                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                      : !isCustomFeeMode && selectedSubjects.length > 0
+                        ? "border-sky-300 bg-sky-50 cursor-not-allowed"
+                        : ""
                       }`}
                   />
                   {!isCustomFeeMode && selectedSubjects.length > 0 && (
@@ -1219,7 +1235,6 @@ const Admissions = () => {
         onClose={() => setSuccessModalOpen(false)}
         studentData={savedStudent}
         onNavigateToStudents={() => navigate("/students")}
-        onPrint={handlePrintSlip}
         onPrintReceipt={handlePrintReceipt}
         onNewAdmission={handleCancel}
       />
@@ -1230,7 +1245,9 @@ const Admissions = () => {
       )}
 
       {/* Hidden Receipt Template for Printing */}
-      <div style={{ display: "none" }}>
+      {/* Changed to fixed positioning ON-SCREEN but transparent. prevents browser culling optimizations. */}
+      {/* pointer-events: none ensures it doesn't block clicks */}
+      <div style={{ position: "fixed", left: "0", top: "0", opacity: 0, zIndex: -100, pointerEvents: "none" }}>
         {printData && (
           <ReceiptTemplate
             ref={printRef}

@@ -114,16 +114,6 @@ export function usePrintReceipt() {
     documentTitle: printData
       ? `Receipt-${printData.student.studentId}-V${printData.receiptConfig.version}`
       : "Receipt",
-    onBeforeGetContent: () => {
-      // CRITICAL: Wait for barcode and dynamic content to render
-      return new Promise((resolve) => {
-        console.log("⏳ Waiting for barcode to render...");
-        setTimeout(() => {
-          console.log("✅ Content ready for print");
-          resolve();
-        }, 500); // 500ms delay ensures react-barcode has painted
-      });
-    },
     onAfterPrint: () => {
       console.log("🖨️ Print completed");
       toast.success("Receipt printed successfully", {
@@ -145,10 +135,14 @@ export function usePrintReceipt() {
     async (studentId: string, reason: PrintReason = "reprint") => {
       const data = await trackPrint(studentId, reason);
       if (data) {
-        // Increased delay to ensure state is updated
+        setPrintData(data); // Ensure state is set
+
+        // CRITICAL: Wait for React to update state and render barcode
+        // Increased to 1000ms to be absolutely safe
+        // This ensures the hidden DOM element is fully painted before print dialog grabs it
         setTimeout(() => {
           handlePrint();
-        }, 100);
+        }, 1000);
       }
     },
     [trackPrint, handlePrint],
@@ -160,7 +154,7 @@ export function usePrintReceipt() {
       setPrintData(data);
       setTimeout(() => {
         handlePrint();
-      }, 200); // Increased delay for content to render
+      }, 1000); // Consistent 1s delay
     },
     [handlePrint],
   );
