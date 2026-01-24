@@ -27,11 +27,11 @@ function generateBarcodeDataUrl(value: string): string {
     // Create an offscreen canvas
     const canvas = document.createElement("canvas");
 
-    // Generate barcode on canvas
+    // Generate barcode on canvas - Use CODE39 for scanner compatibility
     JsBarcode(canvas, value, {
-      format: "CODE128",
+      format: "CODE39",
       width: 2,
-      height: 50,
+      height: 40,
       displayValue: true,
       fontSize: 12,
       margin: 5,
@@ -120,12 +120,17 @@ export function usePDFReceipt() {
     async (data: PrintReceiptResult): Promise<void> => {
       try {
         // Generate barcode as Base64 data URL
-        const barcodeValue = data.receiptConfig.receiptId;
+        // CRITICAL: Use studentId (numeric like "260011") NOT MongoDB _id or receiptId
+        // This ensures scanner compatibility with CODE39 format
+        const barcodeValue =
+          data.student.studentId || data.receiptConfig.receiptId;
         const barcodeDataUrl = generateBarcodeDataUrl(barcodeValue);
 
         if (!barcodeDataUrl) {
           console.warn("Barcode generation failed, proceeding without barcode");
         }
+
+        console.log(`🔢 Barcode generated for: ${barcodeValue}`);
 
         // Create PDF document
         const pdfDoc = (

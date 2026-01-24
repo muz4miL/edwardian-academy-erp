@@ -5,7 +5,7 @@
  * Search students by ID, name, or phone and handle credential distribution.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,8 @@ import {
   CreditCard,
   Package,
   Calculator,
+  Lock,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 // Import PDF Receipt System (replaces react-to-print)
@@ -108,7 +110,8 @@ export default function VerificationHub() {
 
   // Fee collection state for approval
   const [collectFee, setCollectFee] = useState(true);
-  const [feeAmount, setFeeAmount] = useState("");
+  const [feeAmount, setFeeAmount] = useState(""); // Total Fee (editable in custom mode)
+  const [paidAmount, setPaidAmount] = useState(""); // Amount Received (separate)
   const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
   const [standardFeeTotal, setStandardFeeTotal] = useState(0);
 
@@ -146,6 +149,35 @@ export default function VerificationHub() {
 
   const allStudents: Student[] = studentsData?.data || [];
   const activeClasses: ClassInstance[] = classesData?.data || [];
+
+  // Auto-calculate fee when selectedClassId changes
+  useEffect(() => {
+    if (selectedClassId && activeClasses.length > 0) {
+      const selectedClass = activeClasses.find(
+        (c) => c._id === selectedClassId,
+      );
+      if (selectedClass) {
+        // Calculate total from subjects or use baseFee
+        const totalFee =
+          selectedClass.subjects?.reduce((sum: number, s: any) => {
+            return sum + (typeof s === "object" ? s.fee || 0 : 0);
+          }, 0) ||
+          selectedClass.baseFee ||
+          0;
+
+        setStandardFeeTotal(totalFee);
+
+        // Auto-populate fee amount if NOT in custom mode
+        if (!isCustomFeeMode) {
+          setFeeAmount(String(totalFee));
+        }
+
+        console.log(
+          `📊 Fee Auto-Calculated: ${totalFee} PKR for class ${selectedClass.classTitle}`,
+        );
+      }
+    }
+  }, [selectedClassId, activeClasses, isCustomFeeMode]);
 
   // Filter students based on tab and search query
   const pendingStudents = allStudents.filter(
@@ -241,7 +273,7 @@ export default function VerificationHub() {
 
   const handleApprove = () => {
     if (foundStudent && selectedClassId) {
-      const paidAmount = collectFee ? parseFloat(feeAmount) || 0 : 0;
+      const paidAmountValue = collectFee ? parseFloat(paidAmount) || 0 : 0;
       const customTotal = isCustomFeeMode
         ? parseFloat(feeAmount) || 0
         : undefined;
@@ -250,7 +282,7 @@ export default function VerificationHub() {
         id: foundStudent._id,
         classId: selectedClassId,
         collectFee,
-        paidAmount,
+        paidAmount: paidAmountValue,
         customFee: isCustomFeeMode,
         customTotal,
       });
@@ -824,294 +856,355 @@ export default function VerificationHub() {
         </Card>
       )}
 
-      {/* Finalize Admission Dialog */}
+      {/* Finalize Admission Dialog - WIDE 2-COLUMN LAYOUT */}
       <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
-        <DialogContent className="sm:max-w-lg rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+        <DialogContent className="max-w-4xl rounded-2xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-5 pb-4 bg-gradient-to-r from-emerald-600 to-teal-600">
+            <DialogTitle className="flex items-center gap-2 text-white text-lg">
               <GraduationCap className="h-5 w-5" />
               Finalize Admission
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-emerald-100">
               Approve and assign batch for: {foundStudent?.studentName}
             </DialogDescription>
           </DialogHeader>
           {foundStudent && (
-            <div className="space-y-6 py-4">
-              {/* Student Summary */}
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Student:</span>
-                  <span className="font-medium text-gray-900">
-                    {foundStudent.studentName}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Father's Name:</span>
-                  <span className="font-medium text-gray-900">
-                    {foundStudent.fatherName}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Requested Class:</span>
-                  <span className="font-medium text-gray-900">
-                    {foundStudent.class} ({foundStudent.group})
-                  </span>
-                </div>
-              </div>
-
-              {/* Class Assignment */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-indigo-600" />
-                  Assign Batch/Class
-                </label>
-                <Select
-                  value={selectedClassId}
-                  onValueChange={(value) => {
-                    setSelectedClassId(value);
-                    // Auto-calculate fee from selected class
-                    const selectedClass = activeClasses.find(
-                      (c) => c._id === value,
-                    );
-                    if (selectedClass) {
-                      // Calculate standard total from subjects or use baseFee
-                      const totalFee =
-                        selectedClass.subjects?.reduce(
-                          (sum: number, s: any) => {
-                            return (
-                              sum + (typeof s === "object" ? s.fee || 0 : 0)
-                            );
-                          },
-                          0,
-                        ) ||
-                        selectedClass.baseFee ||
-                        0;
-
-                      setStandardFeeTotal(totalFee);
-
-                      // Only auto-populate if NOT in custom fee mode
-                      if (!isCustomFeeMode) {
-                        setFeeAmount(String(totalFee));
-                      }
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-11 bg-white border-gray-200 rounded-xl">
-                    <SelectValue placeholder="Select a class/batch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeClasses.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-gray-500">
-                        No active classes available
-                      </div>
-                    ) : (
-                      activeClasses.map((classItem) => (
-                        <SelectItem key={classItem._id} value={classItem._id}>
-                          {classItem.classTitle} - {classItem.gradeLevel} (
-                          {classItem.days.join(", ")} • {classItem.startTime})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                  You can change the class from what the student originally
-                  requested
-                </p>
-              </div>
-
-              {/* Finance Section - Full Card */}
-              <div className="border-t pt-4 space-y-4">
-                <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-green-600" />
-                  Fee & Payment Details
-                </h4>
-
-                {/* Custom Fee Toggle */}
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/50">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-muted-foreground" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+              {/* ========== LEFT COLUMN: Student Identity ========== */}
+              <div className="space-y-4">
+                {/* Student Profile Card */}
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-5 space-y-4">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Student Information
+                  </h4>
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-sm font-medium">
-                        Custom Fee (Override)
+                      <p className="text-2xl font-bold text-slate-900">
+                        {foundStudent.studentName}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        Apply discount or special pricing
+                      <p className="text-sm text-slate-500">
+                        S/O {foundStudent.fatherName}
                       </p>
                     </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                      <div>
+                        <p className="text-xs text-slate-500">Contact</p>
+                        <p className="text-sm font-medium text-slate-700">
+                          {foundStudent.parentCell}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Requested</p>
+                        <p className="text-sm font-medium text-slate-700">
+                          {foundStudent.class}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Group</p>
+                        <Badge variant="outline" className="mt-1">
+                          {foundStudent.group}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">ID</p>
+                        <p className="text-sm font-mono font-bold text-emerald-600">
+                          {foundStudent.studentId || foundStudent.barcodeId}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <Switch
-                    checked={isCustomFeeMode}
-                    onCheckedChange={(checked) => {
-                      setIsCustomFeeMode(checked);
-                      // Reset to standard when toggling off
-                      if (!checked && standardFeeTotal > 0) {
-                        setFeeAmount(String(standardFeeTotal));
+                </div>
+
+                {/* Class Assignment */}
+                <div className="rounded-xl border border-border bg-white p-4 space-y-3">
+                  <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-indigo-600" />
+                    Assign Batch/Class
+                  </label>
+                  <Select
+                    value={selectedClassId}
+                    onValueChange={(value) => {
+                      setSelectedClassId(value);
+                      const selectedClass = activeClasses.find(
+                        (c) => c._id === value,
+                      );
+                      if (selectedClass) {
+                        const totalFee =
+                          selectedClass.subjects?.reduce(
+                            (sum: number, s: any) => {
+                              return (
+                                sum + (typeof s === "object" ? s.fee || 0 : 0)
+                              );
+                            },
+                            0,
+                          ) ||
+                          selectedClass.baseFee ||
+                          0;
+                        setStandardFeeTotal(totalFee);
+                        if (!isCustomFeeMode) {
+                          setFeeAmount(String(totalFee));
+                        }
                       }
                     }}
-                  />
-                </div>
-
-                {/* Standard Fee Display */}
-                {standardFeeTotal > 0 && (
-                  <div className="bg-blue-50 rounded-lg p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-blue-700">
-                        Standard Total Fee
-                      </span>
-                      <span className="text-sm font-bold text-blue-900">
-                        PKR {standardFeeTotal.toLocaleString()}
-                      </span>
-                    </div>
-                    {isCustomFeeMode && (
-                      <p className="text-xs text-blue-600">
-                        <Calculator className="inline h-3 w-3 mr-1" />
-                        Override below to apply discount
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Fee Amount Input */}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-700">
-                    {isCustomFeeMode
-                      ? "Custom Fee Amount (PKR)"
-                      : "Total Fee (PKR)"}
-                  </label>
-                  <Input
-                    type="number"
-                    placeholder="Enter amount"
-                    value={feeAmount}
-                    onChange={(e) => setFeeAmount(e.target.value)}
-                    readOnly={!isCustomFeeMode && standardFeeTotal > 0}
-                    className={`h-10 ${
-                      isCustomFeeMode
-                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                        : standardFeeTotal > 0
-                          ? "border-blue-300 bg-blue-50 cursor-not-allowed"
-                          : "bg-white border-gray-200"
-                    }`}
-                  />
-                </div>
-
-                {/* Discount Display */}
-                {isCustomFeeMode &&
-                  standardFeeTotal > 0 &&
-                  (() => {
-                    const customTotal = Number(feeAmount) || 0;
-                    const discount = Math.max(
-                      0,
-                      standardFeeTotal - customTotal,
-                    );
-
-                    return discount > 0 ? (
-                      <div className="p-3 rounded-lg border border-green-200 bg-green-50">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-green-800">
-                            Discount / Scholarship
-                          </span>
-                          <span className="text-lg font-bold text-green-600">
-                            PKR {discount.toLocaleString()}
-                          </span>
+                  >
+                    <SelectTrigger className="h-11 bg-white border-slate-200 rounded-lg">
+                      <SelectValue placeholder="Select a class/batch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeClasses.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-slate-500">
+                          No active classes available
                         </div>
-                        <p className="text-xs text-green-700 mt-1">
-                          {standardFeeTotal.toLocaleString()} →{" "}
-                          {customTotal.toLocaleString()}
-                        </p>
+                      ) : (
+                        activeClasses.map((classItem) => (
+                          <SelectItem key={classItem._id} value={classItem._id}>
+                            {classItem.classTitle} - {classItem.gradeLevel} (
+                            {classItem.days.join(", ")} • {classItem.startTime})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Subject Preview (if class selected) */}
+                {selectedClassId &&
+                  (() => {
+                    const selectedClass = activeClasses.find(
+                      (c) => c._id === selectedClassId,
+                    );
+                    const subjects =
+                      selectedClass?.subjects?.filter(
+                        (s: any) => typeof s === "object",
+                      ) || [];
+                    return subjects.length > 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                          <FileText className="h-3 w-3" />
+                          Enrolled Subjects
+                        </h4>
+                        <div className="max-h-28 overflow-y-auto space-y-1">
+                          {subjects.map((s: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="flex justify-between text-sm py-1 border-b border-slate-100 last:border-0"
+                            >
+                              <span className="text-slate-700">{s.name}</span>
+                              <span className="font-medium text-slate-900">
+                                PKR {(s.fee || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null;
                   })()}
-
-                {/* Collect Fee Toggle */}
-                <div className="flex items-center justify-between border-t pt-3">
-                  <label className="text-sm font-medium text-gray-700">
-                    Collect Payment Now?
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs ${collectFee ? "text-green-600" : "text-gray-400"}`}
-                    >
-                      {collectFee ? "Yes" : "No"}
-                    </span>
-                    <button
-                      type="button"
-                      title={
-                        collectFee
-                          ? "Disable fee collection"
-                          : "Enable fee collection"
-                      }
-                      aria-label="Toggle fee collection"
-                      onClick={() => setCollectFee(!collectFee)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        collectFee ? "bg-green-500" : "bg-gray-300"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          collectFee ? "translate-x-6" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Payment Amount (only if collecting fee) */}
-                {collectFee && (
-                  <div className="bg-green-50 rounded-lg p-3 space-y-2">
-                    <label className="text-xs font-medium text-green-700">
-                      Amount Received (PKR)
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="Enter amount received"
-                      value={feeAmount}
-                      onChange={(e) => setFeeAmount(e.target.value)}
-                      className="h-10 bg-white border-green-200 focus:border-green-400"
-                    />
-                    <p className="text-xs text-green-600">
-                      Receipt will show "PAID" status if full amount is
-                      collected
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setApproveDialogOpen(false);
-                    setSelectedClassId("");
-                    setCollectFee(true);
-                    setFeeAmount("");
-                    setIsCustomFeeMode(false);
-                    setStandardFeeTotal(0);
-                  }}
-                  className="flex-1"
-                  disabled={approveMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleApprove}
-                  disabled={approveMutation.isPending || !selectedClassId}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                >
-                  {approveMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Confirm & Activate
-                    </>
+              {/* ========== RIGHT COLUMN: Finance Engine ========== */}
+              <div className="space-y-4">
+                {/* Finance Card */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-green-600" />
+                    Fee & Payment Details
+                  </h4>
+
+                  {/* Custom Fee Toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-slate-500" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          Custom Fee Override
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Apply discount or special pricing
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={isCustomFeeMode}
+                      onCheckedChange={(checked) => {
+                        setIsCustomFeeMode(checked);
+                        if (!checked && standardFeeTotal > 0) {
+                          setFeeAmount(String(standardFeeTotal));
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* Fee Inputs Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Total Fee with Lock/Pencil Icon */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500 flex items-center gap-1">
+                        Total Fee (PKR)
+                        {isCustomFeeMode ? (
+                          <Pencil className="h-3 w-3 text-amber-600" />
+                        ) : (
+                          <Lock className="h-3 w-3 text-slate-400" />
+                        )}
+                      </label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          value={feeAmount}
+                          onChange={(e) => setFeeAmount(e.target.value)}
+                          readOnly={!isCustomFeeMode && standardFeeTotal > 0}
+                          className={`h-11 text-lg font-bold pr-10 ${
+                            isCustomFeeMode
+                              ? "border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-200"
+                              : "border-sky-200 bg-sky-50 text-slate-700 cursor-not-allowed"
+                          }`}
+                        />
+                        <div
+                          className={`absolute right-3 top-1/2 -translate-y-1/2 ${
+                            isCustomFeeMode ? "text-amber-600" : "text-sky-600"
+                          }`}
+                        >
+                          {isCustomFeeMode ? (
+                            <Pencil className="h-4 w-4" />
+                          ) : (
+                            <Lock className="h-4 w-4" />
+                          )}
+                        </div>
+                      </div>
+                      {!isCustomFeeMode && standardFeeTotal > 0 && (
+                        <p className="text-xs text-sky-600">
+                          Auto-calculated from subjects
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Discount */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500">
+                        Discount (PKR)
+                      </label>
+                      <div
+                        className={`h-11 px-3 flex items-center justify-center rounded-md border text-lg font-bold ${
+                          standardFeeTotal - (Number(feeAmount) || 0) > 0
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-slate-50 border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        {Math.max(
+                          0,
+                          standardFeeTotal - (Number(feeAmount) || 0),
+                        ).toLocaleString()}
+                      </div>
+                      {standardFeeTotal - (Number(feeAmount) || 0) > 0 && (
+                        <p className="text-xs text-green-600">
+                          Scholarship applied
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Collect Payment Toggle */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <label className="text-sm font-medium text-slate-700">
+                      Collect Payment Now?
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs ${collectFee ? "text-green-600 font-medium" : "text-slate-400"}`}
+                      >
+                        {collectFee ? "Yes" : "No"}
+                      </span>
+                      <Switch
+                        checked={collectFee}
+                        onCheckedChange={setCollectFee}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Amount Received (if collecting) */}
+                  {collectFee && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-500">
+                        Amount Received (PKR)
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="Enter cash received"
+                        value={paidAmount}
+                        onChange={(e) => setPaidAmount(e.target.value)}
+                        className="h-11 text-lg font-bold border-slate-200 bg-white"
+                      />
+                    </div>
                   )}
-                </Button>
+                </div>
+
+                {/* Balance Bar - Large Colored Display */}
+                <div
+                  className={`rounded-xl p-4 text-center ${(() => {
+                    const finalTotal = Number(feeAmount) || 0;
+                    const paid = collectFee ? Number(paidAmount) || 0 : 0;
+                    const balance = finalTotal - paid;
+                    return balance <= 0 ? "bg-green-500" : "bg-red-500";
+                  })()}`}
+                >
+                  <p className="text-xs font-medium text-white/80 uppercase tracking-wide">
+                    Balance Due
+                  </p>
+                  <p className="text-3xl font-bold text-white">
+                    PKR{" "}
+                    {(() => {
+                      const finalTotal = Number(feeAmount) || 0;
+                      const paid = collectFee ? Number(paidAmount) || 0 : 0;
+                      return Math.max(0, finalTotal - paid).toLocaleString();
+                    })()}
+                  </p>
+                  <p className="text-xs text-white/70 mt-1">
+                    {(() => {
+                      const finalTotal = Number(feeAmount) || 0;
+                      const paid = collectFee ? Number(paidAmount) || 0 : 0;
+                      const balance = finalTotal - paid;
+                      return balance <= 0
+                        ? "✓ Fully Paid"
+                        : "Outstanding Balance";
+                    })()}
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setApproveDialogOpen(false);
+                      setSelectedClassId("");
+                      setCollectFee(true);
+                      setFeeAmount("");
+                      setPaidAmount("");
+                      setIsCustomFeeMode(false);
+                      setStandardFeeTotal(0);
+                    }}
+                    className="flex-1"
+                    disabled={approveMutation.isPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleApprove}
+                    disabled={approveMutation.isPending || !selectedClassId}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {approveMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Finalize & Generate Credentials
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

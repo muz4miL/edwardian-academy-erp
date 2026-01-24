@@ -5,293 +5,355 @@ import {
   Text,
   Image,
   StyleSheet,
-  Font,
 } from "@react-pdf/renderer";
 
-// Register fonts for better PDF rendering
-Font.register({
-  family: "Roboto",
-  fonts: [
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf",
-      fontWeight: 300,
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf",
-      fontWeight: 400,
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf",
-      fontWeight: 500,
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf",
-      fontWeight: 700,
-    },
-  ],
-});
+// Using built-in Helvetica font (no registration needed)
 
-// Create styles for PDF
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
+  // Page container
   page: {
     width: "8.5in",
-    height: "4in",
-    padding: 18,
-    fontFamily: "Roboto",
-    fontSize: 11,
+    height: "5.5in",
+    padding: 24,
+    fontFamily: "Helvetica",
+    fontSize: 10,
     backgroundColor: "#ffffff",
-    position: "relative",
   },
   container: {
-    border: "2pt solid #000000",
-    padding: 15,
+    border: "2pt solid #1a365d",
+    borderRadius: 4,
+    padding: 16,
     height: "100%",
     position: "relative",
   },
-  // Watermark for duplicate copies
+  // Watermark for copies
   watermark: {
     position: "absolute",
-    top: "50%",
+    top: "45%",
     left: "50%",
-    transform: "translate(-50%, -50%) rotate(-30deg)",
-    fontSize: 48,
+    transform: "translate(-50%, -50%) rotate(-25deg)",
+    fontSize: 52,
     fontWeight: 700,
-    color: "rgba(255, 0, 0, 0.08)",
-    whiteSpace: "nowrap",
+    color: "rgba(220, 38, 38, 0.06)",
+    letterSpacing: 4,
   },
-  // Header section
+
+  // ==================== HEADER ====================
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    borderBottom: "2pt solid #000000",
-    paddingBottom: 8,
-    marginBottom: 10,
+    alignItems: "flex-start",
+    borderBottom: "2pt solid #1a365d",
+    paddingBottom: 10,
+    marginBottom: 14,
   },
-  logoSection: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
   },
-  logoCircle: {
-    width: 45,
-    height: 45,
-    borderRadius: 25,
+  logo: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     border: "2pt solid #1a365d",
+    backgroundColor: "#f8fafc",
     alignItems: "center",
     justifyContent: "center",
   },
   logoText: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#1a365d",
-  },
-  academyName: {
     fontSize: 16,
     fontWeight: 700,
     color: "#1a365d",
   },
+  academyInfo: {
+    flexDirection: "column",
+  },
+  academyName: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#1a365d",
+    letterSpacing: 0.5,
+  },
   contactText: {
-    fontSize: 8,
-    color: "#c53030",
-    marginTop: 2,
+    fontSize: 9,
+    color: "#dc2626",
+    marginTop: 3,
+    fontWeight: 500,
+  },
+  headerCenter: {
+    alignItems: "center",
   },
   versionBadge: {
-    padding: "4pt 12pt",
+    paddingVertical: 5,
+    paddingHorizontal: 14,
     borderRadius: 4,
+    marginBottom: 4,
+  },
+  originalBadge: {
+    backgroundColor: "#16a34a",
+  },
+  copyBadge: {
+    backgroundColor: "#dc2626",
+  },
+  versionText: {
     fontSize: 9,
     fontWeight: 700,
     color: "#ffffff",
   },
-  originalBadge: {
-    backgroundColor: "#38a169",
-  },
-  copyBadge: {
-    backgroundColor: "#e53e3e",
-  },
-  receiptInfo: {
+  headerRight: {
     alignItems: "flex-end",
   },
-  studentIdBox: {
-    border: "1pt solid #000000",
-    padding: "3pt 8pt",
-    fontSize: 13,
+  serialBox: {
+    border: "2pt solid #1a365d",
+    backgroundColor: "#f8fafc",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  serialText: {
+    fontSize: 14,
     fontWeight: 700,
+    color: "#1a365d",
   },
   dateText: {
-    fontSize: 8,
-    marginTop: 4,
+    fontSize: 9,
+    color: "#4b5563",
+    marginTop: 2,
   },
-  // Main content
+
+  // ==================== MAIN CONTENT ====================
   mainContent: {
     flexDirection: "row",
-    gap: 12,
+    gap: 16,
     flex: 1,
   },
-  // Left column - Student details
-  leftColumn: {
-    flex: 1.5,
+
+  // Left Section - Student Details + Subjects
+  leftSection: {
+    flex: 1.4,
+    flexDirection: "column",
+  },
+
+  // Student Details Grid (2 columns)
+  detailsGrid: {
+    marginBottom: 12,
   },
   detailRow: {
     flexDirection: "row",
-    marginBottom: 4,
+    marginBottom: 6,
+  },
+  detailItem: {
+    flex: 1,
+    flexDirection: "row",
   },
   detailLabel: {
-    width: 70,
+    width: 55,
+    fontSize: 9,
     fontWeight: 700,
-    fontSize: 10,
+    color: "#374151",
   },
   detailValue: {
     flex: 1,
-    borderBottom: "1pt solid #000000",
     fontSize: 10,
+    color: "#111827",
+    borderBottom: "1pt solid #d1d5db",
     paddingBottom: 2,
   },
   groupBadge: {
-    padding: "2pt 8pt",
-    fontSize: 9,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 3,
+    fontSize: 8,
     fontWeight: 700,
     color: "#ffffff",
   },
   medicalGroup: {
-    backgroundColor: "#c53030",
+    backgroundColor: "#dc2626",
   },
   nonMedicalGroup: {
-    backgroundColor: "#2b6cb0",
+    backgroundColor: "#2563eb",
   },
+
+  // Subjects Section (Vertical List)
   subjectsSection: {
-    marginTop: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTop: "1pt solid #e5e7eb",
   },
   subjectsTitle: {
-    fontWeight: 700,
     fontSize: 9,
-    marginBottom: 4,
+    fontWeight: 700,
+    color: "#374151",
+    marginBottom: 6,
   },
-  subjectsRow: {
+  subjectsList: {
+    flexDirection: "column",
+    gap: 3,
+  },
+  subjectItem: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
+    alignItems: "center",
+    gap: 6,
   },
-  subjectTag: {
-    padding: "2pt 6pt",
-    backgroundColor: "#edf2f7",
-    border: "1pt solid #cbd5e0",
-    fontSize: 8,
-    borderRadius: 2,
+  subjectBullet: {
+    fontSize: 10,
+    color: "#2563eb",
+    fontWeight: 700,
   },
-  // Center column - Barcode
-  centerColumn: {
-    flex: 1,
+  subjectName: {
+    fontSize: 9,
+    color: "#1f2937",
+  },
+
+  // Center Section - Barcode
+  centerSection: {
+    flex: 0.8,
     alignItems: "center",
     justifyContent: "center",
-    borderLeft: "1pt dashed #000000",
-    borderRight: "1pt dashed #000000",
-    paddingHorizontal: 10,
+    borderLeft: "1pt dashed #9ca3af",
+    borderRight: "1pt dashed #9ca3af",
+    paddingHorizontal: 12,
   },
-  barcodeTitle: {
+  barcodeLabel: {
     fontSize: 8,
     fontWeight: 700,
-    marginBottom: 4,
+    color: "#4b5563",
+    marginBottom: 6,
+    letterSpacing: 1,
   },
   barcodeImage: {
-    width: 120,
-    height: 50,
+    width: 110,
+    height: 45,
+    marginBottom: 4,
+  },
+  barcodeId: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#1a365d",
+    letterSpacing: 1,
   },
   barcodeHint: {
-    fontSize: 6,
-    color: "#666666",
+    fontSize: 7,
+    color: "#6b7280",
     marginTop: 4,
-    textAlign: "center",
   },
-  // Right column - Fee status
-  rightColumn: {
+
+  // Right Section - Financial Box
+  rightSection: {
     flex: 0.8,
     alignItems: "center",
   },
-  feeStatusBox: {
-    padding: 8,
-    marginBottom: 8,
+  feeBox: {
     width: "100%",
-    textAlign: "center",
+    border: "2pt solid #16a34a",
+    borderRadius: 4,
+    overflow: "hidden",
+    marginBottom: 10,
   },
-  paidBorder: {
-    border: "2pt solid #38a169",
+  feeBoxPending: {
+    borderColor: "#dc2626",
   },
-  pendingBorder: {
-    border: "2pt solid #e53e3e",
+  feeStatusHeader: {
+    backgroundColor: "#16a34a",
+    paddingVertical: 6,
+    alignItems: "center",
+  },
+  feeStatusHeaderPending: {
+    backgroundColor: "#dc2626",
   },
   feeStatusLabel: {
     fontSize: 8,
     fontWeight: 700,
+    color: "#ffffff",
+    letterSpacing: 0.5,
   },
   feeStatusValue: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: 700,
+    color: "#ffffff",
   },
-  paidColor: {
-    color: "#38a169",
-  },
-  pendingColor: {
-    color: "#e53e3e",
-  },
-  feeTable: {
-    width: "100%",
+  feeDetails: {
+    padding: 8,
+    backgroundColor: "#f9fafb",
   },
   feeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 2,
-    fontSize: 8,
+    paddingVertical: 3,
   },
-  feeRowBorder: {
-    borderTop: "1pt solid #000000",
+  feeRowLabel: {
+    fontSize: 9,
+    color: "#4b5563",
   },
-  feeLabel: {
-    textAlign: "left",
-  },
-  feeValue: {
-    textAlign: "right",
+  feeRowValue: {
+    fontSize: 9,
     fontWeight: 700,
+    color: "#111827",
   },
+  feeRowTotal: {
+    borderTop: "1pt solid #d1d5db",
+    marginTop: 4,
+    paddingTop: 4,
+  },
+  discountText: {
+    color: "#16a34a",
+  },
+  balancePositive: {
+    color: "#dc2626",
+  },
+  balanceZero: {
+    color: "#16a34a",
+  },
+
+  // Signature
   signatureSection: {
-    marginTop: 12,
-    borderTop: "1pt solid #000000",
+    marginTop: "auto",
+    alignItems: "flex-end",
     paddingTop: 8,
   },
   signatureLabel: {
     fontSize: 7,
+    color: "#6b7280",
+    marginBottom: 2,
   },
   signatureLine: {
-    borderBottom: "1pt solid #000000",
-    height: 18,
-    marginTop: 2,
+    width: 100,
+    borderBottom: "1pt solid #374151",
+    height: 16,
   },
-  // Footer
+
+  // ==================== FOOTER ====================
   footer: {
     position: "absolute",
-    bottom: 15,
-    left: 15,
-    right: 15,
+    bottom: 10,
+    left: 16,
+    right: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    borderTop: "1pt solid #000000",
-    paddingTop: 6,
-    fontSize: 7,
+    alignItems: "flex-end",
+    borderTop: "1pt solid #e5e7eb",
+    paddingTop: 8,
   },
   footerWarning: {
-    color: "#c53030",
-    fontWeight: 700,
+    fontSize: 8,
+    fontWeight: "bold",
+    color: "#dc2626",
   },
-  footerReceiptId: {
-    color: "#666666",
+  footerReceipt: {
+    fontSize: 7,
+    color: "#9ca3af",
   },
   footerAddress: {
+    fontSize: 7,
+    color: "#6b7280",
     textAlign: "right",
+    maxWidth: 200,
   },
 });
 
-// Interface for student data
+// ==================== INTERFACES ====================
 export interface StudentPDFData {
   _id?: string;
   studentId: string;
@@ -319,24 +381,34 @@ export interface ReceiptPDFConfig {
 interface ReceiptPDFProps {
   student: StudentPDFData;
   receiptConfig: ReceiptPDFConfig;
-  barcodeDataUrl: string; // Base64 data URL for the barcode image
+  barcodeDataUrl: string;
 }
 
+// ==================== HELPERS ====================
 const formatDate = (date: Date | string | undefined): string => {
   if (!date) return new Date().toLocaleDateString("en-GB");
-  return new Date(date).toLocaleDateString("en-GB");
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 const formatCurrency = (amount: number): string => {
-  return `PKR ${amount?.toLocaleString() || 0}`;
+  return `PKR ${(amount || 0).toLocaleString()}`;
 };
 
-/**
- * ReceiptPDF - Horizontal Landscape Admission Receipt
- *
- * Uses @react-pdf/renderer to generate a printable PDF receipt.
- * Matches the academy's yellow slip format with barcode for Smart Gate.
- */
+const formatPhone = (phone: string | undefined): string => {
+  if (!phone) return "-";
+  // Clean and format as 0313-911053389
+  const cleaned = phone.replace(/\D/g, "");
+  if (cleaned.length >= 10) {
+    return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+  }
+  return phone;
+};
+
+// ==================== COMPONENT ====================
 export const ReceiptPDF = ({
   student,
   receiptConfig,
@@ -351,23 +423,21 @@ export const ReceiptPDF = ({
 
   return (
     <Document>
-      <Page size={[612, 288]} style={styles.page}>
+      <Page size={[612, 396]} style={styles.page}>
         <View style={styles.container}>
           {/* Watermark for duplicate copies */}
           {!receiptConfig.isOriginal && (
-            <Text style={styles.watermark}>
-              DUPLICATE COPY #{receiptConfig.version}
-            </Text>
+            <Text style={styles.watermark}>DUPLICATE</Text>
           )}
 
-          {/* Header */}
+          {/* ==================== HEADER ==================== */}
           <View style={styles.header}>
-            {/* Logo & Academy Name */}
-            <View style={styles.logoSection}>
-              <View style={styles.logoCircle}>
+            {/* Left: Logo & Academy Name */}
+            <View style={styles.headerLeft}>
+              <View style={styles.logo}>
                 <Text style={styles.logoText}>EA</Text>
               </View>
-              <View>
+              <View style={styles.academyInfo}>
                 <Text style={styles.academyName}>THE EDWARDIAN'S ACADEMY</Text>
                 <Text style={styles.contactText}>
                   Contact: 091-5601600 / 0334-5852326
@@ -375,75 +445,96 @@ export const ReceiptPDF = ({
               </View>
             </View>
 
-            {/* Version Badge */}
-            <View
-              style={[
-                styles.versionBadge,
-                receiptConfig.isOriginal
-                  ? styles.originalBadge
-                  : styles.copyBadge,
-              ]}
-            >
-              <Text>
-                {receiptConfig.isOriginal
-                  ? "ORIGINAL RECEIPT"
-                  : `COPY #${receiptConfig.version}`}
-              </Text>
+            {/* Center: Version Badge */}
+            <View style={styles.headerCenter}>
+              <View
+                style={[
+                  styles.versionBadge,
+                  receiptConfig.isOriginal
+                    ? styles.originalBadge
+                    : styles.copyBadge,
+                ]}
+              >
+                <Text style={styles.versionText}>
+                  {receiptConfig.isOriginal
+                    ? "ORIGINAL RECEIPT"
+                    : `COPY #${receiptConfig.version}`}
+                </Text>
+              </View>
             </View>
 
-            {/* Receipt Info */}
-            <View style={styles.receiptInfo}>
-              <View style={styles.studentIdBox}>
-                <Text>S.No: {student.studentId}</Text>
+            {/* Right: Date & S.No */}
+            <View style={styles.headerRight}>
+              <View style={styles.serialBox}>
+                <Text style={styles.serialText}>S.No: {student.studentId}</Text>
               </View>
               <Text style={styles.dateText}>
-                Date: {formatDate(student.admissionDate)}
+                Date: {formatDate(receiptConfig.printedAt)}
               </Text>
             </View>
           </View>
 
-          {/* Main Content - 3 Column Layout */}
+          {/* ==================== MAIN CONTENT ==================== */}
           <View style={styles.mainContent}>
-            {/* Left Column - Student Details */}
-            <View style={styles.leftColumn}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Name:</Text>
-                <Text style={styles.detailValue}>{student.studentName}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Father:</Text>
-                <Text style={styles.detailValue}>{student.fatherName}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Group:</Text>
-                <View
-                  style={[
-                    styles.groupBadge,
-                    isMedical ? styles.medicalGroup : styles.nonMedicalGroup,
-                  ]}
-                >
-                  <Text>{student.group}</Text>
+            {/* Left Section - Student Details + Subjects */}
+            <View style={styles.leftSection}>
+              {/* Student Details Grid */}
+              <View style={styles.detailsGrid}>
+                {/* Row 1: Name | Father */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Name:</Text>
+                    <Text style={styles.detailValue}>
+                      {student.studentName}
+                    </Text>
+                  </View>
+                  <View style={[styles.detailItem, { marginLeft: 16 }]}>
+                    <Text style={styles.detailLabel}>Father:</Text>
+                    <Text style={styles.detailValue}>{student.fatherName}</Text>
+                  </View>
+                </View>
+
+                {/* Row 2: Class | Group */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Class:</Text>
+                    <Text style={styles.detailValue}>{student.class}</Text>
+                  </View>
+                  <View style={[styles.detailItem, { marginLeft: 16 }]}>
+                    <Text style={styles.detailLabel}>Group:</Text>
+                    <View
+                      style={[
+                        styles.groupBadge,
+                        isMedical
+                          ? styles.medicalGroup
+                          : styles.nonMedicalGroup,
+                      ]}
+                    >
+                      <Text>{student.group}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Row 3: Contact */}
+                <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
+                    <Text style={styles.detailLabel}>Contact:</Text>
+                    <Text style={styles.detailValue}>
+                      {formatPhone(student.parentCell || student.studentCell)}
+                    </Text>
+                  </View>
                 </View>
               </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Class:</Text>
-                <Text style={styles.detailValue}>{student.class}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Cell No:</Text>
-                <Text style={styles.detailValue}>
-                  {student.parentCell || student.studentCell || "-"}
-                </Text>
-              </View>
 
-              {/* Subjects */}
+              {/* Subjects - Vertical Bullet List */}
               {student.subjects && student.subjects.length > 0 && (
                 <View style={styles.subjectsSection}>
-                  <Text style={styles.subjectsTitle}>Subjects:</Text>
-                  <View style={styles.subjectsRow}>
+                  <Text style={styles.subjectsTitle}>Enrolled Subjects:</Text>
+                  <View style={styles.subjectsList}>
                     {student.subjects.map((s, idx) => (
-                      <View key={idx} style={styles.subjectTag}>
-                        <Text>{s.name}</Text>
+                      <View key={idx} style={styles.subjectItem}>
+                        <Text style={styles.subjectBullet}>•</Text>
+                        <Text style={styles.subjectName}>{s.name}</Text>
                       </View>
                     ))}
                   </View>
@@ -451,106 +542,101 @@ export const ReceiptPDF = ({
               )}
             </View>
 
-            {/* Center Column - Barcode */}
-            <View style={styles.centerColumn}>
-              <Text style={styles.barcodeTitle}>SMART GATE ID</Text>
+            {/* Center Section - Barcode */}
+            <View style={styles.centerSection}>
+              <Text style={styles.barcodeLabel}>SMART GATE ID</Text>
               {barcodeDataUrl ? (
                 <Image src={barcodeDataUrl} style={styles.barcodeImage} />
               ) : (
-                <Text style={{ fontSize: 8, color: "#666" }}>
-                  Barcode unavailable
-                </Text>
+                <Text style={{ fontSize: 8, color: "#999" }}>No Barcode</Text>
               )}
+              <Text style={styles.barcodeId}>{student.studentId}</Text>
               <Text style={styles.barcodeHint}>
                 Scan for entry verification
               </Text>
             </View>
 
-            {/* Right Column - Fee Status */}
-            <View style={styles.rightColumn}>
-              <View
-                style={[
-                  styles.feeStatusBox,
-                  isPaid ? styles.paidBorder : styles.pendingBorder,
-                ]}
-              >
-                <Text style={styles.feeStatusLabel}>FEE STATUS</Text>
-                <Text
+            {/* Right Section - Financial Box */}
+            <View style={styles.rightSection}>
+              <View style={[styles.feeBox, !isPaid && styles.feeBoxPending]}>
+                {/* Status Header */}
+                <View
                   style={[
-                    styles.feeStatusValue,
-                    isPaid ? styles.paidColor : styles.pendingColor,
+                    styles.feeStatusHeader,
+                    !isPaid && styles.feeStatusHeaderPending,
                   ]}
                 >
-                  {isPaid ? "PAID" : "PENDING"}
-                </Text>
-              </View>
-
-              <View style={styles.feeTable}>
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Total:</Text>
-                  <Text style={styles.feeValue}>
-                    {formatCurrency(student.totalFee)}
+                  <Text style={styles.feeStatusLabel}>FEE STATUS</Text>
+                  <Text style={styles.feeStatusValue}>
+                    {isPaid ? "PAID" : "PENDING"}
                   </Text>
                 </View>
-                {/* Show discount row if applicable */}
-                {student.discountAmount && student.discountAmount > 0 && (
+
+                {/* Fee Details */}
+                <View style={styles.feeDetails}>
                   <View style={styles.feeRow}>
-                    <Text style={[styles.feeLabel, { color: "#15803d" }]}>
-                      Discount:
+                    <Text style={styles.feeRowLabel}>Total Fee:</Text>
+                    <Text style={styles.feeRowValue}>
+                      {formatCurrency(student.totalFee)}
+                    </Text>
+                  </View>
+
+                  {/* Discount Row (if applicable) */}
+                  {student.discountAmount && student.discountAmount > 0 && (
+                    <View style={styles.feeRow}>
+                      <Text style={[styles.feeRowLabel, styles.discountText]}>
+                        Discount:
+                      </Text>
+                      <Text style={[styles.feeRowValue, styles.discountText]}>
+                        -{formatCurrency(student.discountAmount)}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.feeRow}>
+                    <Text style={styles.feeRowLabel}>Paid:</Text>
+                    <Text style={styles.feeRowValue}>
+                      {formatCurrency(student.paidAmount)}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.feeRow, styles.feeRowTotal]}>
+                    <Text style={[styles.feeRowLabel, { fontWeight: 700 }]}>
+                      Balance:
                     </Text>
                     <Text
                       style={[
-                        styles.feeValue,
-                        { color: "#15803d", fontWeight: 700 },
+                        styles.feeRowValue,
+                        balance > 0
+                          ? styles.balancePositive
+                          : styles.balanceZero,
                       ]}
                     >
-                      -{formatCurrency(student.discountAmount)}
+                      {formatCurrency(balance)}
                     </Text>
                   </View>
-                )}
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Paid:</Text>
-                  <Text style={[styles.feeValue, styles.paidColor]}>
-                    {formatCurrency(student.paidAmount)}
-                  </Text>
-                </View>
-                <View style={[styles.feeRow, styles.feeRowBorder]}>
-                  <Text style={[styles.feeLabel, { fontWeight: 700 }]}>
-                    Balance:
-                  </Text>
-                  <Text
-                    style={[
-                      styles.feeValue,
-                      balance > 0 ? styles.pendingColor : styles.paidColor,
-                    ]}
-                  >
-                    {formatCurrency(balance)}
-                  </Text>
                 </View>
               </View>
 
+              {/* Signature */}
               <View style={styles.signatureSection}>
-                <Text style={styles.signatureLabel}>Signature</Text>
+                <Text style={styles.signatureLabel}>Authorized Signature</Text>
                 <View style={styles.signatureLine} />
               </View>
             </View>
           </View>
 
-          {/* Footer */}
+          {/* ==================== FOOTER ==================== */}
           <View style={styles.footer}>
             <Text style={styles.footerWarning}>
-              ⚠️ FEE IS NON-REFUNDABLE IN ANY CASE
+              ⚠ Fee is non-refundable in any case
             </Text>
-            <Text style={styles.footerReceiptId}>
-              Receipt ID: {receiptConfig.receiptId}
+            <Text style={styles.footerReceipt}>
+              Receipt: {receiptConfig.receiptId}
             </Text>
-            <View style={styles.footerAddress}>
-              <Text>
-                Address: Opposite Islamia College, Danishabad University Road,
-                Peshawar
-              </Text>
-              <Text>facebook.com/theedwardiansacademy</Text>
-            </View>
+            <Text style={styles.footerAddress}>
+              Opp. Islamia College, Danishabad, University Road, Peshawar
+            </Text>
           </View>
         </View>
       </Page>

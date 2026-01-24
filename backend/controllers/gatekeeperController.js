@@ -61,17 +61,27 @@ const formatMinutesToTime = (minutes) => {
 // @access  Protected (OWNER, OPERATOR)
 exports.scanBarcode = async (req, res) => {
   try {
-    const { barcodeId } = req.body;
+    // Accept both 'barcode' (from frontend) and 'barcodeId' (legacy)
+    const barcodeId = req.body.barcode || req.body.barcodeId;
+
+    console.log(`\n========================================`);
+    console.log(`🔍 GATE SCAN REQUEST`);
+    console.log(`   Input: "${barcodeId}"`);
+    console.log(
+      `   Time: ${new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })}`,
+    );
+    console.log(`========================================`);
 
     if (!barcodeId || barcodeId.length < 5) {
+      console.log(
+        `❌ REJECTED: Invalid barcode format (length: ${barcodeId?.length || 0})`,
+      );
       return res.status(400).json({
         success: false,
         status: "error",
-        message: "Invalid barcode format",
+        message: `Invalid barcode format - received: "${barcodeId || "empty"}"`,
       });
     }
-
-    console.log(`🔍 Scanning: ${barcodeId}`);
 
     let student = null;
     let usedReceipt = null;
@@ -109,14 +119,20 @@ exports.scanBarcode = async (req, res) => {
     }
 
     if (!student) {
-      console.log(`❌ Unknown barcode: ${barcodeId}`);
+      console.log(`❌ STUDENT NOT FOUND`);
+      console.log(`   Searched for: "${barcodeId}"`);
+      console.log(`   Query: studentId OR barcodeId = "${barcodeId}"`);
       return res.status(404).json({
         success: false,
         status: "unknown",
-        message: "Unknown Student - Barcode not registered",
+        message: `Student ID "${barcodeId}" not found in database`,
         barcodeId,
       });
     }
+
+    console.log(
+      `✅ STUDENT FOUND: ${student.studentName} (ID: ${student.studentId})`,
+    );
 
     // ========================================
     // STEP 2: CHECK STUDENT STATUS (Expelled/Suspended)
@@ -178,9 +194,22 @@ exports.scanBarcode = async (req, res) => {
     // STEP 4: CHECK CLASS SCHEDULE (Day & Time)
     // ========================================
     const classDoc = student.classRef;
-    const currentDay = getCurrentDayAbbrev();
+
+    // Get Pakistan time (UTC+5)
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const pakistanTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
+    );
+    const currentDay = getCurrentDayAbbrev();
+    const currentMinutes =
+      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+
+    console.log(`\n📅 SCHEDULE CHECK:`);
+    console.log(`   Pakistan Time: ${pakistanTime.toLocaleString("en-PK")}`);
+    console.log(`   Current Day: ${currentDay}`);
+    console.log(
+      `   Current Minutes: ${currentMinutes} (${formatMinutesToTime(currentMinutes)})`,
+    );
 
     let scheduleStatus = "allowed";
     let scheduleMessage = null;
@@ -192,39 +221,65 @@ exports.scanBarcode = async (req, res) => {
       classEndTime = classDoc.endTime;
       const classDays = classDoc.days || [];
 
+      console.log(`   Class: ${classDoc.classTitle || "Unknown"}`);
+      console.log(`   Class Days: [${classDays.join(", ")}]`);
       console.log(
-        `   📅 Checking schedule: ${classDays.join(",")} @ ${classStartTime}`,
+        `   Class Time: ${classStartTime} - ${classEndTime || "N/A"}`,
+      );
+
+      // Normalize day comparison (handle both "Sat" and "Saturday" formats)
+      const normalizedClassDays = classDays.map((d) =>
+        d.toLowerCase().slice(0, 3),
+      );
+      const normalizedCurrentDay = currentDay.toLowerCase().slice(0, 3);
+      const isTodayClassDay =
+        normalizedClassDays.includes(normalizedCurrentDay);
+
+      console.log(
+        `   Day Match: "${normalizedCurrentDay}" in [${normalizedClassDays.join(", ")}] = ${isTodayClassDay}`,
       );
 
       // Check if today is a class day
-      if (!classDays.includes(currentDay)) {
+      if (!isTodayClassDay) {
         scheduleStatus = "no_class_today";
-        scheduleMessage = `NO CLASS TODAY - Next: ${classDays.join(", ")}`;
-        console.log(`   ❌ No class today (${currentDay})`);
+        scheduleMessage = `NO CLASS TODAY (${currentDay}) - Class days: ${classDays.join(", ")}`;
+        console.log(`   ❌ No class scheduled for ${currentDay}`);
       } else {
         // Check time window (60 min before start, until 30 min before end)
         const startMinutes = parseTimeToMinutes(classStartTime);
         const endMinutes = parseTimeToMinutes(classEndTime);
 
         if (startMinutes !== null) {
-          const allowedEntryFrom = startMinutes - 60; // 1 hour before
+          // SENSIBLE TIME WINDOW:
+          // - Allow entry from 60 minutes BEFORE class starts
+          // - Allow entry until 15 minutes AFTER class ends (grace period)
+          const allowedEntryFrom = startMinutes - 60; // 1 hour before start
           const allowedEntryUntil = endMinutes
-            ? endMinutes - 30
-            : startMinutes + 180; // 30 min before end or 3 hours after start
+            ? endMinutes + 15  // 15 minutes AFTER class ends (grace period)
+            : startMinutes + 240; // Or 4 hours after start if no end time
+
+          console.log(`   Entry Window: ${formatMinutesToTime(allowedEntryFrom)} - ${formatMinutesToTime(allowedEntryUntil)}`);
+          console.log(`   Current Time: ${formatMinutesToTime(currentMinutes)}`);
+          console.log(`   Within Window: ${currentMinutes >= allowedEntryFrom && currentMinutes <= allowedEntryUntil}`);
 
           if (currentMinutes < allowedEntryFrom) {
             scheduleStatus = "too_early";
-            scheduleMessage = `TOO EARLY - Class starts at ${formatMinutesToTime(startMinutes)}`;
+            scheduleMessage = `TOO EARLY - Class starts at ${formatMinutesToTime(startMinutes)}. Entry opens at ${formatMinutesToTime(allowedEntryFrom)}`;
             console.log(
-              `   ⏰ Too early (now: ${formatMinutesToTime(currentMinutes)}, class: ${formatMinutesToTime(startMinutes)})`,
+              `   ⏰ Too early (now: ${formatMinutesToTime(currentMinutes)}, opens: ${formatMinutesToTime(allowedEntryFrom)})`,
             );
           } else if (currentMinutes > allowedEntryUntil) {
             scheduleStatus = "too_late";
-            scheduleMessage = `TOO LATE - Class ended`;
-            console.log(`   ⏰ Too late`);
+            scheduleMessage = `TOO LATE - Class ended at ${formatMinutesToTime(endMinutes || startMinutes + 180)}`;
+            console.log(`   ⏰ Too late (now: ${formatMinutesToTime(currentMinutes)}, closed: ${formatMinutesToTime(allowedEntryUntil)})`);
+          } else {
+            console.log(`   ✅ Within allowed time window!`);
           }
         }
       }
+    } else {
+      // No class document - allow entry (class schedule not configured)
+      console.log(`   ⚠️ No class schedule found - allowing entry by default`);
     }
 
     // If schedule check failed, return denial

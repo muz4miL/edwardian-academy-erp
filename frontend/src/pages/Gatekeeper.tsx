@@ -35,7 +35,16 @@ const API_BASE_URL =
 // ==================== TYPES ====================
 interface ScanResult {
   success: boolean;
-  status: "success" | "defaulter" | "partial" | "blocked" | "unknown" | "error" | "too_early";
+  status:
+    | "success"
+    | "defaulter"
+    | "partial"
+    | "blocked"
+    | "unknown"
+    | "error"
+    | "too_early"
+    | "too_late"
+    | "no_class_today";
   message: string;
   reason?: string; // Detailed rejection reason (e.g., "TOO EARLY", "OFF SCHEDULE")
   student?: {
@@ -53,10 +62,19 @@ interface ScanResult {
     balance: number;
     studentStatus: string;
     session: string;
+    classTime?: string;
+    classDays?: string[];
   };
   scannedAt?: string;
   currentTime?: string; // Current time when scanned
   classStartTime?: string; // Expected class start time
+  schedule?: {
+    classStartTime?: string;
+    classEndTime?: string;
+    classDays?: string[];
+    currentTime?: string;
+    currentDay?: string;
+  };
 }
 
 type TerminalState = "standby" | "scanning" | "success" | "denied" | "warning";
@@ -189,13 +207,21 @@ export default function Gatekeeper() {
   const scanMutation = useMutation({
     mutationFn: async (barcode: string) => {
       if (isMounted) setTerminalState("scanning");
+      console.log(`🔍 Sending scan request for: "${barcode}"`);
+
       const response = await fetch(`${API_BASE_URL}/api/gatekeeper/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // CRITICAL: Send auth cookie
         body: JSON.stringify({ barcode }),
       });
-      if (!response.ok) throw new Error("Scan failed");
-      return response.json();
+
+      // Parse response even if not ok (to get error message)
+      const data = await response.json();
+      console.log(`📡 Gate response:`, data);
+
+      // Return data regardless of status - we handle it in onSuccess
+      return data;
     },
     onSuccess: (data: ScanResult) => {
       if (!isMounted) return; // Prevent state updates if unmounted
@@ -222,13 +248,15 @@ export default function Gatekeeper() {
       }
       setScanInput("");
     },
-    onError: () => {
+    onError: (error: any) => {
       if (!isMounted) return; // Prevent state updates if unmounted
+
+      console.error(`❌ Scan error:`, error);
 
       setScanResult({
         success: false,
         status: "error",
-        message: "SCAN ERROR - TRY AGAIN",
+        message: error?.message || "Network error - check connection",
       });
       setTerminalState("denied");
       if (soundEnabled) playDeniedSound();
@@ -340,7 +368,7 @@ export default function Gatekeeper() {
                 "border-4 border-cyan-500/30",
                 "shadow-[0_0_60px_rgba(34,211,238,0.3)]",
                 terminalState === "standby" &&
-                "animate-[pulse_3s_ease-in-out_infinite]",
+                  "animate-[pulse_3s_ease-in-out_infinite]",
               )}
             >
               {terminalState === "scanning" ? (
@@ -520,10 +548,11 @@ export default function Gatekeeper() {
 
     return (
       <div
-        className={`fixed inset-0 z-50 ${isTooEarly
+        className={`fixed inset-0 z-50 ${
+          isTooEarly
             ? "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
             : "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
-          } flex flex-col cursor-pointer`}
+        } flex flex-col cursor-pointer`}
         onClick={resetTerminal}
       >
         <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
@@ -541,9 +570,7 @@ export default function Gatekeeper() {
             {isTooEarly ? "⏰ TOO EARLY" : "⚠ ALLOWED"}
           </h1>
           <p className="text-4xl text-white/90 mb-10 font-semibold">
-            {isTooEarly
-              ? "CLASS NOT STARTED YET"
-              : "PARTIAL FEE - BALANCE DUE"}
+            {isTooEarly ? "CLASS NOT STARTED YET" : "PARTIAL FEE - BALANCE DUE"}
           </p>
 
           {/* Student Info */}
@@ -570,7 +597,8 @@ export default function Gatekeeper() {
           </div>
 
           {/* Schedule Info for TOO EARLY or Balance for Partial */}
-          {isTooEarly && (scanResult.currentTime || scanResult.classStartTime) ? (
+          {isTooEarly &&
+          (scanResult.currentTime || scanResult.classStartTime) ? (
             <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
               <p className="text-xl text-white/80 text-center mb-4 uppercase tracking-wider">
                 Schedule Information
@@ -645,17 +673,17 @@ export default function Gatekeeper() {
         {/* Reason */}
         <div className="bg-white/20 rounded-3xl px-20 py-10 backdrop-blur-sm mb-10">
           <p className="text-5xl font-bold text-white text-center">
-            {scanResult?.status === "unknown" && "UNKNOWN ID"}
-            {scanResult?.status === "defaulter" && "FEE DEFAULTER"}
+            {scanResult?.status === "unknown" && "UNKNOWN STUDENT"}
+            {scanResult?.status === "defaulter" && "FEES PENDING"}
             {scanResult?.status === "blocked" && "ACCOUNT BLOCKED"}
+            {scanResult?.status === "no_class_today" && "NO CLASS TODAY"}
+            {scanResult?.status === "too_late" && "CLASS ENDED"}
             {scanResult?.status === "error" && "SCAN ERROR"}
             {!scanResult?.status && "VERIFICATION FAILED"}
           </p>
-          {scanResult?.message && (
-            <p className="text-2xl text-white/80 text-center mt-4">
-              {scanResult.message}
-            </p>
-          )}
+          <p className="text-2xl text-white/80 text-center mt-4">
+            {scanResult?.message || "Unknown error - contact admin"}
+          </p>
         </div>
 
         {/* Student Info if available */}
