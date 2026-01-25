@@ -72,7 +72,7 @@ const SettingsSchema = new mongoose.Schema(
         expenseSplit: {
             waqar: { type: Number, default: 40, min: 0, max: 100 },
             zahid: { type: Number, default: 30, min: 0, max: 100 },
-            saud:  { type: Number, default: 30, min: 0, max: 100 },
+            saud: { type: Number, default: 30, min: 0, max: 100 },
         },
 
         // Global Subject Fee Configuration (Peshawar Standard Rates)
@@ -137,7 +137,5 @@ SettingsSchema.pre('save', function () {
     }
 });
 
-// Ensure only one settings document exists (Singleton pattern)
-SettingsSchema.index({ _id: 1 }, { unique: true });
-
+// Note: _id is indexed by default, no need to declare it manually for uniqueness
 module.exports = mongoose.model('Settings', SettingsSchema);

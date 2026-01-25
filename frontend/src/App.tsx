@@ -30,6 +30,8 @@ import PublicRegister from "./pages/PublicRegister";
 import PendingApprovals from "./pages/PendingApprovals";
 import VerificationHub from "./pages/VerificationHub";
 import StudentPortal from "./pages/StudentPortal";
+import Lectures from "./pages/Lectures";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -208,6 +210,23 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <VerificationHub />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 3: Academic Video Module */}
+            <Route
+              path="/lectures"
+              element={
+                <ProtectedRoute>
+                  <Lectures />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute>
+                  <Reports />
                 </ProtectedRoute>
               }
             />

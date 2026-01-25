@@ -17,6 +17,14 @@ const ALL_PERMISSIONS = [
   "sessions",
   "configuration",
   "users",
+  "website",
+  "payroll",
+  "settlement",
+  "gatekeeper",
+  "frontdesk",
+  "inquiries",
+  "reports",
+  "lectures",
 ];
 
 // ========================================
@@ -350,6 +358,31 @@ exports.getPermissionsList = async (req, res) => {
       { key: "classes", label: "Classes", description: "Class management" },
       { key: "timetable", label: "Timetable", description: "Class timetables" },
       { key: "sessions", label: "Sessions", description: "Academic sessions" },
+      {
+        key: "gatekeeper",
+        label: "Gatekeeper",
+        description: "Gate scanning access",
+      },
+      {
+        key: "frontdesk",
+        label: "Front Desk",
+        description: "Admissions and inquiries hub",
+      },
+      {
+        key: "inquiries",
+        label: "Inquiries",
+        description: "Lead management",
+      },
+      {
+        key: "reports",
+        label: "Reports",
+        description: "Financial reports and settlement",
+      },
+      {
+        key: "lectures",
+        label: "Lectures",
+        description: "Academic video portal",
+      },
       {
         key: "configuration",
         label: "Configuration",

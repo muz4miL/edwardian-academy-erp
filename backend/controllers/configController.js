@@ -1,8 +1,8 @@
 const Configuration = require("../models/Configuration");
 
 exports.getConfig = async (req, res) => {
-  // Allow OWNER, OPERATOR, and PARTNER to access configuration
-  const allowedRoles = ["OWNER", "OPERATOR", "PARTNER"];
+  // Allow OWNER, OPERATOR, PARTNER, and TEACHER to access configuration
+  const allowedRoles = ["OWNER", "OPERATOR", "PARTNER", "TEACHER"];
   if (!allowedRoles.includes(req.user.role)) {
     return res.status(403).json({
       success: false,

@@ -20,6 +20,8 @@ import {
   ScanLine,
   UserCheck,
   ClipboardCheck,
+  Video,
+  BarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -57,7 +59,7 @@ const navItems = [
     icon: Phone,
     label: "Inquiries",
     path: "/leads",
-    permission: "dashboard", // Accessible to all logged-in users
+    permission: "inquiries",
   },
   { icon: BookOpen, label: "Classes", path: "/classes", permission: "classes" },
   {
@@ -77,13 +79,13 @@ const navItems = [
     icon: ScanLine,
     label: "Gate Scanner",
     path: "/gatekeeper",
-    permission: "dashboard",
+    permission: "gatekeeper",
   },
   {
     icon: ClipboardCheck,
     label: "Front Desk",
     path: "/front-desk",
-    permission: "admissions",
+    permission: "frontdesk",
   },
   {
     icon: Settings,
@@ -100,6 +102,18 @@ const navItems = [
     ownerOnly: true,
   },
   {
+    icon: Video,
+    label: "Lectures",
+    path: "/lectures",
+    permission: "lectures",
+  },
+  {
+    icon: BarChart,
+    label: "Reports",
+    path: "/reports",
+    permission: "reports",
+  },
+  {
     icon: Globe,
     label: "Website",
     path: "/website-manager",
@@ -110,14 +124,14 @@ const navItems = [
     icon: Banknote,
     label: "Payroll",
     path: "/payroll",
-    permission: "payroll",
+    permission: "reports", // Changed to use reports permission
     ownerOnly: true,
   },
   {
     icon: Handshake,
     label: "Settlement",
     path: "/partner-settlement",
-    permission: "settlement",
+    permission: "reports", // Changed to use reports permission
     ownerOnly: true,
   },
 ];
@@ -138,6 +152,9 @@ export function Sidebar() {
 
     // ownerOnly items are restricted to OWNER role
     if (item.ownerOnly) return false;
+
+    // Teachers automatically get access to lectures
+    if (user?.role === "TEACHER" && item.label === "Lectures") return true;
 
     // Check if user has permission for this item
     return userPermissions.includes(item.permission);

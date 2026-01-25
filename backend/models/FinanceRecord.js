@@ -70,7 +70,7 @@ const financeRecordSchema = new mongoose.Schema(
 );
 
 // Index for faster queries
-financeRecordSchema.index({ receiptId: 1 });
+// receiptId is already indexed due to unique: true in schema definition
 financeRecordSchema.index({ studentId: 1 });
 financeRecordSchema.index({ status: 1 });
 financeRecordSchema.index({ month: 1, year: 1 });

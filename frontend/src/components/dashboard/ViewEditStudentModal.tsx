@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Dialog,
     DialogContent,
@@ -20,11 +20,23 @@ import { User, DollarSign, Loader2, Eye, Edit, BookOpen, Phone } from "lucide-re
 import { studentApi } from "@/lib/api";
 import { toast } from "sonner";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
 interface ViewEditStudentModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     student: any | null;
     mode: "view" | "edit";
+}
+
+interface ClassInstance {
+    _id: string;
+    classTitle: string;
+    gradeLevel: string;
+    group: string;
+    days: string[];
+    startTime: string;
+    endTime: string;
 }
 
 // Subject options
@@ -55,6 +67,7 @@ export const ViewEditStudentModal = ({
     const [studentName, setStudentName] = useState("");
     const [fatherName, setFatherName] = useState("");
     const [studentClass, setStudentClass] = useState("");
+    const [selectedClassId, setSelectedClassId] = useState(""); // NEW: For class dropdown
     const [group, setGroup] = useState("");
     const [subjects, setSubjects] = useState<string[]>([]);
     const [parentCell, setParentCell] = useState("");
@@ -66,6 +79,21 @@ export const ViewEditStudentModal = ({
     const [totalFee, setTotalFee] = useState("");
     const [paidAmount, setPaidAmount] = useState("");
     const [balance, setBalance] = useState(0);
+
+    // Fetch active classes for the dropdown
+    const { data: classesData, isLoading: classesLoading } = useQuery({
+        queryKey: ["active-classes"],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE_URL}/api/classes`, {
+                credentials: "include",
+            });
+            if (!res.ok) throw new Error("Failed to fetch classes");
+            return res.json();
+        },
+        enabled: open, // Only fetch when modal is open
+    });
+
+    const activeClasses: ClassInstance[] = classesData?.data || [];
 
     // TASK 3: Real-time Status Preview - calculate live as user types
     const calculatePreviewStatus = (): "paid" | "partial" | "pending" => {
@@ -96,6 +124,17 @@ export const ViewEditStudentModal = ({
             setFatherName(student.fatherName || "");
             setStudentClass(student.class || "");
             setGroup(student.group || "");
+
+            // BUGFIX: Handle classRef - could be a populated object or just a string ID
+            // If it's an object with _id, use that. If it's a string, use it directly.
+            if (student.classRef) {
+                const classId = typeof student.classRef === 'object'
+                    ? student.classRef._id
+                    : student.classRef;
+                setSelectedClassId(classId || "");
+            } else {
+                setSelectedClassId("");
+            }
 
             // BUGFIX: Handle subjects as objects {name, fee} or strings
             const subjectNames = (student.subjects || []).map((s: any) =>
@@ -158,6 +197,7 @@ export const ViewEditStudentModal = ({
             studentName,
             fatherName,
             class: studentClass,
+            classRef: selectedClassId || undefined, // Include the class reference ID
             group,
             subjects,
             parentCell,
@@ -374,20 +414,39 @@ export const ViewEditStudentModal = ({
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="class">Class</Label>
-                                        <Select value={studentClass} onValueChange={setStudentClass}>
-                                            <SelectTrigger className="bg-background">
-                                                <SelectValue placeholder="Select class" />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-popover">
-                                                <SelectItem value="9th Grade">9th Grade</SelectItem>
-                                                <SelectItem value="10th Grade">10th Grade</SelectItem>
-                                                <SelectItem value="11th Grade">11th Grade</SelectItem>
-                                                <SelectItem value="12th Grade">12th Grade</SelectItem>
-                                                <SelectItem value="MDCAT Prep">MDCAT Prep</SelectItem>
-                                                <SelectItem value="ECAT Prep">ECAT Prep</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="class">Class / Batch</Label>
+                                        {classesLoading ? (
+                                            <div className="flex items-center justify-center h-10 bg-background rounded-md border">
+                                                <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                                            </div>
+                                        ) : (
+                                            <Select value={selectedClassId} onValueChange={(value) => {
+                                                setSelectedClassId(value);
+                                                // Also update the class display name for saving
+                                                const selectedClass = activeClasses.find(c => c._id === value);
+                                                if (selectedClass) {
+                                                    setStudentClass(selectedClass.classTitle);
+                                                    setGroup(selectedClass.group || group);
+                                                }
+                                            }}>
+                                                <SelectTrigger className="bg-background">
+                                                    <SelectValue placeholder="Select class/batch" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-popover">
+                                                    {activeClasses.length === 0 ? (
+                                                        <div className="p-3 text-sm text-muted-foreground text-center">
+                                                            No classes available
+                                                        </div>
+                                                    ) : (
+                                                        activeClasses.map((classItem) => (
+                                                            <SelectItem key={classItem._id} value={classItem._id}>
+                                                                {classItem.classTitle} ({classItem.gradeLevel})
+                                                            </SelectItem>
+                                                        ))
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="group">Group</Label>

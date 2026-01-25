@@ -12,7 +12,7 @@ export interface User {
   userId: string;
   username: string;
   fullName: string;
-  role: "OWNER" | "PARTNER" | "STAFF" | "OPERATOR";
+  role: "OWNER" | "PARTNER" | "STAFF" | "OPERATOR" | "TEACHER";
   permissions: string[]; // RBAC: Sidebar permissions
   walletBalance: number;
   floatingCash: number;

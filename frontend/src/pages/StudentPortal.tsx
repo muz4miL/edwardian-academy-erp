@@ -39,6 +39,7 @@ import {
   Hourglass,
   RefreshCw,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const API_BASE_URL =
@@ -378,7 +379,7 @@ export default function StudentPortal() {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-yellow-100">
-                    {profile.studentName || profile.name}
+                    {profile.name}
                   </h3>
                   <p className="text-sm text-yellow-100/60">
                     ID: {profile.barcodeId || profile.studentId}
@@ -448,289 +449,332 @@ export default function StudentPortal() {
     );
   }
 
-  // DASHBOARD SCREEN
+  // DASHBOARD SCREEN - "The Premium LMS Experience"
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0a0c10] text-slate-100 selection:bg-indigo-500/30">
+      {/* Background Decor */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[120px]" />
+      </div>
+
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-              <GraduationCap className="h-5 w-5 text-white" />
+      <header className="sticky top-0 z-50 bg-[#0a0c10]/80 backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <GraduationCap className="h-6 w-6 text-white" />
             </div>
-            <div>
-              <h1 className="font-bold text-gray-900">Edwardian Academy</h1>
-              <p className="text-xs text-gray-500">Student Portal</p>
+            <div className="hidden sm:block">
+              <h1 className="font-bold text-lg tracking-tight text-white">Edwardian Academy</h1>
+              <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.2em]">Student Portal</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="font-medium text-gray-900">{profile?.name}</p>
-              <p className="text-xs text-gray-500">
-                {profile?.class} ({profile?.group})
-              </p>
+
+          <div className="flex items-center gap-6">
+            <div className="hidden md:flex flex-col items-end">
+              <p className="text-sm font-semibold text-white">{profile?.name}</p>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">
+                  {profile?.class} • {profile?.group}
+                </p>
+              </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
+
+            <div className="h-10 w-[1px] bg-white/10 hidden md:block" />
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors"
+            >
+              <LogOut className="h-5 w-5" />
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Profile Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Student Info */}
-          <Card className="border-0 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                {profile?.photo ? (
-                  <img
-                    src={profile.photo}
-                    alt={profile.name}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <User className="h-8 w-8 text-indigo-600" />
-                  </div>
-                )}
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">
-                    {profile?.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    ID: {profile?.barcodeId || profile?.studentId}
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    {profile?.class} - {profile?.group}
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      <main className="max-w-[1600px] mx-auto px-6 py-10 relative z-10">
+        {/* Welcome Section */}
+        <section className="mb-12">
+          <h2 className="text-4xl font-serif font-bold text-white mb-2">
+            Welcome back, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">{profile?.name.split(' ')[0]}</span>.
+          </h2>
+          <p className="text-slate-400 text-lg">Continue your learning journey today.</p>
+        </section>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          {/* Quick Profile */}
+          <div className="bg-white/[0.03] border border-white/5 rounded-[2rem] p-8 flex items-center gap-6 backdrop-blur-md hover:bg-white/[0.05] transition-colors">
+            <div className="h-20 w-20 rounded-2xl bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+              <User className="h-10 w-10 text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-1">Student ID</p>
+              <h3 className="text-2xl font-mono font-bold text-white">
+                {profile?.barcodeId || profile?.studentId}
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">{profile?.class}</p>
+            </div>
+          </div>
 
           {/* Fee Status */}
-          <Card
-            className={`border-0 shadow-sm ${
+          <div className={cn(
+            "rounded-[2rem] p-8 flex items-center gap-6 backdrop-blur-md border transition-all duration-500",
+            profile?.feeStatus === "paid"
+              ? "bg-emerald-500/5 border-emerald-500/20"
+              : "bg-red-500/5 border-red-500/20"
+          )}>
+            <div className={cn(
+              "h-20 w-20 rounded-2xl flex items-center justify-center border",
               profile?.feeStatus === "paid"
-                ? "bg-emerald-50"
-                : profile?.feeStatus === "partial"
-                  ? "bg-amber-50"
-                  : "bg-red-50"
-            }`}
-          >
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div
-                  className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                    profile?.feeStatus === "paid"
-                      ? "bg-emerald-100"
-                      : profile?.feeStatus === "partial"
-                        ? "bg-amber-100"
-                        : "bg-red-100"
-                  }`}
-                >
-                  <CreditCard
-                    className={`h-8 w-8 ${
-                      profile?.feeStatus === "paid"
-                        ? "text-emerald-600"
-                        : profile?.feeStatus === "partial"
-                          ? "text-amber-600"
-                          : "text-red-600"
-                    }`}
-                  />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">
-                    Fee Status
-                  </h3>
-                  <p
-                    className={`font-semibold ${
-                      profile?.feeStatus === "paid"
-                        ? "text-emerald-600"
-                        : profile?.feeStatus === "partial"
-                          ? "text-amber-600"
-                          : "text-red-600"
-                    }`}
-                  >
-                    {profile?.feeStatus?.toUpperCase()}
-                  </p>
-                  {(profile?.balance || 0) > 0 && (
-                    <p className="text-sm text-gray-600">
-                      Balance: PKR {profile?.balance.toLocaleString()}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Session Info */}
-          <Card className="border-0 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Clock className="h-8 w-8 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">Session</h3>
-                  <p className="text-sm text-gray-600">
-                    {profile?.session?.name || "Current Session"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {profile?.subjects?.length || 0} Subjects Enrolled
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* My Subjects */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-indigo-600" />
-            My Subjects
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button
-              onClick={() => setActiveSubject(null)}
-              className={`p-4 rounded-xl border-2 text-left transition-all ${
-                activeSubject === null
-                  ? "border-indigo-500 bg-indigo-50"
-                  : "border-gray-200 bg-white hover:border-indigo-200"
-              }`}
-            >
-              <p className="font-semibold text-gray-900">All Videos</p>
-              <p className="text-sm text-gray-500">{videos.length} videos</p>
-            </button>
-            {profile?.subjects?.map((subject) => (
-              <button
-                key={subject.name}
-                onClick={() => setActiveSubject(subject.name)}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  activeSubject === subject.name
-                    ? "border-indigo-500 bg-indigo-50"
-                    : "border-gray-200 bg-white hover:border-indigo-200"
-                }`}
-              >
-                <p className="font-semibold text-gray-900">{subject.name}</p>
-                <p className="text-sm text-gray-500">
-                  {videosBySubject[subject.name]?.length || 0} videos
+                ? "bg-emerald-500/10 border-emerald-500/20"
+                : "bg-red-500/10 border-red-500/20"
+            )}>
+              <CreditCard className={cn(
+                "h-10 w-10",
+                profile?.feeStatus === "paid" ? "text-emerald-400" : "text-red-400"
+              )} />
+            </div>
+            <div>
+              <p className={cn(
+                "text-xs font-bold uppercase tracking-widest mb-1",
+                profile?.feeStatus === "paid" ? "text-emerald-400" : "text-red-400"
+              )}>Financial Status</p>
+              <h3 className="text-2xl font-bold text-white capitalize">
+                {profile?.feeStatus}
+              </h3>
+              {(profile?.balance || 0) > 0 ? (
+                <p className="text-sm text-red-400/80 mt-1 font-medium italic">
+                  Outstanding: PKR {profile?.balance.toLocaleString()}
                 </p>
-              </button>
-            ))}
+              ) : (
+                <p className="text-sm text-emerald-400/80 mt-1 font-medium">All dues cleared</p>
+              )}
+            </div>
+          </div>
+
+          {/* Session Progress */}
+          <div className="bg-white/[0.03] border border-white/5 rounded-[2rem] p-8 flex items-center gap-6 backdrop-blur-md">
+            <div className="h-20 w-20 rounded-2xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+              <Clock className="h-10 w-10 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-1">Active Session</p>
+              <h3 className="text-2xl font-bold text-white">
+                {profile?.session?.name || "Academic '26"}
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">
+                {profile?.subjects?.length || 0} Subjects Enrolled
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Video Library */}
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Video className="h-5 w-5 text-indigo-600" />
-            Video Library
-          </h2>
-
-          {videosLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-            </div>
-          ) : videos.length === 0 ? (
-            <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
-              <CardContent className="py-12 text-center">
-                <Video className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-600 mb-1">
-                  No Videos Yet
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Videos for your subjects will appear here
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {videos.map((video) => (
-                <Card
-                  key={video._id}
-                  className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-                  onClick={() => handlePlayVideo(video)}
+        {/* Browser Section */}
+        <div className="flex flex-col gap-12">
+          {/* Subject Navigation */}
+          <div>
+            <h3 className="text-xl font-bold text-white mb-6 px-2 flex items-center gap-3">
+              <BookOpen className="h-6 w-6 text-indigo-500" />
+              Course Categories
+            </h3>
+            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide no-scrollbar">
+              <button
+                onClick={() => setActiveSubject(null)}
+                className={cn(
+                  "px-8 py-4 rounded-2xl whitespace-nowrap font-semibold transition-all duration-300 border",
+                  activeSubject === null
+                    ? "bg-indigo-600 text-white border-indigo-500 shadow-xl shadow-indigo-600/20 translate-y-[-2px]"
+                    : "bg-white/[0.03] text-slate-400 border-white/5 hover:bg-white/[0.07] hover:border-white/10"
+                )}
+              >
+                All Courses
+              </button>
+              {profile?.subjects?.map((subject) => (
+                <button
+                  key={subject.name}
+                  onClick={() => setActiveSubject(subject.name)}
+                  className={cn(
+                    "px-8 py-4 rounded-2xl whitespace-nowrap font-semibold transition-all duration-300 border",
+                    activeSubject === subject.name
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-xl shadow-indigo-600/20 translate-y-[-2px]"
+                      : "bg-white/[0.03] text-slate-400 border-white/5 hover:bg-white/[0.07] hover:border-white/10"
+                  )}
                 >
-                  {/* Thumbnail */}
-                  <div className="relative aspect-video bg-gray-900">
-                    {video.thumbnail ? (
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Play className="h-12 w-12 text-white/50" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <div className="h-16 w-16 rounded-full bg-white/90 flex items-center justify-center">
-                        <Play className="h-6 w-6 text-indigo-600 ml-1" />
-                      </div>
-                    </div>
-                    {video.formattedDuration && (
-                      <span className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
-                        {video.formattedDuration}
-                      </span>
-                    )}
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1">
-                      {video.title}
-                    </h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <Badge variant="secondary" className="text-xs">
-                        {video.subjectName}
-                      </Badge>
-                      <span className="flex items-center gap-1">
-                        <Eye className="h-3.5 w-3.5" />
-                        {video.viewCount}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                  {subject.name}
+                </button>
               ))}
             </div>
-          )}
+          </div>
+
+          {/* Video Library */}
+          <div>
+            <div className="flex items-center justify-between mb-8 px-2">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <Video className="h-6 w-6 text-indigo-500" />
+                Lecture Library
+                {activeSubject && <span className="text-slate-500 font-normal ml-2">in {activeSubject}</span>}
+              </h3>
+              <Badge variant="outline" className="bg-indigo-500/5 text-indigo-400 border-indigo-500/20 px-4 py-1.5 rounded-full">
+                {videos.length} Lectures Available
+              </Badge>
+            </div>
+
+            {videosLoading ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-4">
+                <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                <p className="text-slate-500 font-medium italic">Streaming data from server...</p>
+              </div>
+            ) : videos.length === 0 ? (
+              <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-[3rem] py-24 text-center">
+                <Video className="h-20 w-20 text-slate-800 mx-auto mb-6" />
+                <h3 className="text-2xl font-bold text-slate-400 mb-2">No Content Found</h3>
+                <p className="text-slate-600 max-w-sm mx-auto">
+                  There are currently no recorded lectures for this category. Please check back later.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                {videos.map((video) => (
+                  <div
+                    key={video._id}
+                    className="group relative bg-[#13161c] border border-white/5 rounded-3xl overflow-hidden hover:border-indigo-500/50 transition-all duration-500 hover:translate-y-[-8px] hover:shadow-2xl hover:shadow-indigo-500/10 cursor-pointer"
+                    onClick={() => handlePlayVideo(video)}
+                  >
+                    {/* Thumbnail Wrapper */}
+                    <div className="relative aspect-[16/10] overflow-hidden">
+                      {video.thumbnail ? (
+                        <img
+                          src={video.thumbnail}
+                          alt={video.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-900 flex items-center justify-center">
+                          <Play className="h-12 w-12 text-white/20" />
+                        </div>
+                      )}
+
+                      {/* Durations Badge */}
+                      {video.formattedDuration && (
+                        <span className="absolute bottom-4 right-4 bg-black/80 backdrop-blur-md text-[10px] font-bold text-white px-3 py-1.5 rounded-lg border border-white/10">
+                          {video.formattedDuration}
+                        </span>
+                      )}
+
+                      {/* Play Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0a0c10] via-transparent to-transparent opacity-60" />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="h-16 w-16 rounded-full bg-indigo-600 flex items-center justify-center shadow-2xl shadow-indigo-500/50">
+                          <Play className="h-6 w-6 text-white translate-x-0.5" fill="currentColor" />
+                        </div>
+                      </div>
+
+                      {/* Subject Tag */}
+                      <div className="absolute top-4 left-4">
+                        <span className="px-3 py-1.5 rounded-lg bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                          {video.subjectName}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-6">
+                      <h3 className="font-bold text-lg text-white mb-2 line-clamp-2 leading-snug group-hover:text-indigo-400 transition-colors">
+                        {video.title}
+                      </h3>
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <div className="h-6 w-6 rounded-full bg-slate-800 flex items-center justify-center">
+                            <User className="h-3 w-3" />
+                          </div>
+                          <span className="text-xs font-medium">By Faculty Member</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-500">
+                          <Eye className="h-4 w-4" />
+                          <span className="text-xs font-bold">{video.viewCount}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
-      {/* Video Player Modal */}
+      {/* Modern Video Modal */}
       <Dialog
         open={!!selectedVideo}
         onOpenChange={() => setSelectedVideo(null)}
       >
-        <DialogContent className="sm:max-w-4xl p-0 overflow-hidden rounded-2xl">
-          <div className="aspect-video bg-black">
-            {selectedVideo && (
-              <iframe
-                src={getEmbedUrl(selectedVideo)}
-                title={selectedVideo.title}
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            )}
-          </div>
-          <div className="p-6">
-            <h3 className="font-bold text-xl text-gray-900 mb-2">
-              {selectedVideo?.title}
-            </h3>
-            {selectedVideo?.description && (
-              <p className="text-gray-600">{selectedVideo.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-4">
-              <Badge variant="secondary">{selectedVideo?.subjectName}</Badge>
-              {selectedVideo?.teacherName && (
-                <span className="text-sm text-gray-500">
-                  By {selectedVideo.teacherName}
-                </span>
+        <DialogContent className="max-w-6xl p-0 bg-black border-white/10 overflow-hidden rounded-[2rem] shadow-2xl shadow-indigo-500/10">
+          <div className="flex flex-col lg:flex-row h-full">
+            {/* Player Area */}
+            <div className="flex-[2] aspect-video lg:aspect-auto h-full min-h-[400px]">
+              {selectedVideo && (
+                <iframe
+                  src={getEmbedUrl(selectedVideo)}
+                  title={selectedVideo.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
               )}
+            </div>
+
+            {/* Sidebar Info */}
+            <div className="flex-1 p-8 lg:border-l border-white/5 bg-[#0d1015] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-indigo-400 mb-6">
+                  <span className="px-3 py-1 rounded bg-indigo-500/10 text-[10px] font-bold uppercase tracking-widest border border-indigo-500/20">
+                    {selectedVideo?.subjectName}
+                  </span>
+                  <div className="h-1 w-1 rounded-full bg-slate-700" />
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Lecture Content</span>
+                </div>
+
+                <h3 className="text-2xl font-serif font-bold text-white mb-4 line-clamp-3 leading-tight">
+                  {selectedVideo?.title}
+                </h3>
+
+                {selectedVideo?.description && (
+                  <p className="text-slate-400 text-sm leading-relaxed mb-6 font-medium">
+                    {selectedVideo.description}
+                  </p>
+                )}
+
+                <div className="space-y-4">
+                  <div className="bg-white/5 rounded-2xl p-4 flex items-center gap-3">
+                    <User className="h-5 w-5 text-indigo-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Instructor</p>
+                      <p className="text-sm font-bold text-white">{selectedVideo?.teacherName || "Academy Expert"}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-2xl p-4 flex items-center gap-3">
+                    <Eye className="h-5 w-5 text-purple-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Class Reach</p>
+                      <p className="text-sm font-bold text-white">{selectedVideo?.viewCount} Total Views</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 pt-8 border-t border-white/5">
+                <Button
+                  onClick={() => setSelectedVideo(null)}
+                  className="w-full h-12 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition-all"
+                >
+                  Close Theater View
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
@@ -738,3 +782,4 @@ export default function StudentPortal() {
     </div>
   );
 }
+

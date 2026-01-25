@@ -12,9 +12,16 @@ const PERMISSION_VALUES = [
   "timetable",
   "sessions",
   "configuration",
-  "users", // User Management - OWNER only in practice
-  "website", // Website CMS - OWNER only
-  "payroll", // Payroll Management - OWNER only
+  "users",
+  "website",
+  "payroll",
+  "settlement",
+  // New modules
+  "gatekeeper",
+  "frontdesk",
+  "inquiries",
+  "reports",
+  "lectures",
 ];
 
 const userSchema = new mongoose.Schema(
@@ -44,7 +51,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["OWNER", "PARTNER", "STAFF"],
+      enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"],
       required: true,
     },
     // RBAC: Permissions array controls which sidebar tabs the user can see
@@ -127,15 +134,15 @@ userSchema.methods.getPublicProfile = function () {
   const walletBalance =
     this.walletBalance && typeof this.walletBalance === "object"
       ? {
-          floating:
-            typeof this.walletBalance.floating === "number"
-              ? this.walletBalance.floating
-              : 0,
-          verified:
-            typeof this.walletBalance.verified === "number"
-              ? this.walletBalance.verified
-              : 0,
-        }
+        floating:
+          typeof this.walletBalance.floating === "number"
+            ? this.walletBalance.floating
+            : 0,
+        verified:
+          typeof this.walletBalance.verified === "number"
+            ? this.walletBalance.verified
+            : 0,
+      }
       : { floating: 0, verified: 0 };
 
   // OWNER gets all permissions automatically
@@ -152,7 +159,18 @@ userSchema.methods.getPublicProfile = function () {
       "sessions",
       "configuration",
       "users",
+      "website",
+      "payroll",
+      "settlement",
+      "gatekeeper",
+      "frontdesk",
+      "inquiries",
+      "reports",
+      "lectures",
     ];
+  } else if (this.role === "TEACHER") {
+    // Teachers get dashboard and lectures by default
+    permissions = ["dashboard", "lectures"];
   }
 
   return {

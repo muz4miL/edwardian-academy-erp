@@ -94,7 +94,7 @@ teacherPaymentSchema.pre('save', async function () {
 });
 
 // Indexes for faster queries
-teacherPaymentSchema.index({ voucherId: 1 });
+// voucherId is already indexed due to unique: true in schema definition
 teacherPaymentSchema.index({ teacherId: 1 });
 teacherPaymentSchema.index({ month: 1, year: 1 });
 teacherPaymentSchema.index({ status: 1 });

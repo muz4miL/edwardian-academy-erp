@@ -38,11 +38,25 @@ const parseTimeToMinutes = (timeStr) => {
 };
 
 /**
- * Helper: Get current day abbreviation (Mon, Tue, Wed, etc.)
+ * Helper: Get current Pakistan time as a proper Date object
+ * This ensures all time calculations use Asia/Karachi timezone
+ */
+const getPakistanTime = () => {
+  // Get current time in Pakistan timezone string format
+  const pakistanTimeString = new Date().toLocaleString("en-US", {
+    timeZone: "Asia/Karachi"
+  });
+  // Parse it back to a Date object for easy manipulation
+  return new Date(pakistanTimeString);
+};
+
+/**
+ * Helper: Get current day abbreviation (Mon, Tue, Wed, etc.) in Pakistan timezone
  */
 const getCurrentDayAbbrev = () => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return days[new Date().getDay()];
+  const pakistanTime = getPakistanTime();
+  return days[pakistanTime.getDay()];
 };
 
 /**
@@ -195,18 +209,16 @@ exports.scanBarcode = async (req, res) => {
     // ========================================
     const classDoc = student.classRef;
 
-    // Get Pakistan time (UTC+5)
-    const now = new Date();
-    const pakistanTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
-    );
-    const currentDay = getCurrentDayAbbrev();
-    const currentMinutes =
-      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+    // Get Pakistan time (UTC+5) - CRITICAL: Use getPakistanTime() helper
+    // This ensures both DAY and TIME are calculated from Pakistan timezone
+    const pakistanTime = getPakistanTime();
+    const currentDay = getCurrentDayAbbrev(); // Now correctly uses Pakistan timezone
+    const currentMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
 
-    console.log(`\n📅 SCHEDULE CHECK:`);
+    console.log(`\n📅 SCHEDULE CHECK (Pakistan Timezone):`);
     console.log(`   Pakistan Time: ${pakistanTime.toLocaleString("en-PK")}`);
-    console.log(`   Current Day: ${currentDay}`);
+    console.log(`   Current Day (PKT): ${currentDay}`);
+    console.log(`   Current Hour (PKT): ${pakistanTime.getHours()}:${pakistanTime.getMinutes().toString().padStart(2, '0')}`);
     console.log(
       `   Current Minutes: ${currentMinutes} (${formatMinutesToTime(currentMinutes)})`,
     );
@@ -351,9 +363,9 @@ exports.scanBarcode = async (req, res) => {
       },
       usedReceipt: usedReceipt
         ? {
-            receiptId: usedReceipt.receiptId,
-            version: usedReceipt.version,
-          }
+          receiptId: usedReceipt.receiptId,
+          version: usedReceipt.version,
+        }
         : null,
       scannedAt: new Date(),
     });
