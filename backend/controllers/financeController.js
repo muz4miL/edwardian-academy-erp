@@ -172,11 +172,11 @@ exports.getDashboardStats = async (req, res) => {
       const chemistryFilter =
         userRole === "PARTNER"
           ? {
-            collectedBy: collectedByMatch,
-            category: "Chemistry",
-            status: "VERIFIED",
-            type: "INCOME",
-          }
+              collectedBy: collectedByMatch,
+              category: "Chemistry",
+              status: "VERIFIED",
+              type: "INCOME",
+            }
           : { category: "Chemistry", status: "VERIFIED", type: "INCOME" };
 
       const chemistryResult = await Transaction.aggregate([
@@ -216,46 +216,90 @@ exports.getDashboardStats = async (req, res) => {
 
         stats.tuitionRevenue = tuitionResult?.[0]?.total ?? 0;
 
-        // Expense Debt (what partner owes to owner)
-        const totalExpenses = await Transaction.aggregate([
-          {
-            $match: {
-              type: "EXPENSE",
-              status: "VERIFIED",
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
-        ]);
+        // SRS 3.0: Get ACTUAL expense debt from Expense shares
+        // Find this partner's unpaid expense shares
+        const partnerExpenseDebts = await Expense.find({
+          "shares.partner": userId,
+          "shares.status": "UNPAID",
+        }).lean();
 
-        const totalExpenseAmount = totalExpenses?.[0]?.total ?? 0;
-        // Each partner owes 30% of total expenses
-        stats.expenseDebt = totalExpenseAmount * 0.3;
+        let expenseDebtTotal = 0;
+        const expenseDebtDetails = [];
+
+        for (const exp of partnerExpenseDebts) {
+          const myShare = exp.shares.find(
+            (s) =>
+              s.partner?.toString() === userId.toString() &&
+              s.status === "UNPAID",
+          );
+          if (myShare) {
+            expenseDebtTotal += myShare.amount;
+            expenseDebtDetails.push({
+              expenseId: exp._id,
+              title: exp.title,
+              totalAmount: exp.amount,
+              myShare: myShare.amount,
+              percentage: myShare.percentage,
+              paidBy: exp.paidByType,
+            });
+          }
+        }
+
+        stats.expenseDebt = expenseDebtTotal;
+        stats.expenseDebtDetails = expenseDebtDetails;
+        stats.hasExpenseDebt = expenseDebtTotal > 0; // Alert flag for UI
       }
 
       // 4. Owner-specific stats
       if (userRole === "OWNER") {
-        // Pending Reimbursements (Partner Debt)
-        const totalExpenses = await Transaction.aggregate([
-          {
-            $match: {
-              type: "EXPENSE",
-              status: "VERIFIED",
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
+        // SRS 3.0: Get pending reimbursements from actual Expense shares
+        const pendingReimbursements = await Expense.aggregate([
+          { $match: { "shares.status": "UNPAID" } },
+          { $unwind: "$shares" },
+          { $match: { "shares.status": "UNPAID" } },
+          { $group: { _id: null, total: { $sum: "$shares.amount" } } },
         ]);
 
-        const totalExpenseAmount = totalExpenses?.[0]?.total ?? 0;
-        // Partners owe 60% of expenses (30% each)
-        stats.pendingReimbursements = totalExpenseAmount * 0.6;
+        stats.pendingReimbursements = pendingReimbursements?.[0]?.total ?? 0;
 
-        // Academy Pool (30% shared revenue)
+        // Academy Pool (30% from staff tuition)
         const poolResult = await Transaction.aggregate([
-          { $match: { category: "Pool", status: "VERIFIED", type: "INCOME" } },
-          { $group: { _id: null, total: { $sum: "$amount" } } },
+          {
+            $match: {
+              stream: { $in: ["ACADEMY_POOL", "STAFF_TUITION"] },
+              status: "VERIFIED",
+              type: "INCOME",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.academyShare" },
+            },
+          },
         ]);
 
         stats.poolRevenue = poolResult?.[0]?.total ?? 0;
+
+        // Teacher Payables (70% owed to teachers)
+        const teacherPayables = await Transaction.aggregate([
+          {
+            $match: {
+              stream: "STAFF_TUITION",
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.isPaid": false,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.teacherShare" },
+            },
+          },
+        ]);
+
+        stats.teacherPayables = teacherPayables?.[0]?.total ?? 0;
       }
     }
 
@@ -867,7 +911,10 @@ exports.getPartnerPortalStats = async (req, res) => {
       });
     }
 
-    console.log("🏛️ Partner Portal Stats for:", req.user.fullName || req.user.username);
+    console.log(
+      "🏛️ Partner Portal Stats for:",
+      req.user.fullName || req.user.username,
+    );
     const collectedByMatch = { $in: [userId, userId.toString()] };
 
     // 1. CASH IN HAND: Floating (unverified) cash collected by this partner
@@ -894,7 +941,8 @@ exports.getPartnerPortalStats = async (req, res) => {
 
     for (const exp of myExpenses) {
       const myShare = exp.shares.find(
-        (s) => s.partner.toString() === userId.toString() && s.status === "UNPAID"
+        (s) =>
+          s.partner.toString() === userId.toString() && s.status === "UNPAID",
       );
       if (myShare) {
         expenseLiability += myShare.amount;
@@ -996,6 +1044,277 @@ exports.getPartnerPortalStats = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while fetching partner portal stats",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// SRS 3.0 MODULE 5: REFUND MECHANISM
+// =================================================
+
+// @desc    Process Student Refund (Financial Rollback)
+// @route   POST /api/finance/refund
+// @access  Protected (Owner/Admin Only)
+exports.processRefund = async (req, res) => {
+  try {
+    const { studentId, amount, reason, feeRecordId } = req.body;
+    const userId = req.user._id;
+
+    console.log("\n=== REFUND PROCESSING (SRS 3.0 Module 5) ===");
+    console.log("Student ID:", studentId);
+    console.log("Amount:", amount);
+    console.log("Reason:", reason);
+
+    // Validation
+    if (!studentId || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and refund amount are required",
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Refund amount must be greater than 0",
+      });
+    }
+
+    // Find the student
+    const Student = require("../models/Student");
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Find the original fee record (if provided)
+    let feeRecord = null;
+    let originalTransaction = null;
+    const FeeRecord = require("../models/FeeRecord");
+    const Teacher = require("../models/Teacher");
+
+    if (feeRecordId) {
+      feeRecord = await FeeRecord.findById(feeRecordId);
+    } else {
+      // Find the most recent paid fee record for this student
+      feeRecord = await FeeRecord.findOne({
+        student: studentId,
+        status: "PAID",
+      }).sort({ createdAt: -1 });
+    }
+
+    // Determine the reverse logic based on subject type
+    let stream = "ACADEMY_POOL";
+    let teacherDeduction = 0;
+    let academyDeduction = amount;
+    let teacher = null;
+    let isPartnerSubject = false;
+
+    if (feeRecord) {
+      // We have a specific fee record to reverse
+      const subjectLower = (feeRecord.subject || "").toLowerCase();
+
+      // Check if it was a partner subject
+      if (feeRecord.isPartnerTeacher) {
+        isPartnerSubject = true;
+
+        if (
+          subjectLower.includes("chemistry") ||
+          feeRecord.teacherName?.toLowerCase().includes("saud")
+        ) {
+          stream = "PARTNER_CHEMISTRY";
+        } else if (
+          subjectLower.includes("physics") ||
+          feeRecord.teacherName?.toLowerCase().includes("zahid")
+        ) {
+          stream = "PARTNER_PHYSICS";
+        } else {
+          stream = "ACADEMY_POOL";
+        }
+
+        // Partner subject: Full amount from partner
+        academyDeduction = 0;
+        teacherDeduction = amount;
+      } else {
+        // Staff subject: Apply reverse 70/30 logic
+        stream = "STAFF_TUITION";
+        const splitBreakdown = feeRecord.splitBreakdown || {
+          teacherPercentage: 70,
+          academyPercentage: 30,
+        };
+
+        teacherDeduction = Math.round(
+          (amount * splitBreakdown.teacherPercentage) / 100,
+        );
+        academyDeduction = amount - teacherDeduction;
+
+        // Find the teacher
+        if (feeRecord.teacher) {
+          teacher = await Teacher.findById(feeRecord.teacher);
+        }
+      }
+
+      // Find original transaction to mark as refunded
+      originalTransaction = await Transaction.findOne({
+        studentId: studentId,
+        type: "INCOME",
+        amount: feeRecord.amount,
+        createdAt: { $gte: feeRecord.createdAt },
+      }).sort({ createdAt: 1 });
+    }
+
+    console.log(`📊 Refund Stream: ${stream}`);
+    console.log(`💸 Teacher Deduction: PKR ${teacherDeduction}`);
+    console.log(`🏫 Academy Deduction: PKR ${academyDeduction}`);
+
+    // Case A: Partner Subject - Deduct from Partner Ledger
+    if (isPartnerSubject && stream !== "ACADEMY_POOL") {
+      console.log(`🎯 Case A: Partner Subject Refund`);
+
+      // Find the partner user and deduct from their wallet
+      const partnerName = stream === "PARTNER_CHEMISTRY" ? "saud" : "zahid";
+      const partnerUser = await User.findOne({
+        role: { $in: ["OWNER", "PARTNER"] },
+        fullName: { $regex: new RegExp(partnerName, "i") },
+      });
+
+      if (partnerUser && partnerUser.walletBalance) {
+        // Deduct from verified first, then floating
+        if (typeof partnerUser.walletBalance === "object") {
+          const verified = partnerUser.walletBalance.verified || 0;
+          if (verified >= amount) {
+            partnerUser.walletBalance.verified = verified - amount;
+          } else {
+            partnerUser.walletBalance.verified = 0;
+            partnerUser.walletBalance.floating =
+              (partnerUser.walletBalance.floating || 0) - (amount - verified);
+          }
+          await partnerUser.save();
+          console.log(
+            `✅ Deducted PKR ${amount} from ${partnerUser.fullName}'s ledger`,
+          );
+        }
+      }
+    }
+
+    // Case B: Staff Subject - Check teacher payment status
+    if (stream === "STAFF_TUITION" && teacher) {
+      console.log(`🎯 Case B: Staff Subject Refund`);
+
+      // Check if teacher was already paid their 70%
+      const teacherPaid = feeRecord?.splitBreakdown?.isPaid || false;
+
+      if (teacherPaid) {
+        // Teacher already paid - create negative balance for next month
+        teacher.balance = teacher.balance || { floating: 0, verified: 0 };
+        teacher.balance.verified =
+          (teacher.balance.verified || 0) - teacherDeduction;
+        await teacher.save();
+        console.log(
+          `⚠️ Teacher ${teacher.name} - Negative Balance: PKR ${teacherDeduction} (to recover)`,
+        );
+
+        // Create notification
+        await Notification.create({
+          recipient: teacher._id,
+          message: `⚠️ Refund processed for ${student.studentName}. PKR ${teacherDeduction.toLocaleString()} will be deducted from your next payment.`,
+          type: "FINANCE",
+        });
+      } else {
+        // Teacher not yet paid - reduce floating balance
+        teacher.balance = teacher.balance || { floating: 0, verified: 0 };
+        teacher.balance.floating = Math.max(
+          0,
+          (teacher.balance.floating || 0) - teacherDeduction,
+        );
+        await teacher.save();
+        console.log(
+          `✅ Reduced ${teacher.name}'s floating balance by PKR ${teacherDeduction}`,
+        );
+      }
+    }
+
+    // Update student's paid amount
+    student.paidAmount = Math.max(0, (student.paidAmount || 0) - amount);
+
+    // Recalculate fee status
+    const balance = student.totalFee - student.paidAmount;
+    if (balance <= 0) {
+      student.feeStatus = "paid";
+    } else if (student.paidAmount > 0) {
+      student.feeStatus = "partial";
+    } else {
+      student.feeStatus = "pending";
+    }
+    await student.save();
+
+    // Mark original transaction as refunded
+    if (originalTransaction) {
+      originalTransaction.status = "REFUNDED";
+      await originalTransaction.save();
+    }
+
+    // Create refund transaction for audit trail
+    const refundTransaction = await Transaction.create({
+      type: "REFUND",
+      category: "Refund",
+      stream,
+      amount,
+      description: `Refund: ${student.studentName} - ${reason || "Student withdrawal"}`,
+      collectedBy: userId,
+      status: "VERIFIED",
+      studentId: student._id,
+      originalTransactionId: originalTransaction?._id,
+      splitDetails: {
+        teacherShare: teacherDeduction,
+        academyShare: academyDeduction,
+        teacherId: teacher?._id,
+        teacherName: teacher?.name,
+        isPaid: true, // Refund is processed
+      },
+      date: new Date(),
+    });
+
+    // Update fee record status
+    if (feeRecord) {
+      feeRecord.status = "REFUNDED";
+      feeRecord.refundAmount = amount;
+      feeRecord.refundDate = new Date();
+      feeRecord.refundReason = reason;
+      await feeRecord.save();
+    }
+
+    console.log("✅ Refund processed successfully");
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Refund of PKR ${amount.toLocaleString()} processed for ${student.studentName}`,
+      data: {
+        refundTransaction,
+        breakdown: {
+          total: amount,
+          teacherDeduction,
+          academyDeduction,
+          stream,
+          isPartnerSubject,
+        },
+        student: {
+          id: student._id,
+          name: student.studentName,
+          newPaidAmount: student.paidAmount,
+          feeStatus: student.feeStatus,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error processing refund:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process refund",
       error: error.message,
     });
   }

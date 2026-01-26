@@ -107,6 +107,30 @@ const feeRecordSchema = new mongoose.Schema(
       trim: true,
       maxlength: 500,
     },
+    // Refund tracking (SRS 3.0 Module 5)
+    refundAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    refundDate: {
+      type: Date,
+    },
+    refundReason: {
+      type: String,
+      trim: true,
+    },
+    // Source of revenue rule (for audit)
+    revenueSource: {
+      type: String,
+      enum: [
+        "class-partner-mode",
+        "partner-100-rule",
+        "partner-standard-split",
+        "standard-split",
+        "configuration",
+      ],
+    },
   },
   {
     timestamps: true,

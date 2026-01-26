@@ -1,6 +1,6 @@
 /**
  * Student Portal - "Luxury Academic" Premium Edition
- * 
+ *
  * Prestigious Gold/Bronze Theme with Warm Glass Aesthetic
  */
 
@@ -12,14 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,36 +87,39 @@ interface VideoItem {
 }
 
 // Subject color mapping with gradients
-const SUBJECT_COLORS: Record<string, { gradient: string; icon: string; glow: string; border?: string }> = {
+const SUBJECT_COLORS: Record<
+  string,
+  { gradient: string; icon: string; glow: string; border?: string }
+> = {
   Biology: {
     gradient: "from-emerald-500/20 via-emerald-500/10 to-teal-500/5",
     icon: "🧬",
     glow: "shadow-emerald-500/20",
-    border: "group-hover:border-emerald-500/50"
+    border: "group-hover:border-emerald-500/50",
   },
   Physics: {
     gradient: "from-amber-500/10 via-amber-500/5 to-yellow-500/5",
     icon: "⚛️",
     glow: "shadow-amber-500/10",
-    border: "group-hover:border-amber-500/50"
+    border: "group-hover:border-amber-500/50",
   },
   Chemistry: {
     gradient: "from-amber-500/10 via-amber-500/5 to-orange-500/5",
     icon: "🧪",
     glow: "shadow-amber-500/10",
-    border: "group-hover:border-amber-500/50"
+    border: "group-hover:border-amber-500/50",
   },
   Mathematics: {
     gradient: "from-yellow-500/10 via-yellow-500/5 to-pink-500/5",
     icon: "📐",
     glow: "shadow-yellow-500/10",
-    border: "group-hover:border-yellow-500/50"
+    border: "group-hover:border-yellow-500/50",
   },
   English: {
     gradient: "from-cyan-500/10 via-cyan-500/5 to-blue-500/5",
     icon: "📚",
     glow: "shadow-cyan-500/10",
-    border: "group-hover:border-cyan-500/50"
+    border: "group-hover:border-cyan-500/50",
   },
 };
 
@@ -217,13 +214,10 @@ export function StudentPortal() {
   const { data: scheduleData } = useQuery({
     queryKey: ["student-schedule", token],
     queryFn: async () => {
-      const res = await fetch(
-        `${API_BASE_URL}/api/student-portal/schedule`,
-        {
-          credentials: "include",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/api/student-portal/schedule`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Failed to fetch schedule");
       return res.json();
     },
@@ -240,13 +234,10 @@ export function StudentPortal() {
       const classId = profile?.classRef?._id || profile?.classRef;
       if (!classId) return { data: [] };
 
-      const res = await fetch(
-        `${API_BASE_URL}/api/exams/class/${classId}`,
-        {
-          credentials: "include",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/api/exams/class/${classId}`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Failed to fetch exams");
       return res.json();
     },
@@ -254,7 +245,9 @@ export function StudentPortal() {
   });
 
   const exams = examsData?.data || [];
-  const upcomingExams = exams.filter((e: any) => new Date() <= new Date(e.endTime));
+  const upcomingExams = exams.filter(
+    (e: any) => new Date() <= new Date(e.endTime),
+  );
   const pastExams = exams.filter((e: any) => new Date() > new Date(e.endTime));
 
   // Record video view
@@ -286,7 +279,7 @@ export function StudentPortal() {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
-    } catch { }
+    } catch {}
     setIsLoggedIn(false);
     setToken(null);
     setProfile(null);
@@ -355,7 +348,10 @@ export function StudentPortal() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="username" className="text-stone-300 text-sm font-medium">
+                  <Label
+                    htmlFor="username"
+                    className="text-stone-300 text-sm font-medium"
+                  >
                     Student ID / Barcode ID
                   </Label>
                   <Input
@@ -373,7 +369,10 @@ export function StudentPortal() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-stone-300 text-sm font-medium">
+                  <Label
+                    htmlFor="password"
+                    className="text-stone-300 text-sm font-medium"
+                  >
                     Password
                   </Label>
                   <Input
@@ -409,7 +408,10 @@ export function StudentPortal() {
               <div className="text-center">
                 <p className="text-sm text-stone-400">
                   Don't have an account?{" "}
-                  <a href="/register" className="text-amber-400 hover:text-indigo-300 underline">
+                  <a
+                    href="/register"
+                    className="text-amber-400 hover:text-indigo-300 underline"
+                  >
                     Register here
                   </a>
                 </p>
@@ -445,8 +447,12 @@ export function StudentPortal() {
               </div>
 
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Verification Pending</h1>
-                <p className="text-stone-400">Your account is awaiting approval</p>
+                <h1 className="text-3xl font-bold text-white mb-2">
+                  Verification Pending
+                </h1>
+                <p className="text-stone-400">
+                  Your account is awaiting approval
+                </p>
               </div>
 
               <div className="bg-stone-800/50 border border-stone-700 rounded-xl p-6">
@@ -455,7 +461,9 @@ export function StudentPortal() {
                     <User className="h-6 w-6 text-amber-400" />
                   </div>
                   <div className="text-left">
-                    <h3 className="text-lg font-semibold text-white">{profile.name}</h3>
+                    <h3 className="text-lg font-semibold text-white">
+                      {profile.name}
+                    </h3>
                     <p className="text-sm text-stone-400 font-mono">
                       ID: {profile.barcodeId || profile.studentId}
                     </p>
@@ -488,7 +496,9 @@ export function StudentPortal() {
   }
 
   // Calculate fee percentage
-  const feePercentage = profile ? Math.round((profile.paidAmount / profile.totalFee) * 100) : 0;
+  const feePercentage = profile
+    ? Math.round((profile.paidAmount / profile.totalFee) * 100)
+    : 0;
 
   // MAIN DASHBOARD - LUXURY ACADEMIC AESTHETIC
   return (
@@ -513,30 +523,41 @@ export function StudentPortal() {
               className="h-12 w-auto object-contain"
             />
             <div className="hidden sm:block">
-              <p className="text-[10px] font-semibold text-amber-500/70 uppercase tracking-widest">Student Portal</p>
+              <p className="text-[10px] font-semibold text-amber-500/70 uppercase tracking-widest">
+                Student Portal
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2 hover:bg-white/5">
+                <Button
+                  variant="ghost"
+                  className="flex items-center gap-2 hover:bg-white/5"
+                >
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center">
                     <span className="text-stone-900 text-sm font-bold">
                       {profile?.name?.charAt(0) || "S"}
                     </span>
                   </div>
                   <div className="hidden md:block text-left">
-                    <p className="text-sm font-semibold text-white">{profile?.name}</p>
+                    <p className="text-sm font-semibold text-white">
+                      {profile?.name}
+                    </p>
                     <p className="text-xs text-stone-400 font-mono">
                       {profile?.barcodeId || profile?.studentId}
                     </p>
                   </div>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-stone-900/95 backdrop-blur-xl border-amber-500/20">
-                <DropdownMenuLabel className="text-white">My Account</DropdownMenuLabel>
+              <DropdownMenuContent
+                align="end"
+                className="w-56 bg-stone-900/95 backdrop-blur-xl border-amber-500/20"
+              >
+                <DropdownMenuLabel className="text-white">
+                  My Account
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-amber-500/20" />
                 <DropdownMenuItem className="text-stone-300 focus:bg-amber-500/10 focus:text-white">
                   <User className="mr-2 h-4 w-4" />
@@ -547,7 +568,10 @@ export function StudentPortal() {
                   <span>Fee Status: {profile?.feeStatus}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-amber-500/20" />
-                <DropdownMenuItem onClick={handleLogout} className="text-red-400 focus:bg-red-500/10 focus:text-red-400">
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-400 focus:bg-red-500/10 focus:text-red-400"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Logout</span>
                 </DropdownMenuItem>
@@ -590,13 +614,17 @@ export function StudentPortal() {
                   {/* Quick Stats Grid */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
-                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-1">Class & Group</p>
+                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-1">
+                        Class & Group
+                      </p>
                       <p className="text-xl font-bold font-mono text-white">
                         {profile?.class} • {profile?.group}
                       </p>
                     </div>
                     <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
-                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-1">Subjects</p>
+                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-1">
+                        Subjects
+                      </p>
                       <p className="text-xl font-bold font-mono text-white">
                         {profile?.subjects?.length || 0} Enrolled
                       </p>
@@ -611,18 +639,28 @@ export function StudentPortal() {
                       <Clock className="h-5 w-5 text-amber-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs font-semibold text-amber-400 uppercase tracking-widest">Next Class</p>
+                      <p className="text-xs font-semibold text-amber-400 uppercase tracking-widest">
+                        Next Class
+                      </p>
                       {nextClass ? (
                         <div>
                           <p className="text-lg font-bold text-white">
-                            {nextClass.dayFull}{nextClass.isToday && <span className="ml-2 text-xs text-amber-400">(Today!)</span>}
+                            {nextClass.dayFull}
+                            {nextClass.isToday && (
+                              <span className="ml-2 text-xs text-amber-400">
+                                (Today!)
+                              </span>
+                            )}
                           </p>
                           <p className="text-sm text-stone-400">
-                            {nextClass.startTime} - {nextClass.endTime} • {nextClass.roomNumber}
+                            {nextClass.startTime} - {nextClass.endTime} •{" "}
+                            {nextClass.roomNumber}
                           </p>
                         </div>
                       ) : (
-                        <p className="text-lg font-medium text-stone-400">No upcoming class</p>
+                        <p className="text-lg font-medium text-stone-400">
+                          No upcoming class
+                        </p>
                       )}
                     </div>
                   </div>
@@ -670,7 +708,13 @@ export function StudentPortal() {
                           paddingAngle={2}
                           dataKey="value"
                         >
-                          <Cell fill={profile?.feeStatus === "paid" ? "#10b981" : "#f59e0b"} />
+                          <Cell
+                            fill={
+                              profile?.feeStatus === "paid"
+                                ? "#10b981"
+                                : "#f59e0b"
+                            }
+                          />
                           <Cell fill="#1e293b" />
                         </Pie>
                       </PieChart>
@@ -712,7 +756,9 @@ export function StudentPortal() {
                   <div className="space-y-4">
                     <div>
                       <div className="flex justify-between mb-2">
-                        <span className="text-sm text-stone-400">Videos Watched</span>
+                        <span className="text-sm text-stone-400">
+                          Videos Watched
+                        </span>
                         <span className="text-sm font-bold font-mono text-white">
                           {videos.length}
                         </span>
@@ -720,17 +766,23 @@ export function StudentPortal() {
                       <div className="h-2 bg-stone-800 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-yellow-500 to-pink-500"
-                          style={{ width: `${Math.min(videos.length * 10, 100)}%` }}
+                          style={{
+                            width: `${Math.min(videos.length * 10, 100)}%`,
+                          }}
                         />
                       </div>
                     </div>
 
                     <div className="bg-gradient-to-br from-yellow-500/10 to-pink-500/5 border border-yellow-500/20 rounded-xl p-4">
-                      <p className="text-xs font-semibold text-yellow-400 uppercase tracking-widest mb-1">Total Content</p>
+                      <p className="text-xs font-semibold text-yellow-400 uppercase tracking-widest mb-1">
+                        Total Content
+                      </p>
                       <p className="text-3xl font-bold font-mono text-white">
                         {videos.length}
                       </p>
-                      <p className="text-xs text-stone-400">Lectures Available</p>
+                      <p className="text-xs text-stone-400">
+                        Lectures Available
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -755,36 +807,46 @@ export function StudentPortal() {
                   <div className="space-y-3">
                     {upcomingExams.length === 0 ? (
                       <div className="bg-white/5 border border-white/5 rounded-xl p-4 text-center">
-                        <p className="text-xs text-stone-500">No exams scheduled currently.</p>
+                        <p className="text-xs text-stone-500">
+                          No exams scheduled currently.
+                        </p>
                       </div>
                     ) : (
                       upcomingExams.map((exam: any) => {
-                        const isLive = new Date() >= new Date(exam.startTime) && new Date() <= new Date(exam.endTime);
+                        const isLive =
+                          new Date() >= new Date(exam.startTime) &&
+                          new Date() <= new Date(exam.endTime);
                         const hasSubmitted = !!exam.mySubmission;
-                        
+
                         return (
                           <div
                             key={exam._id}
                             className={cn(
                               "bg-white/5 border transition-all rounded-xl p-4",
-                              hasSubmitted 
-                                ? "border-emerald-500/30 bg-emerald-500/5" 
-                                : isLive 
-                                  ? "border-amber-500/30 bg-amber-500/5" 
-                                  : "border-white/5"
+                              hasSubmitted
+                                ? "border-emerald-500/30 bg-emerald-500/5"
+                                : isLive
+                                  ? "border-amber-500/30 bg-amber-500/5"
+                                  : "border-white/5",
                             )}
                           >
                             <div className="flex justify-between items-start mb-2">
                               <div>
-                                <p className="text-sm font-bold text-white">{exam.title}</p>
-                                <p className="text-[10px] text-stone-400 uppercase tracking-wider">{exam.subject}</p>
+                                <p className="text-sm font-bold text-white">
+                                  {exam.title}
+                                </p>
+                                <p className="text-[10px] text-stone-400 uppercase tracking-wider">
+                                  {exam.subject}
+                                </p>
                               </div>
                               {hasSubmitted ? (
                                 <Badge className="bg-emerald-500 text-white text-[10px] font-bold h-5">
                                   ✓ Completed
                                 </Badge>
                               ) : isLive ? (
-                                <Badge className="bg-amber-500 text-stone-900 text-[10px] font-bold h-5">LIVE</Badge>
+                                <Badge className="bg-amber-500 text-stone-900 text-[10px] font-bold h-5">
+                                  LIVE
+                                </Badge>
                               ) : null}
                             </div>
 
@@ -803,22 +865,26 @@ export function StudentPortal() {
                                     </div>
                                     <div>
                                       <p className="text-xs font-bold text-emerald-400">
-                                        Score: {exam.mySubmission.score}/{exam.mySubmission.totalMarks}
+                                        Score: {exam.mySubmission.score}/
+                                        {exam.mySubmission.totalMarks}
                                       </p>
                                       <p className="text-[10px] text-emerald-400/70">
-                                        {exam.mySubmission.percentage}% • Grade {exam.mySubmission.grade}
+                                        {exam.mySubmission.percentage}% • Grade{" "}
+                                        {exam.mySubmission.grade}
                                       </p>
                                     </div>
                                   </div>
-                                  <Badge 
+                                  <Badge
                                     className={cn(
                                       "text-[10px] font-bold",
-                                      exam.mySubmission.isPassed 
+                                      exam.mySubmission.isPassed
                                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                        : "bg-red-500/20 text-red-400 border border-red-500/30"
+                                        : "bg-red-500/20 text-red-400 border border-red-500/30",
                                     )}
                                   >
-                                    {exam.mySubmission.isPassed ? "PASSED" : "FAILED"}
+                                    {exam.mySubmission.isPassed
+                                      ? "PASSED"
+                                      : "FAILED"}
                                   </Badge>
                                 </div>
                               </div>
@@ -826,10 +892,14 @@ export function StudentPortal() {
                               <Button
                                 onClick={() => {
                                   if (isLive) {
-                                    window.open(`/exam/${exam._id}`, "_blank", "width=1200,height=800,menubar=no,toolbar=no,location=no");
+                                    window.open(
+                                      `/exam/${exam._id}`,
+                                      "_blank",
+                                      "width=1200,height=800,menubar=no,toolbar=no,location=no",
+                                    );
                                   } else {
                                     toast.info("Exam starting soon", {
-                                      description: `This exam is scheduled for ${new Date(exam.startTime).toLocaleString()}.`
+                                      description: `This exam is scheduled for ${new Date(exam.startTime).toLocaleString()}.`,
                                     });
                                   }
                                 }}
@@ -837,7 +907,7 @@ export function StudentPortal() {
                                   "w-full h-9 text-xs font-bold transition-all",
                                   isLive
                                     ? "bg-amber-500 hover:bg-amber-600 text-stone-900"
-                                    : "bg-stone-800 text-stone-400 cursor-not-allowed"
+                                    : "bg-stone-800 text-stone-400 cursor-not-allowed",
                                 )}
                               >
                                 {isLive ? "Enter Exam Room" : "Locked"}
@@ -865,63 +935,84 @@ export function StudentPortal() {
             <Card className="bg-stone-900/40 backdrop-blur-xl border border-amber-500/20 shadow-[inset_0_1px_0_0_rgba(212,175,55,0.1)] mb-8">
               <CardContent className="p-6">
                 <div className="grid grid-cols-7 gap-3">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                    const daySchedule = schedule.find((s: any) => s.day === day);
-                    const isScheduled = !!daySchedule;
-                    const today = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
-                    const isToday = day === today;
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                    (day) => {
+                      const daySchedule = schedule.find(
+                        (s: any) => s.day === day,
+                      );
+                      const isScheduled = !!daySchedule;
+                      const today = [
+                        "Sun",
+                        "Mon",
+                        "Tue",
+                        "Wed",
+                        "Thu",
+                        "Fri",
+                        "Sat",
+                      ][new Date().getDay()];
+                      const isToday = day === today;
 
-                    return (
-                      <div
-                        key={day}
-                        className={cn(
-                          "relative rounded-xl p-4 transition-all duration-300 min-h-[120px]",
-                          isScheduled
-                            ? "bg-gradient-to-br from-amber-500/15 to-yellow-500/5 border border-amber-500/30 shadow-lg shadow-amber-500/10"
-                            : "bg-stone-800/30 border border-stone-700/30",
-                          isToday && "ring-2 ring-amber-500/50"
-                        )}
-                      >
-                        {/* Day Header */}
-                        <div className={cn(
-                          "text-xs font-bold uppercase tracking-widest mb-2",
-                          isScheduled ? "text-amber-400" : "text-stone-500"
-                        )}>
-                          {day}
-                          {isToday && (
-                            <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-stone-900 rounded text-[10px] font-bold">
-                              Today
-                            </span>
+                      return (
+                        <div
+                          key={day}
+                          className={cn(
+                            "relative rounded-xl p-4 transition-all duration-300 min-h-[120px]",
+                            isScheduled
+                              ? "bg-gradient-to-br from-amber-500/15 to-yellow-500/5 border border-amber-500/30 shadow-lg shadow-amber-500/10"
+                              : "bg-stone-800/30 border border-stone-700/30",
+                            isToday && "ring-2 ring-amber-500/50",
                           )}
-                        </div>
-
-                        {isScheduled ? (
-                          <div className="space-y-1">
-                            <p className="text-sm font-bold text-white">
-                              {daySchedule.startTime} - {daySchedule.endTime}
-                            </p>
-                            <p className="text-xs text-amber-300/80">
-                              {daySchedule.roomNumber}
-                            </p>
-                            {daySchedule.subjects?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {daySchedule.subjects.slice(0, 2).map((subj: string) => (
-                                  <span key={subj} className="text-[10px] px-1.5 py-0.5 bg-white/10 text-white rounded">
-                                    {subj}
-                                  </span>
-                                ))}
-                              </div>
+                        >
+                          {/* Day Header */}
+                          <div
+                            className={cn(
+                              "text-xs font-bold uppercase tracking-widest mb-2",
+                              isScheduled ? "text-amber-400" : "text-stone-500",
+                            )}
+                          >
+                            {day}
+                            {isToday && (
+                              <span className="ml-1 px-1.5 py-0.5 bg-amber-500 text-stone-900 rounded text-[10px] font-bold">
+                                Today
+                              </span>
                             )}
                           </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-16 opacity-40">
-                            <span className="text-2xl">😴</span>
-                            <span className="text-[10px] text-stone-500 mt-1">Rest Day</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+                          {isScheduled ? (
+                            <div className="space-y-1">
+                              <p className="text-sm font-bold text-white">
+                                {daySchedule.startTime} - {daySchedule.endTime}
+                              </p>
+                              <p className="text-xs text-amber-300/80">
+                                {daySchedule.roomNumber}
+                              </p>
+                              {daySchedule.subjects?.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {daySchedule.subjects
+                                    .slice(0, 2)
+                                    .map((subj: string) => (
+                                      <span
+                                        key={subj}
+                                        className="text-[10px] px-1.5 py-0.5 bg-white/10 text-white rounded"
+                                      >
+                                        {subj}
+                                      </span>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-16 opacity-40">
+                              <span className="text-2xl">😴</span>
+                              <span className="text-[10px] text-stone-500 mt-1">
+                                Rest Day
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -947,18 +1038,23 @@ export function StudentPortal() {
                 onClick={() => setActiveSubject(null)}
                 className="cursor-pointer"
               >
-                <Card className={cn(
-                  "bg-stone-900/40 backdrop-blur-xl border transition-all duration-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]",
-                  activeSubject === null
-                    ? "border-amber-500/50 shadow-lg shadow-amber-500/20"
-                    : "border-white/10 hover:border-white/20"
-                )}>
+                <Card
+                  className={cn(
+                    "bg-stone-900/40 backdrop-blur-xl border transition-all duration-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]",
+                    activeSubject === null
+                      ? "border-amber-500/50 shadow-lg shadow-amber-500/20"
+                      : "border-white/10 hover:border-white/20",
+                  )}
+                >
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-yellow-500/5 flex items-center justify-center border border-amber-500/20">
                         <span className="text-2xl">📚</span>
                       </div>
-                      <Badge variant="secondary" className="font-mono bg-white/5 text-white border-white/10">
+                      <Badge
+                        variant="secondary"
+                        className="font-mono bg-white/5 text-white border-white/10"
+                      >
                         {videos.length}
                       </Badge>
                     </div>
@@ -972,7 +1068,8 @@ export function StudentPortal() {
 
               {/* Subject Cards */}
               {profile?.subjects?.map((subject, index) => {
-                const colors = SUBJECT_COLORS[subject.name] || SUBJECT_COLORS.Mathematics;
+                const colors =
+                  SUBJECT_COLORS[subject.name] || SUBJECT_COLORS.Mathematics;
                 return (
                   <motion.div
                     key={subject.name}
@@ -984,21 +1081,26 @@ export function StudentPortal() {
                     onClick={() => setActiveSubject(subject.name)}
                     className="cursor-pointer group"
                   >
-                    <Card className={cn(
-                      "backdrop-blur-xl border transition-all duration-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] bg-stone-900/40",
-                      `bg-gradient-to-br ${colors.gradient}`,
-                      activeSubject === subject.name
-                        ? "border-amber-500/50 shadow-lg shadow-amber-500/20"
-                        : "border-white/10 hover:border-white/20",
-                      colors.glow,
-                      colors.border
-                    )}>
+                    <Card
+                      className={cn(
+                        "backdrop-blur-xl border transition-all duration-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] bg-stone-900/40",
+                        `bg-gradient-to-br ${colors.gradient}`,
+                        activeSubject === subject.name
+                          ? "border-amber-500/50 shadow-lg shadow-amber-500/20"
+                          : "border-white/10 hover:border-white/20",
+                        colors.glow,
+                        colors.border,
+                      )}
+                    >
                       <CardContent className="p-6 relative overflow-hidden">
                         <div className="flex items-center justify-between mb-4 relative z-10">
                           <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20">
                             <span className="text-2xl">{colors.icon}</span>
                           </div>
-                          <Badge variant="secondary" className="font-mono bg-white/10 text-white border-white/20">
+                          <Badge
+                            variant="secondary"
+                            className="font-mono bg-white/10 text-white border-white/20"
+                          >
                             {videosBySubject[subject.name]?.length || 0}
                           </Badge>
                         </div>
@@ -1033,7 +1135,10 @@ export function StudentPortal() {
                   </span>
                 )}
               </h3>
-              <Badge variant="outline" className="bg-amber-500/5 text-amber-400 border-amber-500/20 px-4 py-1.5 rounded-full font-mono">
+              <Badge
+                variant="outline"
+                className="bg-amber-500/5 text-amber-400 border-amber-500/20 px-4 py-1.5 rounded-full font-mono"
+              >
                 {videos.length} Available
               </Badge>
             </div>
@@ -1065,12 +1170,15 @@ export function StudentPortal() {
                     You're All Caught Up! 🎉
                   </h3>
                   <p className="text-stone-400 mb-6">
-                    No new lectures available for {activeSubject || "your subjects"} right now.
+                    No new lectures available for{" "}
+                    {activeSubject || "your subjects"} right now.
                   </p>
 
                   {/* Next Session Countdown */}
                   <div className="bg-gradient-to-br from-amber-500/10 to-yellow-500/5 border border-amber-500/20 rounded-xl p-6 inline-block">
-                    <p className="text-xs font-semibold text-amber-400 uppercase tracking-widest mb-2">Next Live Session</p>
+                    <p className="text-xs font-semibold text-amber-400 uppercase tracking-widest mb-2">
+                      Next Live Session
+                    </p>
                     <p className="text-2xl font-bold text-white mb-1">
                       {profile?.session?.name || "Coming Soon"}
                     </p>
@@ -1123,7 +1231,10 @@ export function StudentPortal() {
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-16 h-16 rounded-full bg-amber-600 flex items-center justify-center shadow-2xl shadow-amber-500/50">
-                              <Play className="h-6 w-6 text-white transtone-x-0.5" fill="currentColor" />
+                              <Play
+                                className="h-6 w-6 text-white transtone-x-0.5"
+                                fill="currentColor"
+                              />
                             </div>
                           </div>
                         </div>
@@ -1144,7 +1255,9 @@ export function StudentPortal() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-stone-400">
                             <Eye className="h-3.5 w-3.5" />
-                            <span className="text-xs font-mono">{video.viewCount}</span>
+                            <span className="text-xs font-mono">
+                              {video.viewCount}
+                            </span>
                           </div>
                           {video.teacherName && (
                             <span className="text-xs text-stone-400 truncate">
@@ -1203,15 +1316,23 @@ export function StudentPortal() {
                   <div className="bg-white/5 rounded-xl p-3 flex items-center gap-3">
                     <User className="h-4 w-4 text-amber-400" />
                     <div>
-                      <p className="text-[10px] font-bold text-stone-500 uppercase">Instructor</p>
-                      <p className="text-sm font-bold text-white">{selectedVideo?.teacherName || "Academy Expert"}</p>
+                      <p className="text-[10px] font-bold text-stone-500 uppercase">
+                        Instructor
+                      </p>
+                      <p className="text-sm font-bold text-white">
+                        {selectedVideo?.teacherName || "Academy Expert"}
+                      </p>
                     </div>
                   </div>
                   <div className="bg-white/5 rounded-xl p-3 flex items-center gap-3">
                     <Eye className="h-4 w-4 text-yellow-400" />
                     <div>
-                      <p className="text-[10px] font-bold text-stone-500 uppercase">Views</p>
-                      <p className="text-sm font-bold text-white font-mono">{selectedVideo?.viewCount}</p>
+                      <p className="text-[10px] font-bold text-stone-500 uppercase">
+                        Views
+                      </p>
+                      <p className="text-sm font-bold text-white font-mono">
+                        {selectedVideo?.viewCount}
+                      </p>
                     </div>
                   </div>
                 </div>

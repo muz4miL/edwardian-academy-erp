@@ -4,7 +4,7 @@ const transactionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["INCOME", "EXPENSE", "PARTNER_WITHDRAWAL"],
+      enum: ["INCOME", "EXPENSE", "PARTNER_WITHDRAWAL", "REFUND"],
       required: [true, "Transaction type is required"],
     },
     category: {
@@ -17,8 +17,22 @@ const transactionSchema = new mongoose.Schema(
         "Utilities",
         "Salaries",
         "Miscellaneous",
+        "Refund",
       ],
       required: [true, "Category is required"],
+    },
+    // SRS 3.0: Financial Stream (Which revenue pool does this belong to?)
+    stream: {
+      type: String,
+      enum: [
+        "ACADEMY_POOL", // 30% from staff tuition → Waqar's Academy
+        "PARTNER_CHEMISTRY", // Saud's Chemistry income
+        "PARTNER_PHYSICS", // Zahid's Physics income
+        "PARTNER_ETEA", // ETEA prep courses
+        "STAFF_TUITION", // Staff-taught subjects (70/30 split)
+        "JOINT_POOL", // Shared expenses pool
+      ],
+      default: "ACADEMY_POOL",
     },
     amount: {
       type: Number,
@@ -35,12 +49,27 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["FLOATING", "VERIFIED", "CANCELLED"],
+      enum: ["FLOATING", "VERIFIED", "CANCELLED", "REFUNDED"],
       default: "FLOATING",
+    },
+    // SRS 3.0: Split Details (for 70/30 staff logic)
+    splitDetails: {
+      teacherShare: { type: Number, default: 0 }, // Amount (e.g., 7000)
+      academyShare: { type: Number, default: 0 }, // Amount (e.g., 3000)
+      teacherPercentage: { type: Number, default: 0 }, // Percentage (e.g., 70)
+      academyPercentage: { type: Number, default: 0 }, // Percentage (e.g., 30)
+      teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
+      teacherName: { type: String },
+      isPaid: { type: Boolean, default: false }, // Has teacher been paid?
     },
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Student",
+    },
+    // For refund tracking
+    originalTransactionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Transaction",
     },
     date: {
       type: Date,

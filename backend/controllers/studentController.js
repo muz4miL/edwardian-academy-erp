@@ -227,7 +227,7 @@ exports.updateStudent = async (req, res) => {
       const newClass = await Class.findByIdAndUpdate(
         newClassRef,
         { $inc: { enrolledCount: 1 } },
-        { new: true }
+        { new: true },
       ).populate("assignedTeacher");
 
       if (newClass) {
@@ -254,7 +254,10 @@ exports.updateStudent = async (req, res) => {
         }
 
         // Recalculate total fee from subjects
-        const totalFee = student.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+        const totalFee = student.subjects.reduce(
+          (sum, s) => sum + (s.fee || 0),
+          0,
+        );
         student.totalFee = totalFee;
       } else {
         return res.status(404).json({
@@ -286,7 +289,10 @@ exports.updateStudent = async (req, res) => {
     if (req.body.subjects && !isClassChanging) {
       student.subjects = req.body.subjects;
       // Recalculate total fee
-      const totalFee = student.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+      const totalFee = student.subjects.reduce(
+        (sum, s) => sum + (s.fee || 0),
+        0,
+      );
       student.totalFee = totalFee;
     }
 
@@ -517,26 +523,66 @@ exports.collectFee = async (req, res) => {
     await student.save();
     console.log("✅ Student paidAmount updated to:", student.paidAmount);
 
-    // Create Transaction for the ledger (type: INCOME)
+    // SRS 3.0: Determine the financial stream
+    let transactionStream = "STAFF_TUITION"; // Default for staff teachers
+    const subjectLower = (subject || "").toLowerCase();
+
+    if (isPartnerTeacher || isClassPartnerMode) {
+      // Partner subject - 100% goes to partner, FLOATING until they close
+      if (
+        subjectLower.includes("chemistry") ||
+        teacher?.name?.toLowerCase().includes("saud")
+      ) {
+        transactionStream = "PARTNER_CHEMISTRY";
+      } else if (
+        subjectLower.includes("physics") ||
+        teacher?.name?.toLowerCase().includes("zahid")
+      ) {
+        transactionStream = "PARTNER_PHYSICS";
+      } else if (subjectLower.includes("etea")) {
+        transactionStream = "PARTNER_ETEA";
+      } else {
+        transactionStream = "ACADEMY_POOL"; // Waqar's subjects
+      }
+    }
+
+    // Create Transaction for the ledger (type: INCOME) with SRS 3.0 fields
     const transaction = await Transaction.create({
       type: "INCOME",
       category: subject === "Chemistry" ? "Chemistry" : "Tuition",
+      stream: transactionStream, // SRS 3.0: Financial stream
       amount,
       description: `Fee payment: ${student.studentName} - ${month} (${subject || "General"})`,
       collectedBy: req.user?._id,
       status: "FLOATING", // Will be verified when partner closes day
       studentId: student._id,
+      // SRS 3.0: Split details for staff subjects
+      splitDetails: {
+        teacherShare,
+        academyShare,
+        teacherPercentage,
+        academyPercentage,
+        teacherId: teacher?._id,
+        teacherName: teacher?.name,
+        isPaid: false, // Not yet paid to teacher
+      },
       date: new Date(),
     });
 
-    console.log("✅ Transaction created:", transaction._id);
+    console.log(
+      `✅ Transaction created: ${transaction._id} | Stream: ${transactionStream}`,
+    );
 
     // Update Teacher's floating balance (if teacher found)
     if (teacher) {
-      // Find or create User record for teacher (teachers may have linked user accounts)
-      // For now, we'll track in a separate way or update Teacher model
+      // Update teacher's balance field
+      if (!teacher.balance) {
+        teacher.balance = { floating: 0, verified: 0 };
+      }
+      teacher.balance.floating = (teacher.balance.floating || 0) + teacherShare;
+      await teacher.save();
       console.log(
-        `📤 Teacher ${teacher.name} should receive PKR ${teacherShare} (floating)`,
+        `📤 Teacher ${teacher.name} floating balance: PKR ${teacher.balance.floating}`,
       );
 
       // Create notification for teacher

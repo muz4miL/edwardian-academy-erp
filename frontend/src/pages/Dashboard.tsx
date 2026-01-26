@@ -365,39 +365,26 @@ const PartnerDashboard = () => {
     floatingCash: 0,
     tuitionRevenue: 0,
     expenseDebt: 0,
+    hasExpenseDebt: false,
+    expenseDebtDetails: [] as any[],
   });
 
   // Fetch dashboard stats
   const fetchStats = async () => {
     try {
-      // Fetch general stats
+      // Fetch general stats (SRS 3.0 - includes expense debt from Expense shares)
       const res = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, {
         credentials: "include",
       });
       const data = await res.json();
 
-      // Fetch expense debt from Module 3 endpoint
-      let expenseDebt = 0;
-      try {
-        const debtRes = await fetch(
-          `${API_BASE_URL}/finance/partner-expense-debt`,
-          {
-            credentials: "include",
-          },
-        );
-        const debtData = await debtRes.json();
-        if (debtData.success) {
-          expenseDebt = debtData.data.totalDebt || 0;
-        }
-      } catch (debtErr) {
-        console.error("Error fetching expense debt:", debtErr);
-      }
-
       if (data.success) {
         setStats({
           floatingCash: data.data.floatingCash || 0,
           tuitionRevenue: data.data.tuitionRevenue || 0,
-          expenseDebt: expenseDebt,
+          expenseDebt: data.data.expenseDebt || 0,
+          hasExpenseDebt: data.data.hasExpenseDebt || false,
+          expenseDebtDetails: data.data.expenseDebtDetails || [],
         });
       }
     } catch (err) {
@@ -590,25 +577,50 @@ const PartnerDashboard = () => {
           </div>
         </div>
 
-        {/* 3. Expense Debt (Red - Warning) */}
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-red-500">
+        {/* 3. Expense Debt (Red - Warning) - SRS 3.0 Module 3 */}
+        <div
+          className={`group relative overflow-hidden rounded-2xl backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 ${
+            stats.expenseDebt > 0
+              ? "bg-red-50 border-red-500 animate-pulse"
+              : "bg-white/90 border-slate-300"
+          }`}
+        >
+          {/* Prominent Alert Badge for Outstanding Debt */}
+          {stats.expenseDebt > 0 && (
+            <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg rounded-tr-lg shadow-lg">
+              ACTION REQUIRED
+            </div>
+          )}
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Payable to Sir Waqar
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR{" "}
+              <p
+                className={`text-sm font-medium mb-2 ${stats.expenseDebt > 0 ? "text-red-700" : "text-slate-600"}`}
+              >
                 {stats.expenseDebt > 0
-                  ? Math.round(stats.expenseDebt / 1000)
-                  : 0}
-                K
+                  ? "⚠️ Expense Payable"
+                  : "Payable to Sir Waqar"}
               </p>
-              <p className="text-xs text-red-600 font-medium">
-                Your share of expenses
+              <p
+                className={`text-4xl font-bold mb-1 ${stats.expenseDebt > 0 ? "text-red-600" : "text-slate-900"}`}
+              >
+                PKR{" "}
+                {stats.expenseDebt > 0 ? stats.expenseDebt.toLocaleString() : 0}
+              </p>
+              <p
+                className={`text-xs font-medium ${stats.expenseDebt > 0 ? "text-red-500" : "text-slate-500"}`}
+              >
+                {stats.expenseDebt > 0
+                  ? `You owe Sir Waqar this amount`
+                  : "No outstanding expenses"}
               </p>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-lg">
+            <div
+              className={`flex h-14 w-14 items-center justify-center rounded-xl shadow-lg ${
+                stats.expenseDebt > 0
+                  ? "bg-red-500 text-white"
+                  : "bg-red-100 text-red-600"
+              }`}
+            >
               <AlertCircle className="h-7 w-7" />
             </div>
           </div>
