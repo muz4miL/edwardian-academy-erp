@@ -1,12 +1,12 @@
 /**
- * Public Registration Page - Compact Version
+ * Public Registration Page - Midnight Glass Edition
  *
- * Allows students/parents to register online without login.
- * Submissions go to "Pending" status for admin approval.
+ * Premium dark theme matching the Student Portal aesthetic
  */
 
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { GraduationCap, CheckCircle2, Loader2 } from "lucide-react";
+import { GraduationCap, CheckCircle2, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 const API_BASE_URL =
@@ -97,208 +97,244 @@ export default function PublicRegister() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // SUCCESS STATE
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-lg text-center shadow-xl border-0">
-          <CardContent className="pt-12 pb-8">
-            <div className="h-20 w-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">
-              Application Submitted!
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Your application is pending verification.
-            </p>
+      <div className="min-h-screen bg-[#0c0a09] relative overflow-hidden flex items-center justify-center p-4">
+        {/* Rich Void Background */}
+        <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))]" />
 
-            <div className="bg-gray-50 rounded-xl p-6 text-left mb-6">
-              <h3 className="font-semibold text-gray-800 mb-3">
-                Application Details
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Application ID:</span>
-                  <span className="font-mono font-medium">
-                    {submittedData?.applicationId}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Student Name:</span>
-                  <span className="font-medium">
-                    {submittedData?.studentName}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Status:</span>
-                  <span className="font-medium text-amber-600">
-                    Pending Verification
-                  </span>
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djJoMnYtMmgtMnptMC00aDJ2Mmgtdi0yem0wIDhoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wLTEwaDF2NGgtMXYtNHptLTIgMGgxdjRoLTF2LTR6bTQgMGgxdjRoLTF2LTR6bTIgMGgxdjRoLTF2LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="relative z-10 w-full max-w-lg"
+        >
+          <Card className="bg-stone-900/40 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] shadow-2xl">
+            <CardContent className="pt-12 pb-8 px-8 text-center">
+              {/* Success Icon */}
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto mb-6 relative">
+                <CheckCircle2 className="h-12 w-12 text-emerald-400" />
+                <div className="absolute inset-0 rounded-full bg-emerald-400/10 animate-ping"></div>
+              </div>
+
+              <h2 className="text-4xl font-bold text-white mb-3">
+                Application Submitted!
+              </h2>
+              <p className="text-stone-400 mb-8 text-lg">
+                Your application is pending verification.
+              </p>
+
+              {/* Application Details */}
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 text-left mb-6">
+                <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-4">
+                  Application Details
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-stone-400">Application ID:</span>
+                    <span className="font-mono font-bold text-white">
+                      {submittedData?.applicationId}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-stone-400">Student Name:</span>
+                    <span className="font-semibold text-white">
+                      {submittedData?.studentName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-stone-400">Status:</span>
+                    <span className="font-semibold text-amber-400">
+                      Pending Verification
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-              <p className="text-sm text-indigo-900 font-medium mb-2">
-                📍 Next Steps:
-              </p>
-              <p className="text-sm text-indigo-800">
-                Please visit the <strong>administration office</strong> with
-                your documents to verify your admission and receive your login
-                credentials.
-              </p>
-            </div>
+              {/* Next Steps */}
+              <div className="bg-gradient-to-br from-amber-500/10 to-yellow-500/5 border border-amber-500/20 rounded-xl p-5 mb-8">
+                <p className="text-sm font-semibold text-amber-400 uppercase tracking-widest mb-2">
+                  📍 Next Steps
+                </p>
+                <p className="text-sm text-stone-300 leading-relaxed">
+                  Please visit the <strong className="text-white">administration office</strong> with
+                  your documents to verify your admission and receive your login
+                  credentials.
+                </p>
+              </div>
 
-            <Button
-              onClick={() => {
-                setIsSubmitted(false);
-                setFormData({
-                  studentName: "",
-                  fatherName: "",
-                  parentCell: "",
-                  studentCell: "",
-                  email: "",
-                  address: "",
-                  class: "",
-                });
-              }}
-              variant="outline"
-              className="w-full"
-            >
-              Register Another Student
-            </Button>
-          </CardContent>
-        </Card>
+              <Button
+                onClick={() => {
+                  setIsSubmitted(false);
+                  setFormData({
+                    studentName: "",
+                    fatherName: "",
+                    parentCell: "",
+                    studentCell: "",
+                    email: "",
+                    address: "",
+                    class: "",
+                  });
+                }}
+                className="w-full h-12 bg-stone-800 hover:bg-stone-700 text-white font-semibold rounded-xl transition-all"
+              >
+                Register Another Student
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     );
   }
 
+  // REGISTRATION FORM
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-3xl">
-        {/* Compact Header */}
-        <div className="text-center mb-6">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <GraduationCap className="h-7 w-7 text-white" />
+    <div className="min-h-screen bg-[#0c0a09] relative overflow-hidden flex items-center justify-center p-4">
+      {/* Rich Void Background */}
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.3),rgba(255,255,255,0))]" />
+
+      {/* Grid Pattern */}
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djJoMnYtMmgtMnptMC00aDJ2Mmgtdi0yem0wIDhoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wLTEwaDF2NGgtMXYtNHptLTIgMGgxdjRoLTF2LTR6bTQgMGgxdjRoLTF2LTR6bTIgMGgxdjRoLTF2LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+
+      <div className="relative z-10 w-full max-w-3xl">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/30">
+            <GraduationCap className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">
+          <h1 className="text-4xl font-bold text-white mb-2">
             Edwardian Academy
           </h1>
-          <p className="text-gray-600">Online Admission Registration Form</p>
-        </div>
+          <p className="text-stone-400 text-lg">Online Admission Registration Form</p>
+        </motion.div>
 
-        {/* Compact Form Card */}
-        <Card className="shadow-xl border-0">
-          <CardContent className="p-8">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Row 1: Student Name | Father Name */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-700">
-                    Student Name <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    placeholder="Full name as per documents"
-                    value={formData.studentName}
-                    onChange={(e) =>
-                      handleInputChange("studentName", e.target.value)
-                    }
-                    className="mt-1"
-                  />
+        {/* Form Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="bg-stone-900/40 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] shadow-2xl">
+            <CardContent className="p-8">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Row 1: Student Name | Father Name */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">
+                      Student Name <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      placeholder="Full name as per documents"
+                      value={formData.studentName}
+                      onChange={(e) =>
+                        handleInputChange("studentName", e.target.value)
+                      }
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">
+                      Father's Name <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      placeholder="Father's full name"
+                      value={formData.fatherName}
+                      onChange={(e) =>
+                        handleInputChange("fatherName", e.target.value)
+                      }
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-gray-700">
-                    Father's Name <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    placeholder="Father's full name"
-                    value={formData.fatherName}
-                    onChange={(e) =>
-                      handleInputChange("fatherName", e.target.value)
-                    }
-                    className="mt-1"
-                  />
-                </div>
-              </div>
 
-              {/* Row 2: Parent Phone | Student Phone */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-700">
-                    Parent's Phone <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    placeholder="03XX-XXXXXXX"
-                    value={formData.parentCell}
-                    onChange={(e) =>
-                      handleInputChange("parentCell", e.target.value)
-                    }
-                    className="mt-1"
-                  />
+                {/* Row 2: Parent Phone | Student Phone */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">
+                      Parent's Phone <span className="text-red-400">*</span>
+                    </Label>
+                    <Input
+                      placeholder="03XX-XXXXXXX"
+                      value={formData.parentCell}
+                      onChange={(e) =>
+                        handleInputChange("parentCell", e.target.value)
+                      }
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">
+                      Student's Phone (Optional)
+                    </Label>
+                    <Input
+                      placeholder="03XX-XXXXXXX"
+                      value={formData.studentCell}
+                      onChange={(e) =>
+                        handleInputChange("studentCell", e.target.value)
+                      }
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-gray-700">
-                    Student's Phone (Optional)
-                  </Label>
-                  <Input
-                    placeholder="03XX-XXXXXXX"
-                    value={formData.studentCell}
-                    onChange={(e) =>
-                      handleInputChange("studentCell", e.target.value)
-                    }
-                    className="mt-1"
-                  />
-                </div>
-              </div>
 
-              {/* Row 3: Email | Address */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-700">Email Address</Label>
-                  <Input
-                    type="email"
-                    placeholder="email@example.com"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange("email", e.target.value)}
-                    className="mt-1"
-                  />
+                {/* Row 3: Email | Address */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">Email Address</Label>
+                    <Input
+                      type="email"
+                      placeholder="email@example.com"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-stone-300 text-sm font-medium mb-2 block">Address</Label>
+                    <Input
+                      placeholder="City / Area"
+                      value={formData.address}
+                      onChange={(e) =>
+                        handleInputChange("address", e.target.value)
+                      }
+                      className="bg-stone-800/50 border-stone-700 text-white placeholder:text-stone-500 focus:border-amber-500 focus:ring-amber-500/20 h-11"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-gray-700">Address</Label>
-                  <Input
-                    placeholder="City / Area"
-                    value={formData.address}
-                    onChange={(e) =>
-                      handleInputChange("address", e.target.value)
-                    }
-                    className="mt-1"
-                  />
-                </div>
-              </div>
 
-              {/* Row 4: Select Desired Batch | Submit */}
-              <div className="grid grid-cols-2 gap-4 items-end">
+                {/* Row 4: Select Batch */}
                 <div>
-                  <Label className="text-gray-700">
-                    Select Desired Batch <span className="text-red-500">*</span>
+                  <Label className="text-stone-300 text-sm font-medium mb-2 block">
+                    Select Desired Batch <span className="text-red-400">*</span>
                   </Label>
                   <Select
                     value={formData.class}
                     onValueChange={(value) => handleInputChange("class", value)}
                   >
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="bg-stone-800/50 border-stone-700 text-white h-11">
                       <SelectValue placeholder="Select batch" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-stone-900/95 backdrop-blur-xl border-white/10">
                       {classes.map((cls: any) => (
-                        <SelectItem key={cls._id} value={cls._id}>
+                        <SelectItem
+                          key={cls._id}
+                          value={cls._id}
+                          className="text-white focus:bg-white/5 focus:text-white"
+                        >
                           <div className="flex flex-col">
                             <span className="font-medium">
                               {cls.classTitle ||
                                 `${cls.gradeLevel} - ${cls.section}`}
                             </span>
                             {cls.scheduleDisplay && (
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-stone-400">
                                 {cls.scheduleDisplay}
                               </span>
                             )}
@@ -309,26 +345,33 @@ export default function PublicRegister() {
                   </Select>
                 </div>
 
+                {/* Submit Button */}
                 <Button
                   type="submit"
                   disabled={registerMutation.isPending}
-                  className="h-10 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                  className="w-full h-12 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-semibold shadow-lg shadow-amber-500/30 transition-all duration-300"
                 >
                   {registerMutation.isPending ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                      Submitting...
+                    </>
                   ) : (
-                    "Submit Application"
+                    <>
+                      Submit Application
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
                   )}
                 </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Footer */}
-        <p className="text-center text-gray-500 text-sm mt-4">
+        <p className="text-center text-stone-400 text-sm mt-6">
           Already registered?{" "}
-          <a href="/student-portal" className="text-indigo-600 hover:underline">
+          <a href="/student-portal" className="text-amber-400 hover:text-indigo-300 underline font-medium">
             Login to Student Portal
           </a>
         </p>

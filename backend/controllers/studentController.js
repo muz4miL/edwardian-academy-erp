@@ -202,18 +202,77 @@ exports.updateStudent = async (req, res) => {
       });
     }
 
-    // Update fields
+    // Check if class is changing (classRef)
+    const oldClassRef = student.classRef?.toString();
+    const newClassRef = req.body.classRef;
+    const isClassChanging = newClassRef && oldClassRef !== newClassRef;
+
+    console.log(`\n=== UPDATE STUDENT ===`);
+    console.log(`Student: ${student.studentName}`);
+    console.log(`Old Class Ref: ${oldClassRef || "none"}`);
+    console.log(`New Class Ref: ${newClassRef || "none"}`);
+    console.log(`Is Class Changing: ${isClassChanging}`);
+
+    // If class is changing, update Class documents' enrolledCount
+    if (isClassChanging) {
+      // Remove from old class
+      if (oldClassRef) {
+        await Class.findByIdAndUpdate(oldClassRef, {
+          $inc: { enrolledCount: -1 },
+        });
+        console.log(`📤 Removed from old class: ${oldClassRef}`);
+      }
+
+      // Add to new class
+      const newClass = await Class.findByIdAndUpdate(
+        newClassRef,
+        { $inc: { enrolledCount: 1 } },
+        { new: true }
+      ).populate("assignedTeacher");
+
+      if (newClass) {
+        console.log(`📥 Added to new class: ${newClass.classTitle}`);
+
+        // Update student's class-related fields
+        student.classRef = newClassRef;
+        student.class = newClass.classTitle || newClass.displayName;
+        student.group = newClass.group;
+
+        // Copy subjects from new class
+        if (newClass.subjects && newClass.subjects.length > 0) {
+          student.subjects = newClass.subjects.map((s) => ({
+            name: s.name,
+            fee: s.fee || 0,
+          }));
+        }
+
+        // Update assigned teacher
+        if (newClass.assignedTeacher) {
+          student.assignedTeacher = newClass.assignedTeacher._id;
+          student.assignedTeacherName =
+            newClass.assignedTeacher.name || newClass.teacherName;
+        }
+
+        // Recalculate total fee from subjects
+        const totalFee = student.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+        student.totalFee = totalFee;
+      } else {
+        return res.status(404).json({
+          success: false,
+          message: "New class not found",
+        });
+      }
+    }
+
+    // Update other allowed fields
     const allowedUpdates = [
       "studentName",
       "fatherName",
-      "class",
-      "group",
       "address",
       "parentCell",
       "studentCell",
       "email",
       "status",
-      "totalFee",
       "paidAmount",
     ];
 
@@ -223,7 +282,27 @@ exports.updateStudent = async (req, res) => {
       }
     });
 
+    // Handle subjects update separately (if provided and class isn't changing)
+    if (req.body.subjects && !isClassChanging) {
+      student.subjects = req.body.subjects;
+      // Recalculate total fee
+      const totalFee = student.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+      student.totalFee = totalFee;
+    }
+
+    // Recalculate fee status
+    const balance = student.totalFee - student.paidAmount;
+    if (balance <= 0) {
+      student.feeStatus = "paid";
+    } else if (student.paidAmount > 0) {
+      student.feeStatus = "partial";
+    } else {
+      student.feeStatus = "pending";
+    }
+
     await student.save();
+
+    console.log(`✅ Student updated: ${student.studentName}`);
 
     res.status(200).json({
       success: true,

@@ -38,25 +38,11 @@ const parseTimeToMinutes = (timeStr) => {
 };
 
 /**
- * Helper: Get current Pakistan time as a proper Date object
- * This ensures all time calculations use Asia/Karachi timezone
- */
-const getPakistanTime = () => {
-  // Get current time in Pakistan timezone string format
-  const pakistanTimeString = new Date().toLocaleString("en-US", {
-    timeZone: "Asia/Karachi"
-  });
-  // Parse it back to a Date object for easy manipulation
-  return new Date(pakistanTimeString);
-};
-
-/**
- * Helper: Get current day abbreviation (Mon, Tue, Wed, etc.) in Pakistan timezone
+ * Helper: Get current day abbreviation (Mon, Tue, Wed, etc.)
  */
 const getCurrentDayAbbrev = () => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const pakistanTime = getPakistanTime();
-  return days[pakistanTime.getDay()];
+  return days[new Date().getDay()];
 };
 
 /**
@@ -209,16 +195,18 @@ exports.scanBarcode = async (req, res) => {
     // ========================================
     const classDoc = student.classRef;
 
-    // Get Pakistan time (UTC+5) - CRITICAL: Use getPakistanTime() helper
-    // This ensures both DAY and TIME are calculated from Pakistan timezone
-    const pakistanTime = getPakistanTime();
-    const currentDay = getCurrentDayAbbrev(); // Now correctly uses Pakistan timezone
-    const currentMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+    // Get Pakistan time (UTC+5)
+    const now = new Date();
+    const pakistanTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
+    );
+    const currentDay = getCurrentDayAbbrev();
+    const currentMinutes =
+      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
 
-    console.log(`\n📅 SCHEDULE CHECK (Pakistan Timezone):`);
+    console.log(`\n📅 SCHEDULE CHECK:`);
     console.log(`   Pakistan Time: ${pakistanTime.toLocaleString("en-PK")}`);
-    console.log(`   Current Day (PKT): ${currentDay}`);
-    console.log(`   Current Hour (PKT): ${pakistanTime.getHours()}:${pakistanTime.getMinutes().toString().padStart(2, '0')}`);
+    console.log(`   Current Day: ${currentDay}`);
     console.log(
       `   Current Minutes: ${currentMinutes} (${formatMinutesToTime(currentMinutes)})`,
     );
@@ -267,12 +255,18 @@ exports.scanBarcode = async (req, res) => {
           // - Allow entry until 15 minutes AFTER class ends (grace period)
           const allowedEntryFrom = startMinutes - 60; // 1 hour before start
           const allowedEntryUntil = endMinutes
-            ? endMinutes + 15  // 15 minutes AFTER class ends (grace period)
+            ? endMinutes + 15 // 15 minutes AFTER class ends (grace period)
             : startMinutes + 240; // Or 4 hours after start if no end time
 
-          console.log(`   Entry Window: ${formatMinutesToTime(allowedEntryFrom)} - ${formatMinutesToTime(allowedEntryUntil)}`);
-          console.log(`   Current Time: ${formatMinutesToTime(currentMinutes)}`);
-          console.log(`   Within Window: ${currentMinutes >= allowedEntryFrom && currentMinutes <= allowedEntryUntil}`);
+          console.log(
+            `   Entry Window: ${formatMinutesToTime(allowedEntryFrom)} - ${formatMinutesToTime(allowedEntryUntil)}`,
+          );
+          console.log(
+            `   Current Time: ${formatMinutesToTime(currentMinutes)}`,
+          );
+          console.log(
+            `   Within Window: ${currentMinutes >= allowedEntryFrom && currentMinutes <= allowedEntryUntil}`,
+          );
 
           if (currentMinutes < allowedEntryFrom) {
             scheduleStatus = "too_early";
@@ -283,7 +277,9 @@ exports.scanBarcode = async (req, res) => {
           } else if (currentMinutes > allowedEntryUntil) {
             scheduleStatus = "too_late";
             scheduleMessage = `TOO LATE - Class ended at ${formatMinutesToTime(endMinutes || startMinutes + 180)}`;
-            console.log(`   ⏰ Too late (now: ${formatMinutesToTime(currentMinutes)}, closed: ${formatMinutesToTime(allowedEntryUntil)})`);
+            console.log(
+              `   ⏰ Too late (now: ${formatMinutesToTime(currentMinutes)}, closed: ${formatMinutesToTime(allowedEntryUntil)})`,
+            );
           } else {
             console.log(`   ✅ Within allowed time window!`);
           }
@@ -363,9 +359,9 @@ exports.scanBarcode = async (req, res) => {
       },
       usedReceipt: usedReceipt
         ? {
-          receiptId: usedReceipt.receiptId,
-          version: usedReceipt.version,
-        }
+            receiptId: usedReceipt.receiptId,
+            version: usedReceipt.version,
+          }
         : null,
       scannedAt: new Date(),
     });

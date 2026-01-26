@@ -60,10 +60,10 @@ const getSubjectStyles = (subject: string) => {
   }
   if (subjectLower.includes('physics')) {
     return {
-      bg: 'bg-gradient-to-br from-sky-100 to-sky-200',
-      border: 'border-sky-300',
+      bg: 'bg-gradient-to-br from-amber-100 to-amber-200',
+      border: 'border-amber-300',
       text: 'text-sky-800',
-      subtext: 'text-sky-600',
+      subtext: 'text-amber-600',
     };
   }
   if (subjectLower.includes('math')) {
@@ -315,7 +315,7 @@ const Timetable = () => {
         </div>
         {searchTerm && (
           <p className="text-sm text-muted-foreground">
-            Highlighting: <span className="font-semibold text-sky-600">"{searchTerm}"</span>
+            Highlighting: <span className="font-semibold text-amber-600">"{searchTerm}"</span>
           </p>
         )}
       </div>
@@ -328,7 +328,7 @@ const Timetable = () => {
           <span>Biology</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded bg-gradient-to-br from-sky-100 to-sky-200 border border-sky-300"></div>
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-100 to-amber-200 border border-amber-300"></div>
           <span>Physics</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -354,13 +354,13 @@ const Timetable = () => {
         ) : (
           <div className="min-w-[1000px] rounded-xl border border-border bg-card overflow-hidden">
             {/* Grid Header - Days */}
-            <div className="grid grid-cols-7 bg-sky-600 text-white">
-              <div className="p-3 text-center font-semibold border-r border-sky-500">
+            <div className="grid grid-cols-7 bg-gradient-to-r from-amber-600 to-yellow-500 text-white">
+              <div className="p-3 text-center font-semibold border-r border-amber-500">
                 <Clock className="h-4 w-4 mx-auto mb-1" />
                 Time
               </div>
               {DAYS.map((day) => (
-                <div key={day} className="p-3 text-center font-semibold border-r border-sky-500 last:border-r-0">
+                <div key={day} className="p-3 text-center font-semibold border-r border-amber-500 last:border-r-0">
                   {day}
                 </div>
               ))}
@@ -450,8 +450,8 @@ const Timetable = () => {
         <DialogContent className="sm:max-w-[500px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <div className="bg-sky-100 p-2 rounded-lg">
-                <Plus className="h-5 w-5 text-sky-600" />
+              <div className="bg-amber-100 p-2 rounded-lg">
+                <Plus className="h-5 w-5 text-amber-600" />
               </div>
               Add Timetable Entry
             </DialogTitle>
@@ -578,7 +578,7 @@ const Timetable = () => {
             <Button
               onClick={handleSubmitAdd}
               disabled={createEntryMutation.isPending}
-              className="bg-sky-600 text-white hover:bg-sky-700"
+              className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
               {createEntryMutation.isPending ? (
@@ -599,12 +599,12 @@ const Timetable = () => {
         <DialogContent className="sm:max-w-[500px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <div className="bg-sky-100 p-2 rounded-lg">
-                <Edit className="h-5 w-5 text-sky-600" />
+              <div className="bg-amber-100 p-2 rounded-lg">
+                <Edit className="h-5 w-5 text-amber-600" />
               </div>
               Edit Entry
               {selectedEntry?.entryId && (
-                <span className="ml-2 px-3 py-1 rounded-full bg-sky-600 text-white text-sm font-mono">
+                <span className="ml-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-600 to-yellow-500 text-white text-sm font-mono">
                   {selectedEntry.entryId}
                 </span>
               )}
@@ -728,7 +728,7 @@ const Timetable = () => {
             <Button
               onClick={handleSubmitEdit}
               disabled={updateEntryMutation.isPending}
-              className="bg-sky-600 text-white hover:bg-sky-700"
+              className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
               {updateEntryMutation.isPending ? (

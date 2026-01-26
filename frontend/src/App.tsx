@@ -32,6 +32,10 @@ import VerificationHub from "./pages/VerificationHub";
 import StudentPortal from "./pages/StudentPortal";
 import Lectures from "./pages/Lectures";
 import Reports from "./pages/Reports";
+// Phase 4: Online Exam System
+import Exams from "./pages/Exams";
+import ExamBuilder from "./pages/ExamBuilder";
+import ExamRoom from "./pages/ExamRoom";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -222,6 +226,24 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Phase 4: Online Exam System */}
+            <Route
+              path="/exams"
+              element={
+                <ProtectedRoute>
+                  <Exams />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/exams/create"
+              element={
+                <ProtectedRoute>
+                  <ExamBuilder />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/exam/:examId" element={<ExamRoom />} />
             <Route
               path="/reports"
               element={

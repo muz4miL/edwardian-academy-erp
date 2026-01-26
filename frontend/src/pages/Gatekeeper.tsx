@@ -36,15 +36,15 @@ const API_BASE_URL =
 interface ScanResult {
   success: boolean;
   status:
-  | "success"
-  | "defaulter"
-  | "partial"
-  | "blocked"
-  | "unknown"
-  | "error"
-  | "too_early"
-  | "too_late"
-  | "no_class_today";
+    | "success"
+    | "defaulter"
+    | "partial"
+    | "blocked"
+    | "unknown"
+    | "error"
+    | "too_early"
+    | "too_late"
+    | "no_class_today";
   message: string;
   reason?: string; // Detailed rejection reason (e.g., "TOO EARLY", "OFF SCHEDULE")
   student?: {
@@ -301,13 +301,10 @@ export default function Gatekeeper() {
         <div className="flex items-center justify-between px-8 py-4 border-b border-slate-700/50">
           <div className="flex items-center gap-4">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(-1);
-              }}
+              onClick={() => navigate("/dashboard")}
               className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors mr-2"
-              title="Go Back"
-              aria-label="Go Back"
+              title="Back to Dashboard"
+              aria-label="Back to Dashboard"
             >
               <ArrowLeft className="h-6 w-6 text-slate-400 hover:text-white" />
             </button>
@@ -371,7 +368,7 @@ export default function Gatekeeper() {
                 "border-4 border-cyan-500/30",
                 "shadow-[0_0_60px_rgba(34,211,238,0.3)]",
                 terminalState === "standby" &&
-                "animate-[pulse_3s_ease-in-out_infinite]",
+                  "animate-[pulse_3s_ease-in-out_infinite]",
               )}
             >
               {terminalState === "scanning" ? (
@@ -551,10 +548,11 @@ export default function Gatekeeper() {
 
     return (
       <div
-        className={`fixed inset-0 z-50 ${isTooEarly
-          ? "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
-          : "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
-          } flex flex-col cursor-pointer`}
+        className={`fixed inset-0 z-50 ${
+          isTooEarly
+            ? "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
+            : "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
+        } flex flex-col cursor-pointer`}
         onClick={resetTerminal}
       >
         <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
@@ -599,37 +597,36 @@ export default function Gatekeeper() {
           </div>
 
           {/* Schedule Info for TOO EARLY or Balance for Partial */}
-          {isTooEarly && scanResult.schedule ? (
+          {isTooEarly &&
+          (scanResult.currentTime || scanResult.classStartTime) ? (
             <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
               <p className="text-xl text-white/80 text-center mb-4 uppercase tracking-wider">
                 Schedule Information
               </p>
               <div className="grid grid-cols-2 gap-8">
-                <div className="text-center">
-                  <p className="text-sm text-white/70 uppercase mb-1">
-                    Current Time
-                  </p>
-                  <p className="text-4xl font-bold text-white font-mono">
-                    {scanResult.schedule.currentTime || "N/A"}
-                  </p>
-                  <p className="text-lg text-white/60 mt-1">
-                    {scanResult.schedule.currentDay || ""}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-white/70 uppercase mb-1">
-                    Class Starts At
-                  </p>
-                  <p className="text-4xl font-bold text-emerald-300 font-mono">
-                    {scanResult.schedule.classStartTime || "N/A"}
-                  </p>
-                  <p className="text-lg text-white/60 mt-1">
-                    Days: {scanResult.schedule.classDays?.join(", ") || "N/A"}
-                  </p>
-                </div>
+                {scanResult.currentTime && (
+                  <div className="text-center">
+                    <p className="text-sm text-white/70 uppercase mb-1">
+                      Current Time
+                    </p>
+                    <p className="text-4xl font-bold text-white font-mono">
+                      {scanResult.currentTime}
+                    </p>
+                  </div>
+                )}
+                {scanResult.classStartTime && (
+                  <div className="text-center">
+                    <p className="text-sm text-white/70 uppercase mb-1">
+                      Class Starts At
+                    </p>
+                    <p className="text-4xl font-bold text-emerald-300 font-mono">
+                      {scanResult.classStartTime}
+                    </p>
+                  </div>
+                )}
               </div>
               <p className="text-center text-white/80 mt-4 text-lg">
-                Please wait until class time or check your schedule
+                Please wait until class time
               </p>
             </div>
           ) : (
@@ -651,179 +648,78 @@ export default function Gatekeeper() {
     );
   }
 
-
-  // DENIED STATE - Premium Glassmorphism Card on Gradient Background
-  // Get denial reason text for display
-  const getDenialReason = () => {
-    switch (scanResult?.status) {
-      case "unknown": return "STUDENT NOT FOUND";
-      case "defaulter": return "FEES UNPAID";
-      case "blocked": return "ACCOUNT BLOCKED / SUSPENDED";
-      case "no_class_today": return "NO CLASS SCHEDULED TODAY";
-      case "too_late": return "CLASS ALREADY ENDED";
-      case "too_early": return "TOO EARLY FOR CLASS";
-      case "error": return "VERIFICATION ERROR";
-      default: return "ACCESS DENIED";
-    }
-  };
-
-  // Generate initials from student name for avatar fallback
-  const getInitials = (name?: string) => {
-    if (!name) return "?";
-    const parts = name.split(" ");
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
-
+  // DENIED STATE - Full-Screen Red Access Denied
   return (
     <div
-      className="fixed inset-0 z-50 bg-gradient-to-br from-red-600 via-red-700 to-red-900 flex flex-col items-center justify-center cursor-pointer"
+      className="fixed inset-0 z-50 bg-gradient-to-br from-red-700 via-red-600 to-rose-700 flex flex-col cursor-pointer"
       onClick={resetTerminal}
     >
       {/* Flash overlay */}
-      <div className="absolute inset-0 bg-white/10 animate-[ping_0.3s_ease-out_forwards] opacity-0" />
+      <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
 
-      {/* Go Back Button - Absolute Top Left */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          navigate(-1);
-        }}
-        className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-xl text-white font-medium transition-all z-10 border border-white/30"
-      >
-        <ArrowLeft className="h-5 w-5" />
-        Go Back
-      </button>
-
-      {/* PREMIUM GLASSMORPHISM CARD - Responsive & Scrollable */}
-      <div className="relative w-full max-w-xl mx-auto px-4 max-h-[90vh] overflow-y-auto py-6">
-        <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-6 sm:p-8 animate-[fadeIn_0.4s_ease-out]">
-
-          {/* Pulsing Shield Icon - Smaller */}
-          <div className="flex justify-center mb-4">
-            <div className="relative">
-              <div className="absolute inset-0 bg-red-500/30 rounded-full animate-ping" />
-              <div className="relative h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg">
-                <ShieldX className="h-9 w-9 sm:h-11 sm:w-11 text-white drop-shadow-lg" />
-              </div>
-            </div>
-          </div>
-
-          {/* ACCESS DENIED Title */}
-          <h1 className="text-4xl sm:text-5xl font-black text-red-600 text-center mb-3 tracking-tight">
-            ✕ DENIED
-          </h1>
-
-          {/* Student Photo or Initials Avatar */}
-          {scanResult?.student && (
-            <div className="flex justify-center mb-4">
-              {scanResult.student.photo ? (
-                <img
-                  src={scanResult.student.photo}
-                  alt={scanResult.student.name}
-                  className="h-24 w-24 sm:h-28 sm:w-28 rounded-full object-cover border-4 border-red-500 shadow-lg"
-                />
-              ) : (
-                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center border-4 border-red-400 shadow-lg">
-                  <span className="text-3xl sm:text-4xl font-bold text-white">
-                    {getInitials(scanResult.student.name)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Student Name & ID */}
-          {scanResult?.student && (
-            <div className="text-center mb-5 border-b border-gray-200 pb-5">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">
-                {scanResult.student.name}
-              </h2>
-              <p className="text-lg sm:text-xl font-mono font-semibold text-gray-700 tracking-wider">
-                ID: {scanResult.student.studentId}
-              </p>
-              <p className="text-sm sm:text-base text-gray-500 mt-1">
-                {scanResult.student.class} • {scanResult.student.group}
-              </p>
-            </div>
-          )}
-
-          {/* Denial Reason - Inside Card */}
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 sm:p-5 mb-4">
-            <p className="text-xl sm:text-2xl font-bold text-red-600 text-center mb-2">
-              {getDenialReason()}
-            </p>
-            <div className="bg-red-100 rounded-lg px-3 py-2">
-              <p className="text-sm sm:text-base text-red-800 text-center font-medium">
-                {scanResult?.message || "Unknown error - contact administrator"}
-              </p>
-            </div>
-          </div>
-
-          {/* Schedule Details for schedule-based denials */}
-          {(scanResult?.status === "no_class_today" ||
-            scanResult?.status === "too_late" ||
-            scanResult?.status === "too_early") &&
-            scanResult?.schedule && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-                <p className="text-xs font-semibold text-amber-900 text-center mb-3 uppercase tracking-wide">
-                  Schedule Details
-                </p>
-                <div className="grid grid-cols-2 gap-3 text-center">
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-xs text-gray-500 uppercase mb-1">Now</p>
-                    <p className="text-lg sm:text-xl font-bold text-gray-900 font-mono">
-                      {scanResult.schedule.currentTime || "N/A"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {scanResult.schedule.currentDay || ""}
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-xs text-gray-500 uppercase mb-1">Class</p>
-                    <p className="text-lg sm:text-xl font-bold text-amber-600 font-mono">
-                      {scanResult.schedule.classStartTime || "N/A"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {scanResult.schedule.classDays?.join(", ") || "N/A"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-          {/* Fee Balance for defaulters */}
-          {scanResult?.status === "defaulter" && scanResult?.student && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
-              <p className="text-xs font-semibold text-yellow-900 text-center mb-1 uppercase tracking-wide">
-                Outstanding Balance
-              </p>
-              <p className="text-2xl sm:text-3xl font-black text-yellow-600 text-center">
-                PKR {scanResult.student.balance?.toLocaleString() || "0"}
-              </p>
-              <p className="text-xs text-gray-500 text-center mt-1">
-                Total: {scanResult.student.totalFee?.toLocaleString()} •
-                Paid: {scanResult.student.paidAmount?.toLocaleString()}
-              </p>
-            </div>
-          )}
-
-          {/* Action Instructions */}
-          <div className="text-center pt-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">
-              Contact Front Desk • Tap anywhere to scan next
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {new Date().toLocaleTimeString("en-PK", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true
-              })}
-            </p>
+      <div className="relative flex-1 flex flex-col items-center justify-center px-8">
+        {/* Denied Icon */}
+        <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+          <div className="h-48 w-48 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+            <ShieldX className="h-32 w-32 text-white drop-shadow-lg" />
           </div>
         </div>
+
+        {/* ACCESS DENIED */}
+        <h1 className="text-8xl font-black text-white mb-8 tracking-wider drop-shadow-lg">
+          ✕ DENIED
+        </h1>
+
+        {/* Reason */}
+        <div className="bg-white/20 rounded-3xl px-20 py-10 backdrop-blur-sm mb-10">
+          <p className="text-5xl font-bold text-white text-center">
+            {scanResult?.status === "unknown" && "UNKNOWN STUDENT"}
+            {scanResult?.status === "defaulter" && "FEES PENDING"}
+            {scanResult?.status === "blocked" && "ACCOUNT BLOCKED"}
+            {scanResult?.status === "no_class_today" && "NO CLASS TODAY"}
+            {scanResult?.status === "too_late" && "CLASS ENDED"}
+            {scanResult?.status === "error" && "SCAN ERROR"}
+            {!scanResult?.status && "VERIFICATION FAILED"}
+          </p>
+          <p className="text-2xl text-white/80 text-center mt-4">
+            {scanResult?.message || "Unknown error - contact admin"}
+          </p>
+        </div>
+
+        {/* Student Info if available */}
+        {scanResult?.student && (
+          <div className="flex items-center gap-8 mb-8">
+            {scanResult.student.photo ? (
+              <img
+                src={scanResult.student.photo}
+                alt={scanResult.student.name}
+                className="h-28 w-28 rounded-full object-cover border-4 border-white/50 opacity-80"
+              />
+            ) : (
+              <div className="h-28 w-28 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/50">
+                <User className="h-14 w-14 text-white/80" />
+              </div>
+            )}
+            <div>
+              <h2 className="text-4xl font-bold text-white/90">
+                {scanResult.student.name}
+              </h2>
+              <p className="text-xl text-white/70">
+                {scanResult.student.class} • ID: {scanResult.student.studentId}
+              </p>
+              {scanResult.student.balance > 0 && (
+                <p className="text-2xl text-white/80 mt-2">
+                  Outstanding: PKR {scanResult.student.balance.toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Instructions */}
+        <p className="text-2xl text-white/60">
+          Contact Front Desk • Tap to retry
+        </p>
       </div>
     </div>
   );

@@ -357,7 +357,7 @@ studentSchema.methods.getStudentProfile = function () {
     _id: this._id,
     studentId: this.studentId,
     barcodeId: this.barcodeId,
-    studentName: this.studentName,
+    name: this.studentName,
     fatherName: this.fatherName,
     class: this.class,
     group: this.group,
@@ -369,7 +369,8 @@ studentSchema.methods.getStudentProfile = function () {
     totalFee: this.totalFee,
     paidAmount: this.paidAmount,
     balance: this.balance,
-    sessionRef: this.sessionRef,
+    session: this.sessionRef,
+    classRef: this.classRef,
   };
 };
 

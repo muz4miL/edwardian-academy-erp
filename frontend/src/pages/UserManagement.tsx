@@ -93,6 +93,7 @@ const PERMISSION_GROUPS = [
       { key: "timetable", label: "Timetable" },
       { key: "sessions", label: "Sessions" },
       { key: "lectures", label: "Lectures" },
+      { key: "exams", label: "Exams" },
     ],
   },
   {

@@ -1,26 +1,29 @@
 const express = require("express");
 const router = express.Router();
+const { protect, restrictTo } = require("../middleware/authMiddleware");
 const jwt = require("jsonwebtoken");
 const Student = require("../models/Student");
+
 const {
-    studentLogin,
-    getStudentProfile,
-    getStudentVideos,
-    recordVideoView,
-    studentLogout,
-    getStudentSchedule,
-} = require("../controllers/studentPortalController");
+    createExam,
+    getAllExams,
+    getExamById,
+    getExamsForClass,
+    getExamForStudent,
+    submitExam,
+    getExamResults,
+    getMyResults,
+    updateExam,
+    deleteExam,
+} = require("../controllers/examController");
 
 /**
- * Student Portal Routes - LMS Module
+ * Student authentication middleware (for protected student routes)
  */
-
-// Middleware to protect student routes
 const protectStudent = async (req, res, next) => {
     try {
         let token;
 
-        // Check for token in cookie or Authorization header
         if (req.cookies.studentToken) {
             token = req.cookies.studentToken;
         } else if (req.headers.authorization?.startsWith("Bearer")) {
@@ -34,7 +37,6 @@ const protectStudent = async (req, res, next) => {
             });
         }
 
-        // Verify token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         if (decoded.role !== "student") {
@@ -44,7 +46,6 @@ const protectStudent = async (req, res, next) => {
             });
         }
 
-        // Get student
         const student = await Student.findById(decoded.id);
         if (!student) {
             return res.status(401).json({
@@ -65,30 +66,41 @@ const protectStudent = async (req, res, next) => {
 };
 
 // ========================================
-// PUBLIC ROUTES
+// ADMIN/TEACHER ROUTES
 // ========================================
 
-// Student login
-router.post("/login", studentLogin);
+// Create exam (Teacher/Admin)
+router.post("/", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), createExam);
+
+// Get all exams (Teacher/Admin)
+router.get("/", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), getAllExams);
+
+// Get single exam with answers (Teacher/Admin)
+router.get("/:id", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), getExamById);
+
+// Get exam results/leaderboard (Teacher/Admin)
+router.get("/:id/results", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), getExamResults);
+
+// Update exam (Teacher/Admin)
+router.put("/:id", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), updateExam);
+
+// Delete exam (Teacher/Admin)
+router.delete("/:id", protect, restrictTo("OWNER", "ADMIN", "TEACHER"), deleteExam);
 
 // ========================================
-// PROTECTED ROUTES (Student only)
+// STUDENT ROUTES
 // ========================================
 
-// Get profile
-router.get("/me", protectStudent, getStudentProfile);
+// Get exams for student's class (Student)
+router.get("/class/:classId", protectStudent, getExamsForClass);
 
-// Get videos
-router.get("/videos", protectStudent, getStudentVideos);
+// Get exam to take (Student - NO correct answers)
+router.get("/:id/take", protectStudent, getExamForStudent);
 
-// Get schedule/timetable
-router.get("/schedule", protectStudent, getStudentSchedule);
+// Submit exam answers (Student)
+router.post("/:id/submit", protectStudent, submitExam);
 
-// Record video view
-router.post("/videos/:id/view", protectStudent, recordVideoView);
-
-// Logout
-router.post("/logout", protectStudent, studentLogout);
+// Get my results (Student)
+router.get("/student/my-results", protectStudent, getMyResults);
 
 module.exports = router;
-

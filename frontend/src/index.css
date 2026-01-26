@@ -9,32 +9,32 @@
 
 @layer base {
   :root {
-    /* Core palette - Sky Blue Academy Theme */
-    --background: 0 0% 98%;
-    --foreground: 222 47% 11%;
+    /* Core palette - Luxury Academic Gold Theme */
+    --background: 30 20% 98%;
+    --foreground: 30 10% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 30 10% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 30 10% 10%;
 
-    /* Primary - Sky Blue */
-    --primary: 199 89% 48%;
-    --primary-foreground: 0 0% 100%;
-    --primary-light: 199 100% 95%;
-    --primary-hover: 199 89% 40%;
+    /* Primary - Royal Gold */
+    --primary: 43 74% 49%;
+    --primary-foreground: 30 10% 10%;
+    --primary-light: 43 80% 95%;
+    --primary-hover: 43 74% 42%;
 
-    /* Secondary - Slate */
-    --secondary: 215 20% 95%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary - Warm Stone */
+    --secondary: 30 10% 95%;
+    --secondary-foreground: 30 10% 10%;
 
-    --muted: 215 20% 95%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 30 10% 95%;
+    --muted-foreground: 30 10% 45%;
 
-    /* Accent - Light Sky Blue */
-    --accent: 199 100% 95%;
-    --accent-foreground: 199 89% 35%;
+    /* Accent - Light Gold */
+    --accent: 43 80% 95%;
+    --accent-foreground: 43 74% 35%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -52,64 +52,66 @@
     --pending-foreground: 0 0% 100%;
     --pending-light: 0 84% 95%;
 
-    --border: 215 20% 90%;
-    --input: 215 20% 90%;
-    --ring: 199 89% 48%;
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 43 74% 49%;
 
     --radius: 0.75rem;
 
-    /* Sidebar - Dark Slate Theme */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 199 89% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 16%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 222 47% 18%;
-    --sidebar-ring: 199 89% 48%;
-    --sidebar-muted: 215 16% 60%;
+    /* Sidebar - Luxury Dark Theme */
+    --sidebar-background: 30 15% 8%;
+    --sidebar-foreground: 43 30% 85%;
+    --sidebar-primary: 43 74% 49%;
+    --sidebar-primary-foreground: 30 10% 10%;
+    --sidebar-accent: 30 15% 14%;
+    --sidebar-accent-foreground: 43 80% 90%;
+    --sidebar-border: 43 20% 18%;
+    --sidebar-ring: 43 74% 49%;
+    --sidebar-muted: 30 10% 55%;
 
     /* Chart colors */
-    --chart-1: 199 89% 48%;
+    --chart-1: 43 74% 49%;
     --chart-2: 142 76% 36%;
-    --chart-3: 222 47% 40%;
+    --chart-3: 30 30% 40%;
     --chart-4: 38 92% 50%;
-    --chart-5: 280 65% 60%;
+    --chart-5: 20 60% 50%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(199 89% 48%), hsl(199 89% 40%));
-    --gradient-header: linear-gradient(135deg, hsl(199 89% 48%), hsl(205 89% 45%));
+    --gradient-primary: linear-gradient(135deg, hsl(43 74% 49%), hsl(38 80% 45%));
+    --gradient-header: linear-gradient(135deg, hsl(43 74% 49%), hsl(35 70% 42%));
 
     /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.1), 0 2px 4px -2px hsl(222 47% 11% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.1), 0 4px 6px -4px hsl(222 47% 11% / 0.1);
-    --shadow-glow: 0 0 20px hsl(199 89% 48% / 0.2);
+    --shadow-sm: 0 1px 2px 0 hsl(30 10% 10% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(30 10% 10% / 0.1), 0 2px 4px -2px hsl(30 10% 10% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(30 10% 10% / 0.1), 0 4px 6px -4px hsl(30 10% 10% / 0.1);
+    --shadow-glow: 0 0 20px hsl(43 74% 49% / 0.3);
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 215 20% 95%;
+    /* Luxury Academic Dark Theme - Warm Brown-Black */
+    --background: 30 15% 4%;
+    --foreground: 43 20% 92%;
 
-    --card: 222 47% 9%;
-    --card-foreground: 215 20% 95%;
+    --card: 30 15% 7%;
+    --card-foreground: 43 20% 92%;
 
-    --popover: 222 47% 9%;
-    --popover-foreground: 215 20% 95%;
+    --popover: 30 15% 7%;
+    --popover-foreground: 43 20% 92%;
 
-    --primary: 199 89% 48%;
-    --primary-foreground: 0 0% 100%;
-    --primary-light: 199 89% 15%;
-    --primary-hover: 199 89% 55%;
+    /* Primary - Bright Gold */
+    --primary: 43 74% 54%;
+    --primary-foreground: 30 10% 10%;
+    --primary-light: 43 60% 18%;
+    --primary-hover: 43 74% 62%;
 
-    --secondary: 222 47% 15%;
-    --secondary-foreground: 215 20% 95%;
+    --secondary: 30 15% 14%;
+    --secondary-foreground: 43 20% 92%;
 
-    --muted: 222 47% 15%;
-    --muted-foreground: 215 16% 60%;
+    --muted: 30 15% 14%;
+    --muted-foreground: 30 10% 55%;
 
-    --accent: 199 89% 15%;
-    --accent-foreground: 199 89% 70%;
+    --accent: 43 60% 18%;
+    --accent-foreground: 43 74% 70%;
 
     --destructive: 0 62% 30%;
     --destructive-foreground: 0 0% 100%;
@@ -118,14 +120,19 @@
     --warning-light: 38 92% 15%;
     --pending-light: 0 84% 15%;
 
-    --border: 222 47% 18%;
-    --input: 222 47% 18%;
-    --ring: 199 89% 48%;
+    --border: 43 15% 16%;
+    --input: 30 15% 16%;
+    --ring: 43 74% 54%;
 
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-accent: 222 47% 12%;
-    --sidebar-border: 222 47% 15%;
+    /* Sidebar - Luxury Dark with Gold Accents */
+    --sidebar-background: 30 15% 4%;
+    --sidebar-foreground: 43 25% 80%;
+    --sidebar-primary: 43 74% 54%;
+    --sidebar-primary-foreground: 30 10% 10%;
+    --sidebar-accent: 43 30% 12%;
+    --sidebar-accent-foreground: 43 80% 90%;
+    --sidebar-border: 43 20% 14%;
+    --sidebar-muted: 30 10% 50%;
   }
 }
 
