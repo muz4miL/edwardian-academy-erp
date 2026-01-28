@@ -107,7 +107,7 @@ const PERMISSION_GROUPS = [
 
 // Flat list for compatibility
 const ALL_CHECKBOX_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) =>
-  g.permissions.map((p) => p.key)
+  g.permissions.map((p) => p.key),
 );
 
 interface User {
@@ -361,7 +361,10 @@ export default function UserManagement() {
   };
 
   const getRoleBadge = (role: string) => {
-    switch (role) {
+    // Normalize role for case-insensitive matching
+    const normalizedRole = role?.toUpperCase();
+
+    switch (normalizedRole) {
       case "OWNER":
         return (
           <Badge className="bg-yellow-100 text-yellow-800 gap-1">
@@ -373,6 +376,8 @@ export default function UserManagement() {
         return <Badge className="bg-purple-100 text-purple-800">Partner</Badge>;
       case "STAFF":
         return <Badge className="bg-blue-100 text-blue-800">Staff</Badge>;
+      case "TEACHER":
+        return <Badge className="bg-indigo-100 text-indigo-700">Teacher</Badge>;
       default:
         return <Badge variant="outline">{role}</Badge>;
     }
@@ -688,7 +693,9 @@ export default function UserManagement() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])}
+                  onClick={() =>
+                    setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])
+                  }
                   className="h-7 text-xs"
                 >
                   Select All
@@ -702,11 +709,16 @@ export default function UserManagement() {
                         {group.title}
                       </h4>
                       {group.permissions.map((perm) => (
-                        <div key={perm.key} className="flex items-center space-x-2">
+                        <div
+                          key={perm.key}
+                          className="flex items-center space-x-2"
+                        >
                           <Checkbox
                             id={`add-${perm.key}`}
                             checked={formPermissions.includes(perm.key)}
-                            onCheckedChange={() => handlePermissionToggle(perm.key)}
+                            onCheckedChange={() =>
+                              handlePermissionToggle(perm.key)
+                            }
                             disabled={perm.always}
                           />
                           <Label
@@ -722,7 +734,8 @@ export default function UserManagement() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Selected permissions determine which sidebar tabs this user can see
+                Selected permissions determine which sidebar tabs this user can
+                see
               </p>
             </div>
           </div>
@@ -845,7 +858,9 @@ export default function UserManagement() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])}
+                    onClick={() =>
+                      setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])
+                    }
                     className="h-7 text-xs"
                   >
                     Select All
@@ -859,11 +874,16 @@ export default function UserManagement() {
                           {group.title}
                         </h4>
                         {group.permissions.map((perm) => (
-                          <div key={perm.key} className="flex items-center space-x-2">
+                          <div
+                            key={perm.key}
+                            className="flex items-center space-x-2"
+                          >
                             <Checkbox
                               id={`edit-${perm.key}`}
                               checked={formPermissions.includes(perm.key)}
-                              onCheckedChange={() => handlePermissionToggle(perm.key)}
+                              onCheckedChange={() =>
+                                handlePermissionToggle(perm.key)
+                              }
                               disabled={perm.always}
                             />
                             <Label

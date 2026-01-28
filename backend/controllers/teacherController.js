@@ -90,7 +90,8 @@ exports.createTeacher = async (req, res) => {
     console.log("=== CREATE TEACHER REQUEST ===");
     console.log("Incoming Data:", JSON.stringify(req.body, null, 2));
 
-    const { name, phone, subject, joiningDate, compensation, profileImage } = req.body;
+    const { name, phone, subject, joiningDate, compensation, profileImage } =
+      req.body;
 
     // Fetch global settings for smart defaults
     let settings = await Settings.findOne();
@@ -160,7 +161,8 @@ exports.createTeacher = async (req, res) => {
     }
 
     // Generate random 8-character password
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const chars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let plainPassword = "";
     for (let i = 0; i < 8; i++) {
       plainPassword += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -170,7 +172,11 @@ exports.createTeacher = async (req, res) => {
     const userCount = await User.countDocuments();
     const userId = `TCH${String(userCount + 1).padStart(4, "0")}`;
 
-    console.log("🔑 Generated credentials:", { username, userId, passwordLength: plainPassword.length });
+    console.log("🔑 Generated credentials:", {
+      username,
+      userId,
+      passwordLength: plainPassword.length,
+    });
 
     // Create User account for Teacher login
     const user = new User({
@@ -178,7 +184,7 @@ exports.createTeacher = async (req, res) => {
       username,
       password: plainPassword, // Will be hashed by pre-save hook
       fullName: name,
-      role: "TEACHER",
+      role: "Teacher",
       permissions: ["dashboard", "lectures"],
       phone,
       profileImage: profileImage || null,

@@ -12,13 +12,14 @@ export interface User {
   userId: string;
   username: string;
   fullName: string;
-  role: "OWNER" | "PARTNER" | "STAFF" | "OPERATOR" | "TEACHER";
+  role: "OWNER" | "PARTNER" | "STAFF" | "OPERATOR" | "TEACHER" | "Teacher";
   permissions: string[]; // RBAC: Sidebar permissions
   walletBalance: number;
   floatingCash: number;
   pendingDebt: number;
   phone?: string;
   email?: string;
+  profileImage?: string;
   isActive: boolean;
   lastLogin?: string;
 }

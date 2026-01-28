@@ -198,7 +198,10 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="mt-4 flex flex-col gap-1 px-2 overflow-y-auto sidebar-scrollbar" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+      <nav
+        className="mt-4 flex flex-col gap-1 px-2 overflow-y-auto sidebar-scrollbar"
+        style={{ maxHeight: "calc(100vh - 180px)" }}
+      >
         {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -219,42 +222,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User Profile Section */}
-      {user && (
-        <div className={cn(
-          "absolute bottom-16 left-0 right-0 px-3 py-2 border-t border-sidebar-border",
-          collapsed ? "flex justify-center" : ""
-        )}>
-          <div className={cn(
-            "flex items-center gap-3",
-            collapsed ? "justify-center" : ""
-          )}>
-            {/* Profile Image or Initials */}
-            {user.profileImage ? (
-              <img
-                src={user.profileImage}
-                alt={user.fullName}
-                className="h-9 w-9 rounded-full object-cover border-2 border-amber-500/50"
-              />
-            ) : (
-              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-sm font-semibold text-white">
-                {user.fullName?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'U'}
-              </div>
-            )}
-            {/* Name and Role */}
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">
-                  {user.fullName}
-                </p>
-                <p className="text-xs text-sidebar-muted truncate">
-                  {user.role}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+
 
       {/* Collapse button */}
       <button
