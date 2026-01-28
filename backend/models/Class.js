@@ -52,6 +52,16 @@ const classSchema = new mongoose.Schema({
     },
   },
 
+  // Session Type - For ETEA/MDCAT special fee handling
+  sessionType: {
+    type: String,
+    enum: {
+      values: ["regular", "etea", "mdcat", "ecat", "test-prep"],
+      message: "{VALUE} is not a valid session type",
+    },
+    default: "regular",
+  },
+
   // Group - Academic stream/category (e.g., "Pre-Medical", "Pre-Engineering")
   group: {
     type: String,

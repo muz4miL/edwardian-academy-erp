@@ -7,6 +7,7 @@ const Expense = require("../models/Expense");
 const Settings = require("../models/Settings");
 const Configuration = require("../models/Configuration");
 const User = require("../models/User");
+const Teacher = require("../models/Teacher");
 
 // @desc    Close Day - Lock floating cash into verified balance
 // @route   POST /api/finance/close-day
@@ -248,6 +249,34 @@ exports.getDashboardStats = async (req, res) => {
         stats.expenseDebt = expenseDebtTotal;
         stats.expenseDebtDetails = expenseDebtDetails;
         stats.hasExpenseDebt = expenseDebtTotal > 0; // Alert flag for UI
+
+        // Link Partner to Teacher profile to get Teacher floatingCash
+        // Try to find Teacher by userId first, then by name match
+        let linkedTeacher = await Teacher.findOne({ userId: userId });
+
+        if (!linkedTeacher) {
+          // Fallback: Try to find by matching name
+          const partnerName = req.user.fullName || req.user.username || "";
+          if (partnerName) {
+            linkedTeacher = await Teacher.findOne({
+              name: { $regex: new RegExp(partnerName.split(" ")[0], "i") },
+            });
+          }
+        }
+
+        if (linkedTeacher) {
+          stats.teacherFloatingCash = linkedTeacher.balance?.floating || 0;
+          stats.teacherVerifiedCash = linkedTeacher.balance?.verified || 0;
+          stats.linkedTeacherId = linkedTeacher._id;
+          stats.linkedTeacherName = linkedTeacher.name;
+          console.log(`🔗 Partner linked to Teacher: ${linkedTeacher.name}`);
+        } else {
+          stats.teacherFloatingCash = 0;
+          stats.teacherVerifiedCash = 0;
+          console.log(
+            `⚠️ No Teacher profile found for Partner: ${req.user.fullName}`,
+          );
+        }
       }
 
       // 4. Owner-specific stats
@@ -1315,6 +1344,649 @@ exports.processRefund = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to process refund",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// SRS 3.0 MODULE: POOL DISTRIBUTION (SHARED POOL)
+// =================================================
+
+// @desc    Distribute UNALLOCATED_POOL to Partners (40/30/30 Split)
+// @route   POST /api/finance/distribute-pool
+// @access  Protected (OWNER Only)
+exports.distributePool = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    // Security: Only OWNER can distribute pool
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can distribute the pool.",
+      });
+    }
+
+    console.log("\n=== POOL DISTRIBUTION REQUEST ===");
+
+    // 1. Sum all undistributed UNALLOCATED_POOL transactions
+    const undistributedTransactions = await Transaction.find({
+      stream: "UNALLOCATED_POOL",
+      isDistributed: false,
+      status: "VERIFIED",
+    });
+
+    if (undistributedTransactions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ No funds available for distribution. Pool is empty.",
+      });
+    }
+
+    const totalPool = undistributedTransactions.reduce(
+      (sum, tx) => sum + tx.amount,
+      0,
+    );
+
+    console.log(
+      `💰 Total Pool to Distribute: PKR ${totalPool.toLocaleString()}`,
+    );
+
+    // 2. Get distribution ratios from Configuration (use poolDistribution, fallback to expenseSplit, then defaults)
+    const config = await Configuration.findOne();
+    const distributionRatio = config?.poolDistribution ||
+      config?.expenseSplit || {
+        waqar: 40,
+        zahid: 30,
+        saud: 30,
+      };
+
+    console.log(`📊 Pool Distribution Ratio:`, distributionRatio);
+
+    // 3. Calculate shares
+    const shares = {
+      waqar: Math.round((totalPool * distributionRatio.waqar) / 100),
+      zahid: Math.round((totalPool * distributionRatio.zahid) / 100),
+      saud: Math.round((totalPool * distributionRatio.saud) / 100),
+    };
+
+    // Handle rounding: Give any remainder to Waqar (owner)
+    const shareTotal = shares.waqar + shares.zahid + shares.saud;
+    if (shareTotal < totalPool) {
+      shares.waqar += totalPool - shareTotal;
+    }
+
+    console.log(`💵 Calculated Shares:`, shares);
+
+    // 4. Find partner users
+    const partners = await User.find({
+      role: { $in: ["OWNER", "PARTNER"] },
+      isActive: true,
+    });
+
+    const partnerMap = {};
+    for (const partner of partners) {
+      const nameLower = (
+        partner.fullName ||
+        partner.username ||
+        ""
+      ).toLowerCase();
+      if (nameLower.includes("waqar")) {
+        partnerMap.waqar = partner;
+      } else if (nameLower.includes("zahid")) {
+        partnerMap.zahid = partner;
+      } else if (nameLower.includes("saud")) {
+        partnerMap.saud = partner;
+      }
+    }
+
+    // 5. Create DIVIDEND transactions for each partner
+    const dividendTransactions = [];
+    const distributionId = new mongoose.Types.ObjectId(); // Shared distribution batch ID
+
+    for (const [partnerKey, shareAmount] of Object.entries(shares)) {
+      const partner = partnerMap[partnerKey];
+      if (!partner) {
+        console.log(`⚠️ Partner ${partnerKey} not found, skipping...`);
+        continue;
+      }
+
+      // Create dividend transaction
+      const dividendTx = await Transaction.create({
+        type: "INCOME",
+        category: "Pool",
+        stream: "DIVIDEND",
+        amount: shareAmount,
+        description: `Pool Distribution: ${partnerKey.toUpperCase()} share (${distributionRatio[partnerKey]}%) of PKR ${totalPool.toLocaleString()}`,
+        collectedBy: userId,
+        status: "VERIFIED",
+        recipientPartner: partner._id,
+        recipientPartnerName: partner.fullName || partner.username,
+        distributionId,
+        date: new Date(),
+      });
+
+      dividendTransactions.push({
+        partnerKey,
+        partnerName: partner.fullName || partner.username,
+        partnerId: partner._id,
+        amount: shareAmount,
+        percentage: distributionRatio[partnerKey],
+        transactionId: dividendTx._id,
+      });
+
+      // Update partner's wallet balance
+      if (partner.walletBalance) {
+        if (typeof partner.walletBalance === "object") {
+          partner.walletBalance.verified =
+            (partner.walletBalance.verified || 0) + shareAmount;
+        } else {
+          partner.walletBalance = (partner.walletBalance || 0) + shareAmount;
+        }
+        await partner.save();
+      }
+
+      // Notify partner
+      await Notification.create({
+        recipient: partner._id,
+        message: `💰 Pool Distribution: You received PKR ${shareAmount.toLocaleString()} (${distributionRatio[partnerKey]}% of PKR ${totalPool.toLocaleString()})`,
+        type: "FINANCE",
+        relatedId: dividendTx._id.toString(),
+      });
+
+      console.log(
+        `✅ ${partnerKey.toUpperCase()}: PKR ${shareAmount.toLocaleString()} credited`,
+      );
+    }
+
+    // 6. Mark all original transactions as distributed
+    const transactionIds = undistributedTransactions.map((tx) => tx._id);
+    await Transaction.updateMany(
+      { _id: { $in: transactionIds } },
+      {
+        $set: {
+          isDistributed: true,
+          distributionId,
+        },
+      },
+    );
+
+    console.log(
+      `✅ Marked ${transactionIds.length} transactions as distributed`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Pool of PKR ${totalPool.toLocaleString()} distributed successfully!`,
+      data: {
+        totalPool,
+        transactionsProcessed: undistributedTransactions.length,
+        distributionId,
+        shares: dividendTransactions,
+        ratio: distributionRatio,
+        distributedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in distributePool:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to distribute pool",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get Pool Status (Current undistributed amount)
+// @route   GET /api/finance/pool-status
+// @access  Protected (OWNER/PARTNER)
+exports.getPoolStatus = async (req, res) => {
+  try {
+    // Sum undistributed pool
+    const undistributedResult = await Transaction.aggregate([
+      {
+        $match: {
+          stream: "UNALLOCATED_POOL",
+          isDistributed: false,
+          status: "VERIFIED",
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
+
+    const undistributedAmount = undistributedResult?.[0]?.total ?? 0;
+    const undistributedCount = undistributedResult?.[0]?.count ?? 0;
+
+    // Get recent distributions
+    const recentDistributions = await Transaction.find({
+      stream: "DIVIDEND",
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    // Get config for ratio display
+    const config = await Configuration.findOne();
+    const distributionRatio = config?.expenseSplit || {
+      waqar: 40,
+      zahid: 30,
+      saud: 30,
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        currentPool: {
+          amount: undistributedAmount,
+          transactionCount: undistributedCount,
+          canDistribute: undistributedAmount > 0,
+        },
+        distributionRatio,
+        recentDistributions: recentDistributions.map((d) => ({
+          id: d._id,
+          amount: d.amount,
+          recipient: d.recipientPartnerName,
+          date: d.createdAt,
+          description: d.description,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getPoolStatus:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get pool status",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// SRS 3.0 MODULE: EXPENSE APPROVAL WORKFLOW
+// =================================================
+
+// @desc    Partner marks their expense share as paid (Step 1: Partner Action)
+// @route   POST /api/finance/expenses/mark-paid
+// @access  Protected (PARTNER)
+exports.markExpenseAsPaid = async (req, res) => {
+  try {
+    const { expenseId } = req.body;
+    const userId = req.user._id;
+    const userName = req.user.fullName || req.user.username;
+
+    console.log("\n=== EXPENSE MARK PAID REQUEST ===");
+    console.log("Expense ID:", expenseId);
+    console.log("Partner:", userName);
+
+    if (!expenseId) {
+      return res.status(400).json({
+        success: false,
+        message: "Expense ID is required",
+      });
+    }
+
+    const expense = await Expense.findById(expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+
+    // Find the partner's share
+    const shareIndex = expense.shares.findIndex(
+      (s) => s.partner?.toString() === userId.toString(),
+    );
+
+    if (shareIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "You do not have a share in this expense",
+      });
+    }
+
+    const share = expense.shares[shareIndex];
+
+    // Check current status
+    if (share.repaymentStatus === "PAID" || share.status === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "This expense share has already been paid",
+      });
+    }
+
+    if (share.repaymentStatus === "PROCESSING") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment already marked, awaiting owner confirmation",
+      });
+    }
+
+    // Update to PROCESSING status
+    expense.shares[shareIndex].repaymentStatus = "PROCESSING";
+    expense.shares[shareIndex].markedPaidAt = new Date();
+    await expense.save();
+
+    // Notify Owner (Waqar) about the payment
+    const owner = await User.findOne({ role: "OWNER", isActive: true });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        message: `💳 ${userName} has marked PKR ${share.amount.toLocaleString()} as PAID for "${expense.title}". Please confirm receipt.`,
+        type: "FINANCE",
+        relatedId: expense._id.toString(),
+      });
+    }
+
+    console.log(
+      `✅ ${userName} marked PKR ${share.amount} as paid for "${expense.title}"`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payment marked! Awaiting ${owner?.fullName || "Owner"}'s confirmation.`,
+      data: {
+        expenseId: expense._id,
+        expenseTitle: expense.title,
+        amount: share.amount,
+        repaymentStatus: "PROCESSING",
+        markedPaidAt: expense.shares[shareIndex].markedPaidAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in markExpenseAsPaid:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark expense as paid",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Owner confirms receipt of partner payment (Step 2: Owner Action)
+// @route   POST /api/finance/expenses/confirm-receipt
+// @access  Protected (OWNER Only)
+exports.confirmExpenseReceipt = async (req, res) => {
+  try {
+    const { expenseId, partnerId } = req.body;
+    const userRole = req.user.role;
+
+    console.log("\n=== EXPENSE CONFIRM RECEIPT REQUEST ===");
+    console.log("Expense ID:", expenseId);
+    console.log("Partner ID:", partnerId);
+
+    // Security: Only OWNER can confirm receipts
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can confirm expense receipts.",
+      });
+    }
+
+    if (!expenseId || !partnerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Expense ID and Partner ID are required",
+      });
+    }
+
+    const expense = await Expense.findById(expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+
+    // Find the partner's share
+    const shareIndex = expense.shares.findIndex(
+      (s) => s.partner?.toString() === partnerId.toString(),
+    );
+
+    if (shareIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Partner share not found for this expense",
+      });
+    }
+
+    const share = expense.shares[shareIndex];
+
+    // Check current status
+    if (share.repaymentStatus === "PAID" || share.status === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "This expense share has already been confirmed as paid",
+      });
+    }
+
+    if (share.repaymentStatus !== "PROCESSING") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Partner has not marked this expense as paid yet. Current status: " +
+          share.repaymentStatus,
+      });
+    }
+
+    // Confirm the payment
+    expense.shares[shareIndex].repaymentStatus = "PAID";
+    expense.shares[shareIndex].status = "PAID";
+    expense.shares[shareIndex].confirmedAt = new Date();
+    expense.shares[shareIndex].paidAt = new Date();
+    await expense.save();
+
+    // Check if all shares are now PAID to update main expense status
+    const allPaid = expense.shares.every(
+      (s) => s.status === "PAID" || s.status === "N/A",
+    );
+    if (allPaid) {
+      expense.status = "paid";
+      expense.paidDate = new Date();
+      await expense.save();
+    }
+
+    // Notify the partner that payment was confirmed
+    await Notification.create({
+      recipient: share.partner,
+      message: `✅ Your payment of PKR ${share.amount.toLocaleString()} for "${expense.title}" has been confirmed. Debt cleared!`,
+      type: "FINANCE",
+      relatedId: expense._id.toString(),
+    });
+
+    console.log(
+      `✅ Confirmed receipt of PKR ${share.amount} from ${share.partnerName}`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payment confirmed! ${share.partnerName}'s debt for "${expense.title}" is now cleared.`,
+      data: {
+        expenseId: expense._id,
+        expenseTitle: expense.title,
+        partnerName: share.partnerName,
+        amount: share.amount,
+        status: "PAID",
+        confirmedAt: expense.shares[shareIndex].confirmedAt,
+        allSharesPaid: allPaid,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in confirmExpenseReceipt:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to confirm expense receipt",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get pending expense confirmations for Owner
+// @route   GET /api/finance/expenses/pending-confirmations
+// @access  Protected (OWNER Only)
+exports.getPendingExpenseConfirmations = async (req, res) => {
+  try {
+    const userRole = req.user.role;
+
+    // Security: Only OWNER can view pending confirmations
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can view pending confirmations.",
+      });
+    }
+
+    // Find all expenses with shares in PROCESSING status
+    const pendingExpenses = await Expense.find({
+      "shares.repaymentStatus": "PROCESSING",
+    })
+      .populate("shares.partner", "fullName username")
+      .lean();
+
+    const pendingConfirmations = [];
+
+    for (const expense of pendingExpenses) {
+      for (const share of expense.shares) {
+        if (share.repaymentStatus === "PROCESSING") {
+          pendingConfirmations.push({
+            expenseId: expense._id,
+            expenseTitle: expense.title,
+            category: expense.category,
+            totalAmount: expense.amount,
+            partnerId: share.partner?._id,
+            partnerName: share.partner?.fullName || share.partnerName,
+            shareAmount: share.amount,
+            markedPaidAt: share.markedPaidAt,
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: pendingConfirmations.length,
+      data: pendingConfirmations,
+    });
+  } catch (error) {
+    console.error("❌ Error in getPendingExpenseConfirmations:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get pending confirmations",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * REPAY DEBT TO OWNER
+ * Partners can record a payment to reduce their debt to Waqar.
+ * - Creates a DEBT_REPAYMENT transaction
+ * - Deducts from partner's debtToOwner
+ * - Notifies Waqar of the payment
+ *
+ * @route   POST /api/finance/repay-debt
+ * @access  Protected (PARTNER only)
+ */
+exports.repayDebtToOwner = async (req, res) => {
+  try {
+    const { amount, notes } = req.body;
+    const partnerId = req.user._id;
+    const partnerName = req.user.fullName || req.user.username;
+
+    // Security: Only PARTNER can repay debt
+    if (req.user.role !== "PARTNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only PARTNER can record debt repayment.",
+      });
+    }
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid repayment amount greater than 0.",
+      });
+    }
+
+    // Find the partner user
+    const partner = await User.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "Partner account not found.",
+      });
+    }
+
+    const currentDebt = partner.debtToOwner || 0;
+
+    // Validate: Can't repay more than owed
+    if (amount > currentDebt) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot repay PKR ${amount.toLocaleString()}. Current debt is only PKR ${currentDebt.toLocaleString()}.`,
+      });
+    }
+
+    console.log(`\n=== DEBT REPAYMENT ===`);
+    console.log(`👤 Partner: ${partnerName}`);
+    console.log(`💰 Current Debt: PKR ${currentDebt.toLocaleString()}`);
+    console.log(`💵 Repayment Amount: PKR ${amount.toLocaleString()}`);
+
+    // Deduct from partner's debtToOwner
+    partner.debtToOwner -= amount;
+    await partner.save();
+
+    console.log(`✅ New Debt: PKR ${partner.debtToOwner.toLocaleString()}`);
+
+    // Create a DEBT_REPAYMENT transaction for audit trail
+    const transaction = await Transaction.create({
+      type: "INCOME",
+      category: "Debt Repayment",
+      stream: "DEBT_REPAYMENT",
+      amount: amount,
+      description: `Debt repayment from ${partnerName}${notes ? ": " + notes : ""}`,
+      collectedBy: partnerId,
+      status: "VERIFIED",
+      recipientPartner: partnerId,
+      recipientPartnerName: partnerName,
+      date: new Date(),
+    });
+
+    console.log(`📝 Transaction Created: ${transaction._id}`);
+
+    // Find Waqar (Owner) to notify him
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        recipientRole: "OWNER",
+        message: `💰 ${partnerName} has paid PKR ${amount.toLocaleString()} towards their debt.${notes ? " Note: " + notes : ""} Remaining: PKR ${partner.debtToOwner.toLocaleString()}`,
+        type: "FINANCE",
+        relatedId: transaction._id.toString(),
+      });
+      console.log(
+        `📬 Notification sent to ${owner.fullName || owner.username}`,
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Repayment of PKR ${amount.toLocaleString()} recorded successfully!`,
+      data: {
+        repaidAmount: amount,
+        previousDebt: currentDebt,
+        newDebt: partner.debtToOwner,
+        transactionId: transaction._id,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in repayDebtToOwner:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to record debt repayment",
       error: error.message,
     });
   }

@@ -29,6 +29,14 @@ const configurationSchema = new mongoose.Schema(
       saud: { type: Number, default: 30, min: 0, max: 100 },
     },
 
+    // Card 6: Academy Pool Distribution (Income IN) - must total 100%
+    // This controls how the 30% academy pool from staff teachers is split among partners
+    poolDistribution: {
+      waqar: { type: Number, default: 40, min: 0, max: 100 },
+      zahid: { type: Number, default: 30, min: 0, max: 100 },
+      saud: { type: Number, default: 30, min: 0, max: 100 },
+    },
+
     // Card 5: Master Subject Pricing - Global base fees synced across all modules
     defaultSubjectFees: [
       {
@@ -56,6 +64,19 @@ configurationSchema.pre("save", function (next) {
     return next(new Error(`Expense split must total 100%, got ${total}%`));
   }
 
+  // Pool distribution must also total 100%
+  if (this.poolDistribution) {
+    const poolTotal =
+      this.poolDistribution.waqar +
+      this.poolDistribution.zahid +
+      this.poolDistribution.saud;
+    if (poolTotal !== 100) {
+      return next(
+        new Error(`Pool distribution must total 100%, got ${poolTotal}%`),
+      );
+    }
+  }
+
   const salaryTotal =
     this.salaryConfig.teacherShare + this.salaryConfig.academyShare;
   if (salaryTotal !== 100) {
@@ -63,15 +84,20 @@ configurationSchema.pre("save", function (next) {
   }
 
   // Initialize default subject fees if new document and empty
-  if (this.isNew && (!this.defaultSubjectFees || this.defaultSubjectFees.length === 0)) {
+  if (
+    this.isNew &&
+    (!this.defaultSubjectFees || this.defaultSubjectFees.length === 0)
+  ) {
     this.defaultSubjectFees = [
-      { name: 'Biology', fee: 3000 },
-      { name: 'Physics', fee: 3000 },
-      { name: 'Chemistry', fee: 2500 },
-      { name: 'Mathematics', fee: 2500 },
-      { name: 'English', fee: 2000 },
+      { name: "Biology", fee: 3000 },
+      { name: "Physics", fee: 3000 },
+      { name: "Chemistry", fee: 2500 },
+      { name: "Mathematics", fee: 2500 },
+      { name: "English", fee: 2000 },
     ];
-    console.log('✅ Initialized configuration with Peshawar standard subject rates');
+    console.log(
+      "✅ Initialized configuration with Peshawar standard subject rates",
+    );
   }
 
   next();

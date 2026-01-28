@@ -12,6 +12,7 @@ const {
   getReimbursementReport,
   getFinanceHistory,
   getPartnerPortalStats,
+  repayDebtToOwner,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -88,6 +89,11 @@ router.get(
   restrictTo("PARTNER"),
   getPartnerExpenseDebt,
 );
+
+// @route   POST /api/finance/repay-debt
+// @desc    Partner records a debt repayment to Owner
+// @access  Protected (PARTNER only)
+router.post("/repay-debt", protect, restrictTo("PARTNER"), repayDebtToOwner);
 
 // @route   POST /api/finance/mark-expense-paid
 // @desc    Mark partner's expense share as paid (Owner action)
@@ -401,8 +407,12 @@ router.get("/stats/overview", protect, async (req, res) => {
     const adjustedRevenueForSplit = totalIncome - jointPoolExpenses;
 
     console.log(`💰 Gross Revenue: PKR ${totalIncome.toLocaleString()}`);
-    console.log(`🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`);
-    console.log(`📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`);
+    console.log(
+      `🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`,
+    );
+    console.log(
+      `📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`,
+    );
 
     // ========================================
     // NOTE: Teacher calculations above already use 'teacherRevenue'
@@ -478,8 +488,8 @@ router.get("/stats/overview", protect, async (req, res) => {
         // Academy Metrics
         academyShare,
         totalExpenses,
-        jointPoolExpenses,  // NEW: Show joint pool expenses separately
-        otherExpenses,      // NEW: Show other expenses separately
+        jointPoolExpenses, // NEW: Show joint pool expenses separately
+        otherExpenses, // NEW: Show other expenses separately
         netProfit,
 
         // Percentages for UI

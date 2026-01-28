@@ -26,11 +26,16 @@ const transactionSchema = new mongoose.Schema(
       type: String,
       enum: [
         "ACADEMY_POOL", // 30% from staff tuition → Waqar's Academy
-        "PARTNER_CHEMISTRY", // Saud's Chemistry income
-        "PARTNER_PHYSICS", // Zahid's Physics income
+        "OWNER_CHEMISTRY", // Waqar's Chemistry income (100% verified)
+        "PARTNER_CHEMISTRY", // Legacy: Saud's Chemistry income
+        "PARTNER_PHYSICS", // Saud's Physics income (100% floating)
+        "PARTNER_BIO", // Zahid's Biology/Zoology income (100% floating)
         "PARTNER_ETEA", // ETEA prep courses
         "STAFF_TUITION", // Staff-taught subjects (70/30 split)
+        "TEACHER_LEDGER", // ETEA teacher bonus entries
+        "UNALLOCATED_POOL", // 30% from staff tuition awaiting distribution
         "JOINT_POOL", // Shared expenses pool
+        "DIVIDEND", // Partner dividend from pool distribution
       ],
       default: "ACADEMY_POOL",
     },
@@ -79,6 +84,24 @@ const transactionSchema = new mongoose.Schema(
     closingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "DailyClosing",
+    },
+    // For pool distribution tracking (UNALLOCATED_POOL → DIVIDEND)
+    isDistributed: {
+      type: Boolean,
+      default: false,
+    },
+    // Reference to distribution transaction (for tracking lineage)
+    distributionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Transaction",
+    },
+    // For dividend transactions: which partner received this
+    recipientPartner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    recipientPartnerName: {
+      type: String,
     },
   },
   {

@@ -25,6 +25,9 @@ import {
   VolumeX,
   Fingerprint,
   ArrowLeft,
+  Clock,
+  BookOpen,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +36,17 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // ==================== TYPES ====================
+interface EnrolledClass {
+  classId: string;
+  classTitle: string;
+  subject: string;
+  teacherName: string;
+  days: string[];
+  startTime: string;
+  endTime: string;
+  roomNumber?: string;
+}
+
 interface ScanResult {
   success: boolean;
   status:
@@ -64,6 +78,7 @@ interface ScanResult {
     session: string;
     classTime?: string;
     classDays?: string[];
+    enrolledClasses?: EnrolledClass[];
   };
   scannedAt?: string;
   currentTime?: string; // Current time when scanned
@@ -74,6 +89,7 @@ interface ScanResult {
     classDays?: string[];
     currentTime?: string;
     currentDay?: string;
+    teacherName?: string;
   };
 }
 
@@ -529,6 +545,89 @@ export default function Gatekeeper() {
               <p className="text-5xl font-bold text-white">✓ CLEAR</p>
             </div>
           </div>
+
+          {/* Active Classes Section - Edwardian Gold Accent */}
+          {(scanResult.student.enrolledClasses?.length > 0 ||
+            scanResult.schedule) && (
+            <div className="mt-8 w-full max-w-4xl">
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <BookOpen className="h-7 w-7 text-amber-300" />
+                <h3 className="text-2xl font-bold text-amber-300 uppercase tracking-wider">
+                  Today's Schedule
+                </h3>
+                <GraduationCap className="h-7 w-7 text-amber-300" />
+              </div>
+              <div className="bg-white/15 backdrop-blur-sm rounded-2xl border-2 border-amber-400/40 overflow-hidden">
+                {scanResult.student.enrolledClasses &&
+                scanResult.student.enrolledClasses.length > 0 ? (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-amber-400/20 text-amber-200">
+                        <th className="py-3 px-6 text-left text-lg font-semibold">
+                          Subject
+                        </th>
+                        <th className="py-3 px-6 text-center text-lg font-semibold">
+                          <Clock className="h-5 w-5 inline mr-2" />
+                          Time
+                        </th>
+                        <th className="py-3 px-6 text-right text-lg font-semibold">
+                          Teacher
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scanResult.student.enrolledClasses.map((cls, idx) => (
+                        <tr
+                          key={cls.classId || idx}
+                          className="border-t border-white/10 hover:bg-white/5"
+                        >
+                          <td className="py-4 px-6">
+                            <p className="text-2xl font-bold text-white">
+                              {cls.subject || cls.classTitle}
+                            </p>
+                            <p className="text-sm text-white/60">
+                              {cls.days?.join(", ") || "—"}
+                            </p>
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            <p className="text-2xl font-mono font-bold text-amber-300">
+                              {cls.startTime} - {cls.endTime}
+                            </p>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <p className="text-2xl font-semibold text-white">
+                              {cls.teacherName}
+                            </p>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : scanResult.schedule ? (
+                  <div className="p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Clock className="h-8 w-8 text-amber-300" />
+                      <div>
+                        <p className="text-xl text-white/70">Class Time</p>
+                        <p className="text-3xl font-mono font-bold text-amber-300">
+                          {scanResult.schedule.classStartTime || "—"} -{" "}
+                          {scanResult.schedule.classEndTime || "—"}
+                        </p>
+                      </div>
+                    </div>
+                    {scanResult.schedule.teacherName && (
+                      <div className="text-right">
+                        <p className="text-xl text-white/70">Teacher</p>
+                        <p className="text-3xl font-semibold text-white">
+                          {scanResult.schedule.teacherName}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           {/* Timestamp */}
           <p className="mt-14 text-2xl text-white/60">

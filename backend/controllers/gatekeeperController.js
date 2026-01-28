@@ -332,6 +332,23 @@ exports.scanBarcode = async (req, res) => {
 
     console.log(`✅ VERIFIED: ${student.studentName} (${verificationStatus})`);
 
+    // Build enriched class schedule with teacher info
+    let enrolledClasses = [];
+    if (classDoc) {
+      enrolledClasses.push({
+        classId: classDoc._id,
+        classTitle:
+          classDoc.classTitle || classDoc.displayName || student.class,
+        subject: classDoc.subjects?.[0]?.name || "General",
+        teacherName:
+          classDoc.teacherName || student.assignedTeacherName || "TBD",
+        days: classDoc.days || [],
+        startTime: classDoc.startTime || "TBD",
+        endTime: classDoc.endTime || "TBD",
+        roomNumber: classDoc.roomNumber || "TBD",
+      });
+    }
+
     return res.status(200).json({
       success: true,
       status: verificationStatus,
@@ -350,12 +367,15 @@ exports.scanBarcode = async (req, res) => {
         paidAmount: student.paidAmount,
         balance,
         studentStatus: student.studentStatus || "Active",
+        // Enriched class data for Gatekeeper display
+        enrolledClasses,
       },
       schedule: {
         classStartTime,
         classEndTime,
         classDays: classDoc?.days,
         currentTime: formatMinutesToTime(currentMinutes),
+        teacherName: classDoc?.teacherName || student.assignedTeacherName,
       },
       usedReceipt: usedReceipt
         ? {

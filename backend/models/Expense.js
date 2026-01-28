@@ -95,6 +95,16 @@ const ExpenseSchema = new mongoose.Schema(
           enum: ["UNPAID", "PAID", "N/A"],
           default: "UNPAID",
         },
+        // NEW: Repayment workflow status (Partner marks paid → Owner confirms)
+        repaymentStatus: {
+          type: String,
+          enum: ["PENDING", "PROCESSING", "PAID"],
+          default: "PENDING",
+        },
+        // Timestamp when partner marked as "PROCESSING"
+        markedPaidAt: { type: Date },
+        // Timestamp when owner confirmed receipt
+        confirmedAt: { type: Date },
         paidAt: { type: Date },
         settlementId: {
           type: mongoose.Schema.Types.ObjectId,

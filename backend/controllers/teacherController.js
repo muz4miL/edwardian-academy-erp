@@ -88,10 +88,29 @@ exports.createTeacher = async (req, res) => {
   try {
     // 🔍 EXTREME DEBUGGING - Log incoming data
     console.log("=== CREATE TEACHER REQUEST ===");
-    console.log("Incoming Data:", JSON.stringify(req.body, null, 2));
+    console.log("Request Headers:", req.headers["content-type"]);
+    console.log(
+      "Payload Size:",
+      Buffer.byteLength(JSON.stringify(req.body)),
+      "bytes",
+    );
+    console.log("Teacher Name:", req.body.name);
+    console.log(
+      "Profile Image Size:",
+      req.body.profileImage ? Buffer.byteLength(req.body.profileImage) : "None",
+      "bytes",
+    );
 
     const { name, phone, subject, joiningDate, compensation, profileImage } =
       req.body;
+
+    // Validate required fields
+    if (!name || !phone || !subject) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name, phone, subject",
+      });
+    }
 
     // Fetch global settings for smart defaults
     let settings = await Settings.findOne();
@@ -228,15 +247,23 @@ exports.createTeacher = async (req, res) => {
   } catch (error) {
     console.error("❌ Error creating teacher:");
     console.error("Error Message:", error.message);
+    console.error("Error Code:", error.code);
+    console.error("Error Name:", error.name);
+    if (error.errors) {
+      console.error("Validation Errors:", error.errors);
+    }
     console.error("Error Stack:", error.stack);
-    console.error(
-      "Detailed Error:",
-      JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
-    );
 
-    res.status(400).json({
+    // Return appropriate status code based on error type
+    const statusCode = error.code === 11000 ? 409 : 400;
+    const message =
+      error.code === 11000
+        ? "Duplicate field value. This teacher may already exist."
+        : error.message || "Failed to create teacher";
+
+    res.status(statusCode).json({
       success: false,
-      message: "Failed to create teacher",
+      message,
       error: error.message,
     });
   }

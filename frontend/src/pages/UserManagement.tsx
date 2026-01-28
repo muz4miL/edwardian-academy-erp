@@ -377,7 +377,7 @@ export default function UserManagement() {
       case "STAFF":
         return <Badge className="bg-blue-100 text-blue-800">Staff</Badge>;
       case "TEACHER":
-        return <Badge className="bg-indigo-100 text-indigo-700">Teacher</Badge>;
+        return <Badge className="bg-blue-100 text-blue-800">Teacher</Badge>;
       default:
         return <Badge variant="outline">{role}</Badge>;
     }

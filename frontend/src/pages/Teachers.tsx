@@ -333,9 +333,17 @@ const Teachers = () => {
                 <TableRow key={teacher._id} className="hover:bg-secondary/50">
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
-                        {teacher.name.charAt(0)}
-                      </div>
+                      {teacher.profileImage ? (
+                        <img
+                          src={teacher.profileImage}
+                          alt={teacher.name}
+                          className="h-9 w-9 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
+                          {teacher.name.charAt(0)}
+                        </div>
+                      )}
                       <div>
                         <p
                           className="font-medium text-foreground hover:text-primary hover:underline cursor-pointer transition-colors"

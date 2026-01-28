@@ -75,19 +75,31 @@ const Configuration = () => {
   const [saudShare, setSaudShare] = useState(30);
   const [splitError, setSplitError] = useState("");
 
+  // --- Card 6: Academy Pool Distribution (Income IN) ---
+  const [poolWaqarShare, setPoolWaqarShare] = useState(40);
+  const [poolZahidShare, setPoolZahidShare] = useState(30);
+  const [poolSaudShare, setPoolSaudShare] = useState(30);
+  const [poolSplitError, setPoolSplitError] = useState("");
+
   // --- Card 4: Academy Info ---
   const [academyName, setAcademyName] = useState("Edwardian Academy");
   const [academyAddress, setAcademyAddress] = useState("Peshawar, Pakistan");
   const [academyPhone, setAcademyPhone] = useState("");
 
   // --- Card 5: Master Subject Pricing ---
-  const [defaultSubjectFees, setDefaultSubjectFees] = useState<Array<{ name: string; fee: number }>>([]);
+  const [defaultSubjectFees, setDefaultSubjectFees] = useState<
+    Array<{ name: string; fee: number }>
+  >([]);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newSubjectFee, setNewSubjectFee] = useState("");
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingSubject, setEditingSubject] = useState<{ name: string; fee: number; index: number } | null>(null);
+  const [editingSubject, setEditingSubject] = useState<{
+    name: string;
+    fee: number;
+    index: number;
+  } | null>(null);
   const [editFeeValue, setEditFeeValue] = useState("");
 
   // --- Check Owner Access ---
@@ -135,6 +147,13 @@ const Configuration = () => {
             setSaudShare(data.expenseSplit.saud ?? 30);
           }
 
+          // Card 6: Pool Distribution
+          if (data.poolDistribution) {
+            setPoolWaqarShare(data.poolDistribution.waqar ?? 40);
+            setPoolZahidShare(data.poolDistribution.zahid ?? 30);
+            setPoolSaudShare(data.poolDistribution.saud ?? 30);
+          }
+
           // Card 4: Academy Info
           setAcademyName(data.academyName || "Edwardian Academy");
           setAcademyAddress(data.academyAddress || "Peshawar, Pakistan");
@@ -170,6 +189,16 @@ const Configuration = () => {
     }
   }, [waqarShare, zahidShare, saudShare]);
 
+  // --- Validate Pool Distribution (must total 100%) ---
+  useEffect(() => {
+    const total = poolWaqarShare + poolZahidShare + poolSaudShare;
+    if (total !== 100) {
+      setPoolSplitError(`Total must be 100%. Current: ${total}%`);
+    } else {
+      setPoolSplitError("");
+    }
+  }, [poolWaqarShare, poolZahidShare, poolSaudShare]);
+
   // --- Validate Salary Split (must total 100%) ---
   useEffect(() => {
     const total = teacherShare + academyShare;
@@ -180,12 +209,70 @@ const Configuration = () => {
     }
   }, [teacherShare, academyShare]);
 
+  // --- Instant Save Helper ---
+  const saveConfigToBackend = async (
+    subjects: Array<{ name: string; fee: number }>,
+  ) => {
+    try {
+      const settingsData = {
+        salaryConfig: { teacherShare, academyShare },
+        partner100Rule,
+        expenseSplit: { waqar: waqarShare, zahid: zahidShare, saud: saudShare },
+        poolDistribution: {
+          waqar: poolWaqarShare,
+          zahid: poolZahidShare,
+          saud: poolSaudShare,
+        },
+        academyName,
+        academyAddress,
+        academyPhone,
+        defaultSubjectFees: subjects,
+      };
+
+      console.log("💾 Instant Save: Updating subjects", {
+        count: subjects.length,
+        subjects,
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(settingsData),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || "Failed to save configuration");
+      }
+
+      console.log("✅ Instant Save: Success", {
+        savedCount: result.data?.defaultSubjectFees?.length || 0,
+      });
+
+      return result.data;
+    } catch (error: any) {
+      console.error("❌ Instant Save: Failed", error);
+      throw error;
+    }
+  };
+
   // --- Save Settings Handler ---
   const handleSaveSettings = async () => {
     if (waqarShare + zahidShare + saudShare !== 100) {
       toast({
         title: "❌ Validation Error",
         description: "Expense splits must total 100%",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (poolWaqarShare + poolZahidShare + poolSaudShare !== 100) {
+      toast({
+        title: "❌ Validation Error",
+        description: "Pool distribution must total 100%",
         variant: "destructive",
       });
       return;
@@ -216,6 +303,12 @@ const Configuration = () => {
           waqar: waqarShare,
           zahid: zahidShare,
           saud: saudShare,
+        },
+        // Card 6
+        poolDistribution: {
+          waqar: poolWaqarShare,
+          zahid: poolZahidShare,
+          saud: poolSaudShare,
         },
         // Card 4
         academyName,
@@ -372,10 +465,11 @@ const Configuration = () => {
 
               {/* Validation */}
               <div
-                className={`p-3 rounded-lg flex items-center gap-2 ${salaryError
-                  ? "bg-red-50 border border-red-200"
-                  : "bg-green-50 border border-green-200"
-                  }`}
+                className={`p-3 rounded-lg flex items-center gap-2 ${
+                  salaryError
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-green-50 border border-green-200"
+                }`}
               >
                 {salaryError ? (
                   <>
@@ -443,10 +537,11 @@ const Configuration = () => {
               </div>
 
               <div
-                className={`p-3 rounded-lg ${partner100Rule
-                  ? "bg-yellow-100 border border-yellow-300"
-                  : "bg-gray-100 border border-gray-200"
-                  }`}
+                className={`p-3 rounded-lg ${
+                  partner100Rule
+                    ? "bg-yellow-100 border border-yellow-300"
+                    : "bg-gray-100 border border-gray-200"
+                }`}
               >
                 {partner100Rule ? (
                   <p className="text-sm text-yellow-800">
@@ -562,10 +657,11 @@ const Configuration = () => {
 
               {/* Validation */}
               <div
-                className={`p-3 rounded-lg flex items-center gap-2 ${splitError
-                  ? "bg-red-50 border border-red-200"
-                  : "bg-green-50 border border-green-200"
-                  }`}
+                className={`p-3 rounded-lg flex items-center gap-2 ${
+                  splitError
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-green-50 border border-green-200"
+                }`}
               >
                 {splitError ? (
                   <>
@@ -587,6 +683,129 @@ const Configuration = () => {
               <p className="text-xs text-muted-foreground border-t pt-3">
                 Example: PKR 10,000 expense → Zahid owes PKR 3,000, Saud owes
                 PKR 3,000.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* ========== CARD 6: Academy Pool Distribution (Income IN) ========== */}
+          <Card className="border-2 border-teal-200 bg-gradient-to-br from-teal-50/50 to-cyan-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-100">
+                  <PieChart className="h-5 w-5 text-teal-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">
+                    Academy Pool Distribution
+                  </CardTitle>
+                  <CardDescription>
+                    Income IN - how pool is shared among partners
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                When the Academy Pool is distributed, this split determines
+                <strong> how much each partner receives</strong>.
+              </p>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="font-semibold text-sm flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-blue-500"></span>
+                    Sir Waqar (Owner)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={poolWaqarShare}
+                      onChange={(e) =>
+                        setPoolWaqarShare(Number(e.target.value) || 0)
+                      }
+                      className="h-10 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-semibold text-sm flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-green-500"></span>
+                    Dr. Zahid
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={poolZahidShare}
+                      onChange={(e) =>
+                        setPoolZahidShare(Number(e.target.value) || 0)
+                      }
+                      className="h-10 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-semibold text-sm flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-purple-500"></span>
+                    Sir Saud
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={poolSaudShare}
+                      onChange={(e) =>
+                        setPoolSaudShare(Number(e.target.value) || 0)
+                      }
+                      className="h-10 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Validation */}
+              <div
+                className={`p-3 rounded-lg flex items-center gap-2 ${
+                  poolSplitError
+                    ? "bg-red-50 border border-red-200"
+                    : "bg-green-50 border border-green-200"
+                }`}
+              >
+                {poolSplitError ? (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <span className="text-sm font-medium text-red-700">
+                      {poolSplitError}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-700">
+                      Total: 100% ✓
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground border-t pt-3">
+                Example: PKR 100,000 pool → Waqar gets PKR 40,000, Zahid gets
+                PKR 30,000, Saud gets PKR 30,000.
               </p>
             </CardContent>
           </Card>
@@ -651,7 +870,9 @@ const Configuration = () => {
                   <Banknote className="h-5 w-5 text-indigo-600" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">Master Subject Pricing</CardTitle>
+                  <CardTitle className="text-lg">
+                    Master Subject Pricing
+                  </CardTitle>
                   <CardDescription>
                     Global base fees synced across all modules
                   </CardDescription>
@@ -660,12 +881,15 @@ const Configuration = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Define default fees for each subject. These will auto-fill in Class Management & Public Registration.
+                Define default fees for each subject. These will auto-fill in
+                Class Management & Public Registration.
               </p>
 
               {/* Add New Subject */}
               <div className="p-4 bg-white rounded-lg border-2 border-dashed border-indigo-200">
-                <p className="text-sm font-semibold mb-3 text-indigo-700">Add New Subject</p>
+                <p className="text-sm font-semibold mb-3 text-indigo-700">
+                  Add New Subject
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div className="md:col-span-1">
                     <Input
@@ -691,18 +915,25 @@ const Configuration = () => {
                   </div>
                   <div className="md:col-span-1">
                     <Button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!newSubjectName.trim() || !newSubjectFee) {
                           toast({
                             title: "Missing Information",
-                            description: "Please enter both subject name and fee",
+                            description:
+                              "Please enter both subject name and fee",
                             variant: "destructive",
                           });
                           return;
                         }
 
                         // Check for duplicates
-                        if (defaultSubjectFees.some(s => s.name.toLowerCase() === newSubjectName.trim().toLowerCase())) {
+                        if (
+                          defaultSubjectFees.some(
+                            (s) =>
+                              s.name.toLowerCase() ===
+                              newSubjectName.trim().toLowerCase(),
+                          )
+                        ) {
                           toast({
                             title: "Duplicate Subject",
                             description: "This subject already exists",
@@ -711,17 +942,39 @@ const Configuration = () => {
                           return;
                         }
 
-                        setDefaultSubjectFees([
+                        // Optimistic update
+                        const newSubjects = [
                           ...defaultSubjectFees,
-                          { name: newSubjectName.trim(), fee: Number(newSubjectFee) }
-                        ]);
+                          {
+                            name: newSubjectName.trim(),
+                            fee: Number(newSubjectFee),
+                          },
+                        ];
+                        setDefaultSubjectFees(newSubjects);
+                        const subjectName = newSubjectName.trim();
                         setNewSubjectName("");
                         setNewSubjectFee("");
-                        toast({
-                          title: "✓ Subject Added",
-                          description: `${newSubjectName} will sync across all modules`,
-                          className: "bg-green-50 border-green-200",
-                        });
+
+                        try {
+                          // Instant save to backend
+                          await saveConfigToBackend(newSubjects);
+                          toast({
+                            title: "✅ Saved to Database",
+                            description: `${subjectName} added and persisted`,
+                            className: "bg-green-50 border-green-200",
+                          });
+                        } catch (error) {
+                          // Rollback on failure
+                          setDefaultSubjectFees(defaultSubjectFees);
+                          setNewSubjectName(subjectName);
+                          setNewSubjectFee(String(Number(newSubjectFee)));
+                          toast({
+                            title: "❌ Failed to Save",
+                            description:
+                              "Please try again or click 'Save All Changes'",
+                            variant: "destructive",
+                          });
+                        }
                       }}
                       className="w-full h-10 bg-indigo-600 hover:bg-indigo-700"
                     >
@@ -745,7 +998,9 @@ const Configuration = () => {
                         className="flex items-center gap-3 p-3 bg-white rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors"
                       >
                         <div className="flex-1">
-                          <p className="font-semibold text-gray-900">{subject.name}</p>
+                          <p className="font-semibold text-gray-900">
+                            {subject.name}
+                          </p>
                           <p className="text-sm text-indigo-600 font-medium">
                             PKR {subject.fee.toLocaleString()}
                           </p>
@@ -769,15 +1024,33 @@ const Configuration = () => {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-red-600 hover:bg-red-50"
-                            onClick={() => {
+                            onClick={async () => {
                               if (window.confirm(`Remove ${subject.name}?`)) {
-                                setDefaultSubjectFees(
-                                  defaultSubjectFees.filter((_, i) => i !== index)
+                                // Optimistic update
+                                const newSubjects = defaultSubjectFees.filter(
+                                  (_, i) => i !== index,
                                 );
-                                toast({
-                                  title: "Subject Removed",
-                                  description: `${subject.name} deleted`,
-                                });
+                                setDefaultSubjectFees(newSubjects);
+                                const subjectName = subject.name;
+
+                                try {
+                                  // Instant delete from backend
+                                  await saveConfigToBackend(newSubjects);
+                                  toast({
+                                    title: "✅ Deleted from Database",
+                                    description: `${subjectName} removed and persisted`,
+                                    className: "bg-green-50 border-green-200",
+                                  });
+                                } catch (error) {
+                                  // Rollback on failure
+                                  setDefaultSubjectFees(defaultSubjectFees);
+                                  toast({
+                                    title: "❌ Failed to Delete",
+                                    description:
+                                      "Please try again or click 'Save All Changes'",
+                                    variant: "destructive",
+                                  });
+                                }
                               }
                             }}
                           >
@@ -791,14 +1064,19 @@ const Configuration = () => {
               ) : (
                 <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed">
                   <Banknote className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">No subjects defined yet</p>
-                  <p className="text-xs text-gray-400">Add subjects to sync pricing across the system</p>
+                  <p className="text-sm text-gray-500">
+                    No subjects defined yet
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Add subjects to sync pricing across the system
+                  </p>
                 </div>
               )}
 
               <div className="border-t pt-3">
                 <p className="text-xs text-muted-foreground">
-                  💡 <strong>Auto-Sync:</strong> These fees will appear in Class Management dropdowns & Public Registration forms
+                  💡 <strong>Auto-Sync:</strong> These fees will appear in Class
+                  Management dropdowns & Public Registration forms
                 </p>
               </div>
             </CardContent>
@@ -838,16 +1116,37 @@ const Configuration = () => {
                     if (e.key === "Enter") {
                       const newFee = Number(editFeeValue);
                       if (!isNaN(newFee) && newFee >= 0 && editingSubject) {
-                        setDefaultSubjectFees(
-                          defaultSubjectFees.map((s, i) =>
-                            i === editingSubject.index ? { ...s, fee: newFee } : s
-                          )
-                        );
-                        toast({
-                          title: "✓ Fee Updated",
-                          description: `${editingSubject.name}: PKR ${newFee.toLocaleString()}`,
-                        });
-                        setEditDialogOpen(false);
+                        (async () => {
+                          // Optimistic update
+                          const newSubjects = defaultSubjectFees.map((s, i) =>
+                            i === editingSubject.index
+                              ? { ...s, fee: newFee }
+                              : s,
+                          );
+                          setDefaultSubjectFees(newSubjects);
+                          const subjectName = editingSubject.name;
+                          setEditDialogOpen(false);
+
+                          try {
+                            // Instant save to backend
+                            await saveConfigToBackend(newSubjects);
+                            toast({
+                              title: "✅ Saved to Database",
+                              description: `${subjectName}: PKR ${newFee.toLocaleString()} persisted`,
+                              className: "bg-green-50 border-green-200",
+                            });
+                          } catch (error) {
+                            // Rollback on failure
+                            setDefaultSubjectFees(defaultSubjectFees);
+                            setEditDialogOpen(true);
+                            toast({
+                              title: "❌ Failed to Save",
+                              description:
+                                "Please try again or click 'Save All Changes'",
+                              variant: "destructive",
+                            });
+                          }
+                        })();
                       }
                     }
                   }}
@@ -867,19 +1166,36 @@ const Configuration = () => {
               Cancel
             </Button>
             <Button
-              onClick={() => {
+              onClick={async () => {
                 const newFee = Number(editFeeValue);
                 if (!isNaN(newFee) && newFee >= 0 && editingSubject) {
-                  setDefaultSubjectFees(
-                    defaultSubjectFees.map((s, i) =>
-                      i === editingSubject.index ? { ...s, fee: newFee } : s
-                    )
+                  // Optimistic update
+                  const newSubjects = defaultSubjectFees.map((s, i) =>
+                    i === editingSubject.index ? { ...s, fee: newFee } : s,
                   );
-                  toast({
-                    title: "✓ Fee Updated",
-                    description: `${editingSubject.name}: PKR ${newFee.toLocaleString()}`,
-                  });
+                  setDefaultSubjectFees(newSubjects);
+                  const subjectName = editingSubject.name;
                   setEditDialogOpen(false);
+
+                  try {
+                    // Instant save to backend
+                    await saveConfigToBackend(newSubjects);
+                    toast({
+                      title: "✅ Saved to Database",
+                      description: `${subjectName}: PKR ${newFee.toLocaleString()} persisted`,
+                      className: "bg-green-50 border-green-200",
+                    });
+                  } catch (error) {
+                    // Rollback on failure
+                    setDefaultSubjectFees(defaultSubjectFees);
+                    setEditDialogOpen(true);
+                    toast({
+                      title: "❌ Failed to Save",
+                      description:
+                        "Please try again or click 'Save All Changes'",
+                      variant: "destructive",
+                    });
+                  }
                 } else {
                   toast({
                     title: "Invalid Fee",

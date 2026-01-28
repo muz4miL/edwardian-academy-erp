@@ -10,6 +10,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   Users,
   AlertCircle,
   FlaskConical,
@@ -19,6 +29,8 @@ import {
   HandCoins,
   ClipboardCheck,
   GraduationCap,
+  Loader2,
+  CreditCard,
 } from "lucide-react";
 
 // API Base URL
@@ -360,6 +372,12 @@ const PartnerDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
 
+  // Payment Modal State
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   // Real stats from API
   const [stats, setStats] = useState({
     floatingCash: 0,
@@ -455,6 +473,58 @@ const PartnerDashboard = () => {
       setError("Network error. Please try again.");
     } finally {
       setIsClosing(false);
+    }
+  };
+
+  // Handle Record Payment (Debt Repayment to Owner)
+  const handleRecordPayment = async () => {
+    const amount = parseInt(paymentAmount) || 0;
+
+    if (amount <= 0) {
+      setError("Please enter a valid payment amount greater than 0");
+      return;
+    }
+
+    if (amount > stats.expenseDebt) {
+      setError(
+        `Cannot pay more than your outstanding debt of PKR ${stats.expenseDebt.toLocaleString()}`,
+      );
+      return;
+    }
+
+    try {
+      setIsProcessingPayment(true);
+      setError(null);
+
+      const res = await fetch(`${API_BASE_URL}/finance/repay-debt`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          notes: paymentNotes || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSuccessMessage(
+          data.message ||
+            `✅ Payment of PKR ${amount.toLocaleString()} recorded successfully!`,
+        );
+        setPaymentModalOpen(false);
+        setPaymentAmount("");
+        setPaymentNotes("");
+        await fetchStats(); // Refresh stats to show updated debt
+      } else {
+        setError(data.message || "Failed to record payment");
+      }
+    } catch (err: any) {
+      console.error("Error recording payment:", err);
+      setError("Network error. Please try again.");
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -613,6 +683,18 @@ const PartnerDashboard = () => {
                   ? `You owe Sir Waqar this amount`
                   : "No outstanding expenses"}
               </p>
+              {/* Record Payment Button - Only shown when there's debt */}
+              {stats.expenseDebt > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPaymentModalOpen(true)}
+                  className="mt-3 w-full bg-white hover:bg-red-50 border-red-300 text-red-700 hover:text-red-800 font-medium"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Record Payment
+                </Button>
+              )}
             </div>
             <div
               className={`flex h-14 w-14 items-center justify-center rounded-xl shadow-lg ${
@@ -676,6 +758,103 @@ const PartnerDashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Payment Recording Modal */}
+      <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <CreditCard className="h-5 w-5 text-green-600" />
+              Record Payment to Sir Waqar
+            </DialogTitle>
+            <DialogDescription>
+              Record a payment you've made to clear your outstanding debt.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Current Debt Display */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm text-amber-800 font-medium">
+                Outstanding Amount Owed:
+              </p>
+              <p className="text-2xl font-bold text-amber-900">
+                PKR {stats.expenseDebt.toLocaleString()}
+              </p>
+            </div>
+
+            {/* Payment Amount Input */}
+            <div className="space-y-2">
+              <Label htmlFor="paymentAmount" className="font-semibold">
+                Payment Amount (PKR)
+              </Label>
+              <Input
+                id="paymentAmount"
+                type="number"
+                placeholder="Enter amount paid"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+                className="h-12 text-lg"
+                max={stats.expenseDebt}
+                min={1}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the exact amount you've paid to Sir Waqar
+              </p>
+            </div>
+
+            {/* Optional Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="paymentNotes" className="font-semibold">
+                Notes (Optional)
+              </Label>
+              <Input
+                id="paymentNotes"
+                type="text"
+                placeholder="e.g., Cash payment at academy"
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+                className="h-10"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPaymentModalOpen(false);
+                setPaymentAmount("");
+                setPaymentNotes("");
+              }}
+              disabled={isProcessingPayment}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRecordPayment}
+              disabled={
+                isProcessingPayment ||
+                !paymentAmount ||
+                parseInt(paymentAmount) <= 0
+              }
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isProcessingPayment ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Confirm Payment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
