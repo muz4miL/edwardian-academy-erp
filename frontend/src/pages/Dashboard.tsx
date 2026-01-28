@@ -31,6 +31,7 @@ import {
   GraduationCap,
   Loader2,
   CreditCard,
+  CheckCircle2,
 } from "lucide-react";
 
 // API Base URL
@@ -677,11 +678,11 @@ const PartnerDashboard = () => {
                 {stats.expenseDebt > 0 ? stats.expenseDebt.toLocaleString() : 0}
               </p>
               <p
-                className={`text-xs font-medium ${stats.expenseDebt > 0 ? "text-red-500" : "text-slate-500"}`}
+                className={`text-xs font-medium ${stats.expenseDebt > 0 ? "text-red-500" : "text-green-600"}`}
               >
                 {stats.expenseDebt > 0
                   ? `You owe Sir Waqar this amount`
-                  : "No outstanding expenses"}
+                  : "✓ All Caught Up!"}
               </p>
               {/* Record Payment Button - Only shown when there's debt */}
               {stats.expenseDebt > 0 && (
@@ -700,10 +701,14 @@ const PartnerDashboard = () => {
               className={`flex h-14 w-14 items-center justify-center rounded-xl shadow-lg ${
                 stats.expenseDebt > 0
                   ? "bg-red-500 text-white"
-                  : "bg-red-100 text-red-600"
+                  : "bg-green-100 text-green-600"
               }`}
             >
-              <AlertCircle className="h-7 w-7" />
+              {stats.expenseDebt > 0 ? (
+                <AlertCircle className="h-7 w-7" />
+              ) : (
+                <CheckCircle2 className="h-7 w-7" />
+              )}
             </div>
           </div>
         </div>

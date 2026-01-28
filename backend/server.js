@@ -71,6 +71,7 @@ const publicRoutes = require("./routes/public");
 const studentPortalRoutes = require("./routes/studentPortal");
 const lectureRoutes = require("./routes/lectureRoutes");
 const examRoutes = require("./routes/examRoutes");
+const notificationRoutes = require("./routes/notifications");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -92,6 +93,7 @@ app.use("/api/public", publicRoutes);
 app.use("/api/student-portal", studentPortalRoutes);
 app.use("/api/lectures", lectureRoutes);
 app.use("/api/exams", examRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {

@@ -217,38 +217,18 @@ exports.getDashboardStats = async (req, res) => {
 
         stats.tuitionRevenue = tuitionResult?.[0]?.total ?? 0;
 
-        // SRS 3.0: Get ACTUAL expense debt from Expense shares
-        // Find this partner's unpaid expense shares
-        const partnerExpenseDebts = await Expense.find({
-          "shares.partner": userId,
-          "shares.status": "UNPAID",
-        }).lean();
+        // SRS 3.0 FIX: Get LIVE debt from User.debtToOwner (not historical Expense shares)
+        // This reflects actual remaining debt after payments
+        const partnerUser = await User.findById(userId).lean();
+        const liveDebtToOwner = partnerUser?.debtToOwner || 0;
 
-        let expenseDebtTotal = 0;
-        const expenseDebtDetails = [];
+        console.log(
+          `💳 Partner ${req.user.fullName}: Live debtToOwner = PKR ${liveDebtToOwner}`,
+        );
 
-        for (const exp of partnerExpenseDebts) {
-          const myShare = exp.shares.find(
-            (s) =>
-              s.partner?.toString() === userId.toString() &&
-              s.status === "UNPAID",
-          );
-          if (myShare) {
-            expenseDebtTotal += myShare.amount;
-            expenseDebtDetails.push({
-              expenseId: exp._id,
-              title: exp.title,
-              totalAmount: exp.amount,
-              myShare: myShare.amount,
-              percentage: myShare.percentage,
-              paidBy: exp.paidByType,
-            });
-          }
-        }
-
-        stats.expenseDebt = expenseDebtTotal;
-        stats.expenseDebtDetails = expenseDebtDetails;
-        stats.hasExpenseDebt = expenseDebtTotal > 0; // Alert flag for UI
+        stats.expenseDebt = liveDebtToOwner;
+        stats.hasExpenseDebt = liveDebtToOwner > 0; // Alert flag for UI
+        stats.expenseDebtDetails = []; // Historical details no longer needed
 
         // Link Partner to Teacher profile to get Teacher floatingCash
         // Try to find Teacher by userId first, then by name match
@@ -591,6 +571,28 @@ exports.createSharedExpense = async (req, res) => {
       shares,
     });
 
+    // CRITICAL: Debit Waqar's ledger - Create expense transaction
+    // All expenses are paid from Waqar's revenue (Chemistry + Dividends)
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      // Create a debit transaction for Waqar
+      await Transaction.create({
+        type: "EXPENSE",
+        category: category,
+        stream: "OWNER_DRAW",
+        amount: amount, // Positive amount, type EXPENSE indicates debit
+        description: `Expense: ${title} (${vendorName || "Academy"})`,
+        collectedBy: owner._id,
+        status: "VERIFIED",
+        date: new Date(),
+      });
+
+      console.log(
+        `💸 Debited PKR ${amount.toLocaleString()} from ${owner.fullName}'s revenue for expense: ${title}`,
+      );
+      // Silent: No notification to Owner - he knows he paid it
+    }
+
     // Notify partners about their share
     for (const share of shares) {
       await Notification.create({
@@ -599,6 +601,14 @@ exports.createSharedExpense = async (req, res) => {
         type: "FINANCE",
         relatedId: expense._id.toString(),
       });
+
+      // Update partner's debtToOwner
+      await User.findByIdAndUpdate(share.partner, {
+        $inc: { debtToOwner: share.amount },
+      });
+      console.log(
+        `📊 Added PKR ${share.amount} to ${share.partnerName}'s debt`,
+      );
     }
 
     return res.status(201).json({

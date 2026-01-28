@@ -8,19 +8,25 @@
  * 4. Track settlement history
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Loader2,
   Wallet,
   ArrowDownRight,
   History,
-  Banknote,
+  Filter,
 } from "lucide-react";
 
 // Import the shared SettlementModal component
@@ -62,6 +68,8 @@ interface SettlementOverview {
 
 export default function PartnerSettlement() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [partnerFilter, setPartnerFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("30days");
 
   // Fetch settlement overview
   const { data: overview, isLoading: overviewLoading } = useQuery<{
@@ -83,20 +91,37 @@ export default function PartnerSettlement() {
   // Get partner list for display
   const partners = overviewData?.partners || {};
 
+  // Filter settlements based on selected filters
+  const filteredSettlements = useMemo(() => {
+    if (!overviewData?.recentSettlements) return [];
+
+    let settlements = [...overviewData.recentSettlements];
+
+    // Filter by partner
+    if (partnerFilter !== "all") {
+      settlements = settlements.filter((s) =>
+        s.partnerName.toLowerCase().includes(partnerFilter.toLowerCase())
+      );
+    }
+
+    // Filter by date
+    if (dateFilter === "30days") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      settlements = settlements.filter(
+        (s) => new Date(s.date) >= thirtyDaysAgo
+      );
+    }
+
+    return settlements;
+  }, [overviewData?.recentSettlements, partnerFilter, dateFilter]);
+
   return (
     <DashboardLayout title="Partner Settlement">
       <HeaderBanner
         title="💰 Partner Settlement Hub"
-        subtitle="Track partner debts and record cash repayments to Sir Waqar"
-      >
-        <Button
-          onClick={() => setIsDialogOpen(true)}
-          className="bg-green-600 hover:bg-green-700 h-10 px-6"
-        >
-          <Banknote className="mr-2 h-4 w-4" />
-          Record Cash Received
-        </Button>
-      </HeaderBanner>
+        subtitle="Track partner debts and view payment history"
+      />
 
       {/* Use the shared SettlementModal component */}
       <SettlementModal
@@ -204,16 +229,41 @@ export default function PartnerSettlement() {
           {/* Recent Settlements */}
           <Card className="border-2">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5 text-green-600" />
-                Recent Cash Payments Received
-              </CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5 text-green-600" />
+                  Recent Cash Payments Received
+                </CardTitle>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <Select value={partnerFilter} onValueChange={setPartnerFilter}>
+                      <SelectTrigger className="w-[130px] h-9">
+                        <SelectValue placeholder="Partner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Partners</SelectItem>
+                        <SelectItem value="zahid">Dr. Zahid</SelectItem>
+                        <SelectItem value="saud">Sir Saud</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Select value={dateFilter} onValueChange={setDateFilter}>
+                    <SelectTrigger className="w-[140px] h-9">
+                      <SelectValue placeholder="Date Range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30days">Last 30 Days</SelectItem>
+                      <SelectItem value="all">All Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              {overviewData?.recentSettlements &&
-                overviewData.recentSettlements.length > 0 ? (
+              {filteredSettlements.length > 0 ? (
                 <div className="space-y-3">
-                  {overviewData.recentSettlements.map((settlement) => (
+                  {filteredSettlements.map((settlement) => (
                     <div
                       key={settlement._id}
                       className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200"
@@ -252,9 +302,11 @@ export default function PartnerSettlement() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <History className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No cash payments recorded yet.</p>
+                  <p>No cash payments found.</p>
                   <p className="text-sm">
-                    When partners pay Sir Waqar back, record it here.
+                    {partnerFilter !== "all" || dateFilter !== "all"
+                      ? "Try adjusting your filters."
+                      : "When partners pay Sir Waqar back, they appear here."}
                   </p>
                 </div>
               )}

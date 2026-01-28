@@ -113,8 +113,10 @@ const Finance = () => {
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [vendorName, setVendorName] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [paidByType, setPaidByType] = useState("ACADEMY_CASH");
+  const [dueDate, setDueDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  ); // Default to today
+  const [paidByType, setPaidByType] = useState("WAQAR"); // Always Waqar
 
   // Payment receipt modal state
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
@@ -149,7 +151,7 @@ const Finance = () => {
     queryFn: async () => {
       const response = await fetch(
         `${API_BASE_URL}/api/finance/stats/overview`,
-        { credentials: "include" }
+        { credentials: "include" },
       );
       if (!response.ok) throw new Error("Failed to fetch finance stats");
       const result = await response.json();
@@ -218,7 +220,7 @@ const Finance = () => {
     mutationFn: async (expenseId: string) => {
       const response = await fetch(
         `${API_BASE_URL}/api/expenses/${expenseId}/mark-paid`,
-        { method: "PATCH", credentials: "include" }
+        { method: "PATCH", credentials: "include" },
       );
       if (!response.ok) throw new Error("Failed to mark as paid");
       return response.json();
@@ -236,7 +238,7 @@ const Finance = () => {
     mutationFn: async (expenseId: string) => {
       const response = await fetch(
         `${API_BASE_URL}/api/expenses/${expenseId}`,
-        { method: "DELETE", credentials: "include" }
+        { method: "DELETE", credentials: "include" },
       );
       if (!response.ok) throw new Error("Failed to delete expense");
       return response.json();
@@ -283,7 +285,13 @@ const Finance = () => {
   });
 
   const handleAddExpense = () => {
-    if (!expenseTitle || !expenseCategory || !expenseAmount || !vendorName || !dueDate) {
+    if (
+      !expenseTitle ||
+      !expenseCategory ||
+      !expenseAmount ||
+      !vendorName ||
+      !dueDate
+    ) {
       toast.error("⚠️ Please fill all required fields");
       return;
     }
@@ -298,8 +306,8 @@ const Finance = () => {
       category: expenseCategory,
       amount: parseFloat(expenseAmount),
       vendorName,
-      dueDate,
-      paidByType,
+      dueDate: dueDate || new Date().toISOString().split("T")[0], // Auto-set to today if empty
+      paidByType: "WAQAR", // Always deduct from Waqar's revenue
     });
   };
 
@@ -334,7 +342,11 @@ const Finance = () => {
           <p className="text-lg font-medium text-foreground">
             Failed to load finance data
           </p>
-          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["finance"] })}>
+          <Button
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ["finance"] })
+            }
+          >
             Retry
           </Button>
         </div>
@@ -356,8 +368,10 @@ const Finance = () => {
   } = financeData || {};
 
   const expenses = expensesData || [];
-  const pendingExpenses = expenses.filter(e => e.status === "pending" || e.status === "overdue");
-  const paidExpenses = expenses.filter(e => e.status === "paid");
+  const pendingExpenses = expenses.filter(
+    (e) => e.status === "pending" || e.status === "overdue",
+  );
+  const paidExpenses = expenses.filter((e) => e.status === "paid");
   const pendingTotal = pendingExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   // Status badge helper
@@ -399,15 +413,22 @@ const Finance = () => {
               <Plus className="h-5 w-5 text-gray-700" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Add New Expense</h2>
-              <p className="text-sm text-gray-500">Record operational costs and bills</p>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Add New Expense
+              </h2>
+              <p className="text-sm text-gray-500">
+                Record operational costs and bills
+              </p>
             </div>
           </div>
 
           {/* Form Grid */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2">
-              <Label htmlFor="expense-title" className="text-xs font-medium text-gray-700 flex items-center gap-1">
+              <Label
+                htmlFor="expense-title"
+                className="text-xs font-medium text-gray-700 flex items-center gap-1"
+              >
                 <FileText className="h-3 w-3 text-gray-500" />
                 Expense Title <span className="text-red-500">*</span>
               </Label>
@@ -421,7 +442,10 @@ const Finance = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="vendor-name" className="text-xs font-medium text-gray-700 flex items-center gap-1">
+              <Label
+                htmlFor="vendor-name"
+                className="text-xs font-medium text-gray-700 flex items-center gap-1"
+              >
                 <Building2 className="h-3 w-3 text-gray-500" />
                 Vendor/Supplier <span className="text-red-500">*</span>
               </Label>
@@ -435,11 +459,17 @@ const Finance = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="expense-category" className="text-xs font-medium text-gray-700 flex items-center gap-1">
+              <Label
+                htmlFor="expense-category"
+                className="text-xs font-medium text-gray-700 flex items-center gap-1"
+              >
                 <Tag className="h-3 w-3 text-gray-500" />
                 Category <span className="text-red-500">*</span>
               </Label>
-              <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+              <Select
+                value={expenseCategory}
+                onValueChange={setExpenseCategory}
+              >
                 <SelectTrigger className="bg-gray-50 h-10 border-gray-300">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -455,7 +485,10 @@ const Finance = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="expense-amount" className="text-xs font-medium text-gray-700 flex items-center gap-1">
+              <Label
+                htmlFor="expense-amount"
+                className="text-xs font-medium text-gray-700 flex items-center gap-1"
+              >
                 <DollarSign className="h-3 w-3 text-gray-500" />
                 Amount (PKR) <span className="text-red-500">*</span>
               </Label>
@@ -469,55 +502,28 @@ const Finance = () => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="due-date" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <Calendar className="h-3 w-3 text-gray-500" />
-                Payment Due <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="due-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
+
           </div>
 
-          {/* Who Paid Dropdown */}
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-3">
-              <Users className="h-4 w-4 text-gray-600" />
-              Who Paid for This?
-              <InfoTooltip>
-                <TooltipTrigger>
-                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="text-xs">
-                    Select "Academy Cash" for normal operations. If a partner paid out-of-pocket, select their name.
-                  </p>
-                </TooltipContent>
-              </InfoTooltip>
+          {/* Expense Source - Auto-assigned to Sir Waqar */}
+          <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <Label className="text-sm font-medium text-amber-800 flex items-center gap-2 mb-2">
+              <Users className="h-4 w-4 text-amber-600" />
+              Expense Source
             </Label>
-            <Select value={paidByType} onValueChange={setPaidByType}>
-              <SelectTrigger className="bg-white h-10 border-gray-300 max-w-md">
-                <SelectValue placeholder="Who paid?" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACADEMY_CASH">
-                  🏦 Academy Cash (Normal Flow)
-                </SelectItem>
-                <SelectItem value="WAQAR">👤 Sir Waqar (Out-of-Pocket)</SelectItem>
-                <SelectItem value="ZAHID">👤 Dr. Zahid (Out-of-Pocket)</SelectItem>
-                <SelectItem value="SAUD">👤 Sir Saud (Out-of-Pocket)</SelectItem>
-              </SelectContent>
-            </Select>
-            {paidByType !== "ACADEMY_CASH" && (
-              <p className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-                ⚠️ This will generate debt for other partners
-              </p>
-            )}
+            <div className="flex items-center gap-2 bg-white px-4 py-3 rounded-lg border border-amber-300">
+              <div className="h-8 w-8 rounded-full bg-amber-500 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">W</span>
+              </div>
+              <div>
+                <p className="font-medium text-amber-900">
+                  Sir Waqar's Revenue
+                </p>
+                <p className="text-xs text-amber-600">
+                  All expenses deducted from Owner's revenue
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Submit Button */}
@@ -568,7 +574,10 @@ const Finance = () => {
                 </div>
               )}
               {/* Type Filter */}
-              <Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}>
+              <Select
+                value={historyTypeFilter}
+                onValueChange={setHistoryTypeFilter}
+              >
                 <SelectTrigger className="w-full sm:w-36 bg-gray-50 border-gray-300">
                   <SelectValue placeholder="Filter" />
                 </SelectTrigger>
@@ -596,35 +605,56 @@ const Finance = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold text-gray-700">Date</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Type</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Description</TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700">Amount</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Status</TableHead>
+                    <TableHead className="font-semibold text-gray-700">
+                      Date
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700">
+                      Type
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700">
+                      Description
+                    </TableHead>
+                    <TableHead className="text-right font-semibold text-gray-700">
+                      Amount
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700">
+                      Status
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {historyData
                     .filter((item) => {
-                      if (historyTypeFilter !== "all" && item.type !== historyTypeFilter) {
+                      if (
+                        historyTypeFilter !== "all" &&
+                        item.type !== historyTypeFilter
+                      ) {
                         return false;
                       }
                       if (isOwner && historySearch) {
                         const searchLower = historySearch.toLowerCase();
-                        const collectedBy = item.collectedBy?.toLowerCase() || "";
+                        const collectedBy =
+                          item.collectedBy?.toLowerCase() || "";
                         const paidBy = item.paidBy?.toLowerCase() || "";
-                        return collectedBy.includes(searchLower) || paidBy.includes(searchLower);
+                        return (
+                          collectedBy.includes(searchLower) ||
+                          paidBy.includes(searchLower)
+                        );
                       }
                       return true;
                     })
                     .slice(0, 50)
                     .map((item) => {
-                      const isPositive = item.type === "INCOME" || item.type === "PARTNER_WITHDRAWAL";
+                      const isPositive =
+                        item.type === "INCOME" ||
+                        item.type === "PARTNER_WITHDRAWAL";
                       const amountColorClass = isPositive
                         ? "text-emerald-600 font-semibold"
                         : "text-red-600 font-semibold";
 
-                      const formattedDate = new Date(item.date).toLocaleDateString("en-PK", {
+                      const formattedDate = new Date(
+                        item.date,
+                      ).toLocaleDateString("en-PK", {
                         day: "2-digit",
                         month: "short",
                         year: "numeric",
@@ -652,7 +682,12 @@ const Finance = () => {
                             {formattedDate}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={item.isExpense ? "destructive" : "default"} className="text-xs">
+                            <Badge
+                              variant={
+                                item.isExpense ? "destructive" : "default"
+                              }
+                              className="text-xs"
+                            >
                               {item.type}
                             </Badge>
                           </TableCell>
@@ -664,11 +699,17 @@ const Finance = () => {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className={`text-right ${amountColorClass}`}>
-                            {isPositive ? "+" : "-"}PKR {item.amount.toLocaleString()}
+                          <TableCell
+                            className={`text-right ${amountColorClass}`}
+                          >
+                            {isPositive ? "+" : "-"}PKR{" "}
+                            {item.amount.toLocaleString()}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={getStatusVariant(item.status)} className="text-xs">
+                            <Badge
+                              variant={getStatusVariant(item.status)}
+                              className="text-xs"
+                            >
                               {item.status}
                             </Badge>
                           </TableCell>
@@ -701,14 +742,17 @@ const Finance = () => {
               {pendingExpenses.map((expense) => (
                 <div
                   key={expense._id}
-                  className={`flex items-center justify-between p-4 rounded-lg border ${expense.status === "overdue"
+                  className={`flex items-center justify-between p-4 rounded-lg border ${
+                    expense.status === "overdue"
                       ? "border-red-200 bg-red-50"
                       : "border-amber-200 bg-amber-50"
-                    }`}
+                  }`}
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
-                      <p className="font-medium text-gray-900">{expense.title}</p>
+                      <p className="font-medium text-gray-900">
+                        {expense.title}
+                      </p>
                       {getStatusBadge(expense.status)}
                     </div>
                     <div className="flex items-center gap-4 text-xs text-gray-500">
@@ -721,7 +765,11 @@ const Finance = () => {
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        Due: {new Date(expense.dueDate).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}
+                        Due:{" "}
+                        {new Date(expense.dueDate).toLocaleDateString("en-PK", {
+                          day: "numeric",
+                          month: "short",
+                        })}
                       </span>
                     </div>
                   </div>
@@ -757,7 +805,9 @@ const Finance = () => {
         {!expensesLoading && expenses.length === 0 && (
           <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center mb-6">
             <TrendingDown className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Expenses Yet</h4>
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">
+              No Expenses Yet
+            </h4>
             <p className="text-sm text-gray-500 mb-4">
               Start by adding your first expense using the form above
             </p>
@@ -779,7 +829,9 @@ const Finance = () => {
                 <BarChart3 className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Owner Analytics</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Owner Analytics
+                </h3>
                 <p className="text-sm text-gray-500 flex items-center gap-1">
                   <Shield className="h-3 w-3" />
                   Visible only to you
@@ -795,7 +847,10 @@ const Finance = () => {
                 subtitle={`${collectionRate}% collection rate`}
                 icon={TrendingUp}
                 variant="success"
-                trend={{ value: collectionRate, isPositive: collectionRate > 70 }}
+                trend={{
+                  value: collectionRate,
+                  isPositive: collectionRate > 70,
+                }}
               />
 
               <div className="relative">
