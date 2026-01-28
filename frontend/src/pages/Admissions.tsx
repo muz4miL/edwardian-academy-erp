@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
+import { ImageCapture } from "@/components/shared/ImageCapture";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
@@ -141,6 +142,9 @@ const Admissions = () => {
   const [quickPaidAmount, setQuickPaidAmount] = useState("");
   const [quickFeeValidationError, setQuickFeeValidationError] = useState("");
 
+  // Student Photo State
+  const [photo, setPhoto] = useState<string | null>(null);
+
   // TASK 1: Load Draft on Component Mount
   useEffect(() => {
     const savedDraft = localStorage.getItem(ADMISSION_DRAFT_KEY);
@@ -162,6 +166,7 @@ const Admissions = () => {
         setTotalFee(draft.totalFee || "");
         setPaidAmount(draft.paidAmount || "");
         setIsCustomFeeMode(draft.isCustomFeeMode || false);
+        setPhoto(draft.photo || null);
         console.log("✅ Draft loaded from localStorage");
       } catch (error) {
         console.error("❌ Error loading draft:", error);
@@ -190,6 +195,7 @@ const Admissions = () => {
       totalFee,
       paidAmount,
       isCustomFeeMode,
+      photo,
     };
 
     localStorage.setItem(ADMISSION_DRAFT_KEY, JSON.stringify(draft));
@@ -495,6 +501,7 @@ const Admissions = () => {
       discountAmount, // Include discount in payload
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
+      photo: photo || undefined,
     };
 
     console.log("📤 Sending Student Data to Backend:", studentData);
@@ -559,6 +566,7 @@ const Admissions = () => {
     setPaidAmount("");
     setIsCustomFeeMode(false);
     setFeeValidationError(""); // Clear validation error
+    setPhoto(null);
 
     // Clear localStorage draft
     localStorage.removeItem(ADMISSION_DRAFT_KEY);
@@ -615,6 +623,19 @@ const Admissions = () => {
             <h3 className="mb-6 text-lg font-semibold text-foreground">
               Student Information
             </h3>
+
+            {/* Profile Photo Section */}
+            <div className="mb-6 flex flex-col items-center gap-3 p-4 bg-secondary/20 rounded-xl border border-border">
+              <Label className="text-sm font-medium text-muted-foreground">Student Photo</Label>
+              <ImageCapture
+                value={photo || undefined}
+                onChange={(img) => setPhoto(img)}
+                size="lg"
+              />
+              <p className="text-xs text-muted-foreground text-center">
+                Take a webcam photo or upload an image file
+              </p>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -750,11 +771,10 @@ const Admissions = () => {
                       return (
                         <div
                           key={subject.name}
-                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
-                            isSelected
-                              ? "border-sky-500 bg-sky-50"
-                              : "border-border hover:border-sky-300"
-                          }`}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
+                            }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
                           <div className="flex items-center gap-3">
@@ -771,11 +791,10 @@ const Admissions = () => {
                             </span>
                           </div>
                           <span
-                            className={`text-sm font-semibold ${
-                              isSelected
-                                ? "text-green-600"
-                                : "text-muted-foreground"
-                            }`}
+                            className={`text-sm font-semibold ${isSelected
+                              ? "text-green-600"
+                              : "text-muted-foreground"
+                              }`}
                           >
                             {subject.fee.toLocaleString()} PKR
                           </span>
@@ -882,13 +901,12 @@ const Admissions = () => {
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
                     readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
-                    className={`${
-                      isCustomFeeMode
-                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                        : !isCustomFeeMode && selectedSubjects.length > 0
-                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
-                          : ""
-                    }`}
+                    className={`${isCustomFeeMode
+                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                      : !isCustomFeeMode && selectedSubjects.length > 0
+                        ? "border-sky-300 bg-sky-50 cursor-not-allowed"
+                        : ""
+                      }`}
                   />
                   {!isCustomFeeMode && selectedSubjects.length > 0 && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">

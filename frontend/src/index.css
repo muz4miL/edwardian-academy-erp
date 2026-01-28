@@ -298,6 +298,30 @@
   .dark .scrollbar-thin::-webkit-scrollbar-track {
     background: hsl(222 47% 15%);
   }
+
+  /* Sidebar Navigation Scrollbar - Gold Theme */
+  .sidebar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(43 74% 49% / 0.6) hsl(30 15% 12%);
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    background: hsl(30 15% 12%);
+    border-radius: 3px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(43 74% 49% / 0.6);
+    border-radius: 3px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(43 74% 49% / 0.8);
+  }
 }
 
 /* ========================================

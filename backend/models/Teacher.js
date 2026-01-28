@@ -29,6 +29,24 @@ const TeacherSchema = new mongoose.Schema(
       default: "active",
     },
 
+    // ========================================
+    // Identity System Fields
+    // ========================================
+    profileImage: {
+      type: String,
+      trim: true,
+    },
+    // Link to User account for login
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    // Store username for display (generated from name)
+    username: {
+      type: String,
+      trim: true,
+    },
+
     // Teacher Balance (Earnings Wallet)
     balance: {
       floating: { type: Number, default: 0 }, // Unverified earnings (pending day close)

@@ -98,6 +98,18 @@ const userSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
     },
+    // ========================================
+    // Identity System Fields
+    // ========================================
+    profileImage: {
+      type: String,
+      trim: true,
+    },
+    // Link to Teacher document (for TEACHER role users)
+    teacherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Teacher",
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -187,6 +199,7 @@ userSchema.methods.getPublicProfile = function () {
     email: this.email,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
+    profileImage: this.profileImage,
   };
 };
 
