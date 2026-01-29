@@ -10,7 +10,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ArrowLeft, User, Loader2, Send, Crown } from "lucide-react";
+import { ArrowLeft, User, Loader2, Send, Crown, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 // Modular Components
 import {
@@ -42,10 +43,16 @@ export default function TeacherProfile() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  // Payout request state
+  // Payout request state (for teacher self-request)
   const [payoutDialogOpen, setPayoutDialogOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
+
+  // Process Payout state (for owner to pay teacher)
+  const [processPayoutDialogOpen, setProcessPayoutDialogOpen] = useState(false);
+  const [processPayoutAmount, setProcessPayoutAmount] = useState("");
+  const [processPayoutNotes, setProcessPayoutNotes] = useState("");
 
   // Fetch teacher details (now includes debtToOwner for partners)
   const { data: teacherData, isLoading: teacherLoading } = useQuery({
@@ -86,7 +93,7 @@ export default function TeacherProfile() {
     enabled: !!id,
   });
 
-  // Payout request mutation
+  // Payout request mutation (teacher self-request)
   const payoutMutation = useMutation({
     mutationFn: async (amount: number) => {
       const res = await fetch(`${API_BASE_URL}/payroll/request`, {
@@ -120,10 +127,52 @@ export default function TeacherProfile() {
     },
   });
 
+  // Process Payout mutation (owner pays teacher directly)
+  const processPayoutMutation = useMutation({
+    mutationFn: async ({
+      amount,
+      notes,
+    }: {
+      amount: number;
+      notes: string;
+    }) => {
+      const res = await fetch(`${API_BASE_URL}/finance/teacher-payout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ teacherId: id, amount, notes }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to process payout");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Payout Processed!",
+        description: data.message,
+      });
+      setProcessPayoutDialogOpen(false);
+      setProcessPayoutAmount("");
+      setProcessPayoutNotes("");
+      queryClient.invalidateQueries({ queryKey: ["teacher", id] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-payouts", id] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Payout Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const teacher = teacherData?.data;
   const revenue = revenueData?.data || { totalRevenue: 0, teacherShare: 0 };
   const payoutRequests = payoutRequestsData?.data || [];
   const teacherBalance = teacher?.balance?.verified || 0;
+  const pendingBalance = teacher?.balance?.pending || 0;
   const hasPendingRequest = payoutRequests.some(
     (r: any) => r.status === "PENDING",
   );
@@ -133,6 +182,9 @@ export default function TeacherProfile() {
     teacher?.name?.toLowerCase().includes("waqar") ||
     teacher?.name?.toLowerCase().includes("zahid") ||
     teacher?.name?.toLowerCase().includes("saud");
+
+  // Check if current user is Owner (can process payouts)
+  const isOwner = user?.role === "OWNER";
 
   // Get debtToOwner from teacher data (populated from User model)
   const debtToOwner = teacher?.debtToOwner || 0;
@@ -232,6 +284,16 @@ export default function TeacherProfile() {
                 Request Payout
               </Button>
             )}
+            {/* Owner can process payouts for Staff teachers with pending balance */}
+            {isOwner && !isPartner && pendingBalance > 0 && (
+              <Button
+                onClick={() => setProcessPayoutDialogOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Banknote className="mr-2 h-4 w-4" />
+                Process Payout
+              </Button>
+            )}
           </div>
         </div>
 
@@ -317,6 +379,97 @@ export default function TeacherProfile() {
                 <>
                   <Send className="mr-2 h-4 w-4" />
                   Submit Request
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Process Payout Dialog (Owner Only) */}
+      <Dialog
+        open={processPayoutDialogOpen}
+        onOpenChange={setProcessPayoutDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Process Teacher Payout</DialogTitle>
+            <DialogDescription>
+              Pay {teacher.name}'s pending commission
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                Pending Balance: Rs. {pendingBalance.toLocaleString()}
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                This is the commission owed to this teacher from student
+                admissions.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Payout Amount (PKR)</label>
+              <Input
+                type="number"
+                placeholder="Enter amount to pay"
+                value={processPayoutAmount}
+                onChange={(e) => setProcessPayoutAmount(e.target.value)}
+                max={pendingBalance}
+              />
+              {Number(processPayoutAmount) > pendingBalance && (
+                <p className="text-xs text-red-500">
+                  Amount cannot exceed pending balance
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes (Optional)</label>
+              <Input
+                type="text"
+                placeholder="e.g., Cash payment, Bank transfer"
+                value={processPayoutNotes}
+                onChange={(e) => setProcessPayoutNotes(e.target.value)}
+              />
+            </div>
+            <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm">
+              <p className="text-blue-700 dark:text-blue-300">
+                ℹ️ This will deduct from the teacher's pending balance and
+                record an expense transaction.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setProcessPayoutDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                processPayoutMutation.mutate({
+                  amount: Number(processPayoutAmount),
+                  notes: processPayoutNotes,
+                })
+              }
+              disabled={
+                !processPayoutAmount ||
+                Number(processPayoutAmount) <= 0 ||
+                Number(processPayoutAmount) > pendingBalance ||
+                processPayoutMutation.isPending
+              }
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {processPayoutMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Banknote className="mr-2 h-4 w-4" />
+                  Process Payout
                 </>
               )}
             </Button>

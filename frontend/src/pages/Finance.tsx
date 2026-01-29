@@ -364,6 +364,7 @@ const Finance = () => {
     academyShare = 0,
     totalExpenses = 0,
     netProfit = 0,
+    ownerNetRevenue = 0,
     collectionRate = 0,
   } = financeData || {};
 
@@ -501,8 +502,6 @@ const Finance = () => {
                 className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
               />
             </div>
-
-
           </div>
 
           {/* Expense Source - Auto-assigned to Sir Waqar */}
@@ -863,7 +862,10 @@ const Finance = () => {
                 />
                 <InfoTooltip>
                   <TooltipTrigger asChild>
-                    <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                    <button
+                      className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+                      aria-label="More information about Teacher Liabilities"
+                    >
                       <HelpCircle className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
@@ -885,21 +887,24 @@ const Finance = () => {
 
               <div className="relative">
                 <KPICard
-                  title="Net Profit"
-                  value={`PKR ${(netProfit / 1000).toFixed(0)}K`}
-                  subtitle="After all costs"
+                  title="My Net Position"
+                  value={`PKR ${(ownerNetRevenue / 1000).toFixed(0)}K`}
+                  subtitle="Your actual take-home"
                   icon={Wallet}
-                  variant={netProfit > 0 ? "primary" : "danger"}
+                  variant={ownerNetRevenue > 0 ? "primary" : "danger"}
                 />
                 <InfoTooltip>
                   <TooltipTrigger asChild>
-                    <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+                    <button
+                      className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+                      aria-label="More information about My Net Position"
+                    >
                       <HelpCircle className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="text-sm">
-                      Net Profit = Collected - (Teacher Payouts + Expenses)
+                      Chemistry Fees + Pool Share - Expenses Paid
                     </p>
                   </TooltipContent>
                 </InfoTooltip>
@@ -907,7 +912,7 @@ const Finance = () => {
             </div>
 
             {/* Warning for Negative Profit */}
-            {netProfit < 0 && (
+            {ownerNetRevenue < 0 && (
               <div className="mb-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 flex items-start gap-3">
                 <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
                 <div>

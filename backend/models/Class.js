@@ -168,6 +168,26 @@ const classSchema = new mongoose.Schema({
   // Subjects offered in this class with individual fees
   subjects: [subjectSchema],
 
+  // Subject-wise Teacher Mapping (NEW: For multi-teacher classes)
+  // Maps each subject to its specific teacher
+  subjectTeachers: [
+    {
+      subject: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      teacherId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Teacher",
+      },
+      teacherName: {
+        type: String,
+        trim: true,
+      },
+    },
+  ],
+
   // Base monthly fee for this class (fallback/default fee per subject)
   baseFee: {
     type: Number,

@@ -37,6 +37,13 @@ const configurationSchema = new mongoose.Schema(
       saud: { type: Number, default: 30, min: 0, max: 100 },
     },
 
+    // Card 7: ETEA/MDCAT Per-Student Commission
+    // Universal commission rate for ALL teachers in ETEA/MDCAT (regardless of subject)
+    // Partners get 100% (Commission + Tuition), Staff get Commission only (Pending)
+    eteaConfig: {
+      perStudentCommission: { type: Number, default: 3000, min: 0 }, // Universal rate for all ETEA teachers
+    },
+
     // Card 5: Master Subject Pricing - Global base fees synced across all modules
     defaultSubjectFees: [
       {

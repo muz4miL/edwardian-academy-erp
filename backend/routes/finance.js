@@ -13,6 +13,7 @@ const {
   getFinanceHistory,
   getPartnerPortalStats,
   repayDebtToOwner,
+  processTeacherPayout,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -94,6 +95,16 @@ router.get(
 // @desc    Partner records a debt repayment to Owner
 // @access  Protected (PARTNER only)
 router.post("/repay-debt", protect, restrictTo("PARTNER"), repayDebtToOwner);
+
+// @route   POST /api/finance/teacher-payout
+// @desc    Process teacher payout from pending balance (Owner pays teacher)
+// @access  Protected (OWNER only)
+router.post(
+  "/teacher-payout",
+  protect,
+  restrictTo("OWNER"),
+  processTeacherPayout,
+);
 
 // @route   POST /api/finance/mark-expense-paid
 // @desc    Mark partner's expense share as paid (Owner action)
@@ -447,6 +458,118 @@ router.get("/stats/overview", protect, async (req, res) => {
     // Academy's share (what's left after all costs)
     const academyShare = netProfit;
 
+    // === OWNER NET REVENUE CALCULATION WITH CATEGORIZED BREAKDOWN ===
+    // Calculate the same metric as in getDashboardStats
+    const Transaction = require("../models/Transaction");
+    const User = require("../models/User");
+
+    let ownerNetRevenue = 0;
+    let revenueBreakdown = {
+      matricRevenue: 0,
+      fscRevenue: 0,
+      chemistryRevenue: 0,
+      eteaRevenue: 0,
+      poolDividends: 0,
+    };
+    let ownerExpensesPaid = 0;
+
+    if (isOwner) {
+      const ownerId = req.user._id;
+
+      // Direct Teaching: Sum of 100% fees from classes where teacher = Waqar
+      const waqarTeacher = await Teacher.findOne({
+        $or: [{ userId: ownerId }, { name: { $regex: /waqar/i } }],
+      });
+
+      let directTeaching = 0;
+      if (waqarTeacher) {
+        // Get all owner chemistry transactions with category breakdown
+        const ownerTransactions = await Transaction.find({
+          stream: "OWNER_CHEMISTRY",
+          status: "VERIFIED",
+          type: "INCOME",
+        }).lean();
+
+        // Categorize by description patterns
+        for (const tx of ownerTransactions) {
+          directTeaching += tx.amount;
+          revenueBreakdown.chemistryRevenue += tx.amount;
+
+          const desc = (tx.description || "").toLowerCase();
+          if (
+            desc.includes("9th") ||
+            desc.includes("10th") ||
+            desc.includes("matric")
+          ) {
+            revenueBreakdown.matricRevenue += tx.amount;
+          } else if (
+            desc.includes("11th") ||
+            desc.includes("12th") ||
+            desc.includes("fsc")
+          ) {
+            revenueBreakdown.fscRevenue += tx.amount;
+          } else if (
+            desc.includes("etea") ||
+            desc.includes("mdcat") ||
+            desc.includes("ecat")
+          ) {
+            revenueBreakdown.eteaRevenue += tx.amount;
+          }
+        }
+
+        // Get ETEA revenue where Waqar is the teacher
+        const eteaResult = await Transaction.aggregate([
+          {
+            $match: {
+              stream: { $in: ["ETEA_POOL", "ETEA_ENGLISH"] },
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.teacherId": waqarTeacher._id,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.teacherShare" },
+            },
+          },
+        ]);
+        const eteaTeacherEarnings = eteaResult?.[0]?.total ?? 0;
+        revenueBreakdown.eteaRevenue += eteaTeacherEarnings;
+        directTeaching += eteaTeacherEarnings;
+      }
+
+      // Pool Dividends: Sum of all DIVIDEND transactions where recipient = Waqar
+      const poolDividendsResult = await Transaction.aggregate([
+        {
+          $match: {
+            stream: "DIVIDEND",
+            status: "VERIFIED",
+            type: "INCOME",
+            recipientPartner: ownerId,
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
+      const poolDividends = poolDividendsResult?.[0]?.total ?? 0;
+      revenueBreakdown.poolDividends = poolDividends;
+
+      // Expenses Paid: Sum of all expenses where paidBy = Waqar
+      const expensesPaidResult = await Expense.aggregate([
+        {
+          $match: {
+            paidBy: ownerId,
+            status: "paid",
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
+      ownerExpensesPaid = expensesPaidResult?.[0]?.total ?? 0;
+
+      // Calculate Owner Net Revenue
+      ownerNetRevenue = directTeaching + poolDividends - ownerExpensesPaid;
+    }
+
     // === ROLE-BASED RESPONSE FILTERING ===
     // OPERATOR/PARTNER: Cannot see total revenue, net profit, academy balance
     // OWNER: Gets full analytics dashboard data
@@ -491,6 +614,9 @@ router.get("/stats/overview", protect, async (req, res) => {
         jointPoolExpenses, // NEW: Show joint pool expenses separately
         otherExpenses, // NEW: Show other expenses separately
         netProfit,
+        ownerNetRevenue, // NEW: Owner's personal net revenue
+        revenueBreakdown, // NEW: Categorized revenue breakdown
+        ownerExpensesPaid, // NEW: Expenses paid by owner
 
         // Percentages for UI
         collectionRate:

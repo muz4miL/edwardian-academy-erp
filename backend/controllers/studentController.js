@@ -7,6 +7,13 @@ const Configuration = require("../models/Configuration");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 
+const {
+  calculateRevenueSplit,
+  createRevenueSplitTransactions,
+  getTeacherRole,
+  processMultiSubjectRevenue,
+} = require("../helpers/revenueHelper");
+
 // @desc    Get all students
 // @route   GET /api/students
 exports.getStudents = async (req, res) => {
@@ -164,10 +171,56 @@ exports.createStudent = async (req, res) => {
       console.log(`   👨‍🏫 Linked to Professor: ${assignedTeacherName}`);
     }
 
+    // === REVENUE SPLIT PROCESSING (Multi-Subject) ===
+    // If student has paid amount, process revenue distribution for EACH subject
+    let revenueSplitResult = null;
+    if (student.paidAmount > 0 && classRef) {
+      try {
+        console.log("\n💰 Processing Multi-Subject Revenue Split...");
+
+        // Get class details with subjectTeachers for subject-wise teacher mapping
+        const classDoc =
+          await Class.findById(classRef).populate("assignedTeacher");
+
+        if (classDoc) {
+          // Use the new multi-subject revenue distribution
+          const systemUserId = req.user?._id || null;
+
+          if (systemUserId) {
+            revenueSplitResult = await processMultiSubjectRevenue({
+              student,
+              classDoc,
+              paidAmount: student.paidAmount,
+              collectedById: systemUserId,
+            });
+
+            console.log(
+              `✅ Multi-Subject Revenue Split Complete: Total to Teachers PKR ${revenueSplitResult.totalTeacher}, Total to Pool PKR ${revenueSplitResult.totalPool}`,
+            );
+          } else {
+            console.log(
+              "⚠️ No authenticated user - skipping transaction creation",
+            );
+          }
+        }
+      } catch (splitError) {
+        // Log error but don't fail the enrollment
+        console.error("⚠️ Revenue split processing error:", splitError.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: "Student admitted successfully",
       data: student,
+      revenueSplit: revenueSplitResult
+        ? {
+            teacherShare: revenueSplitResult.totalTeacher,
+            poolShare: revenueSplitResult.totalPool,
+            transactionsCreated: revenueSplitResult.transactions.length,
+            subjectBreakdown: revenueSplitResult.subjectBreakdown,
+          }
+        : null,
     });
   } catch (error) {
     console.error("❌ Error creating student:", error);
@@ -364,154 +417,6 @@ exports.deleteStudent = async (req, res) => {
 // Check 3: Staff Tuition → 70/30 split (Teacher/Academy)
 // ========================================
 
-const calculateRevenueSplit = async (params) => {
-  const { student, studentClass, teacher, subject, amount, config } = params;
-
-  const subjectLower = (subject || "").toLowerCase();
-  const teacherNameLower = teacher?.name?.toLowerCase() || "";
-  const classSessionType = studentClass?.sessionType?.toLowerCase() || "";
-  const gradeLevel = studentClass?.gradeLevel?.toLowerCase() || "";
-
-  // Result object
-  const result = {
-    transactionStream: "STAFF_TUITION",
-    transactionStatus: "FLOATING",
-    teacherShare: 0,
-    academyShare: amount,
-    teacherPercentage: 0,
-    academyPercentage: 100,
-    revenueSource: "default",
-    createTeacherLedger: false,
-    teacherLedgerAmount: 0,
-    isPartnerSubject: false,
-    partnerKey: null,
-  };
-
-  // ========================================
-  // CHECK 1: Is it an ETEA/MDCAT Class?
-  // ========================================
-  const isETEAClass =
-    classSessionType.includes("etea") ||
-    classSessionType.includes("mdcat") ||
-    gradeLevel.includes("mdcat") ||
-    gradeLevel.includes("ecat") ||
-    subjectLower.includes("etea") ||
-    subjectLower.includes("mdcat");
-
-  if (isETEAClass) {
-    result.transactionStream = "ACADEMY_POOL";
-    result.transactionStatus = "VERIFIED"; // ETEA goes directly to academy
-    result.teacherShare = 0;
-    result.academyShare = amount;
-    result.teacherPercentage = 0;
-    result.academyPercentage = 100;
-    result.revenueSource = "etea-class";
-
-    // Check if English subject (teacher gets 0, fixed salary via payroll later)
-    const isEnglishSubject =
-      subjectLower.includes("english") ||
-      teacher?.subject?.toLowerCase() === "english";
-
-    if (!isEnglishSubject && teacher) {
-      // Non-English ETEA: Teacher gets +3000 PKR to their pending balance (ledger entry)
-      result.createTeacherLedger = true;
-      result.teacherLedgerAmount = 3000; // Fixed 3000 PKR per student for ETEA teachers
-    }
-
-    console.log(
-      `📚 ETEA/MDCAT CLASS: ${isEnglishSubject ? "English (0 commission)" : `Other (+${result.teacherLedgerAmount} PKR ledger)`}`,
-    );
-    return result;
-  }
-
-  // ========================================
-  // CHECK 2: Is it a Partner Subject? (100% Rule)
-  // ========================================
-  // Chemistry (Waqar) → 100% OWNER_CHEMISTRY, VERIFIED
-  // Physics (Saud) → 100% PARTNER_PHYSICS, FLOATING
-  // Zoology/Biology (Zahid) → 100% PARTNER_BIO, FLOATING
-
-  // Check for Chemistry/Waqar
-  const isChemistryWaqar =
-    subjectLower.includes("chemistry") || teacherNameLower.includes("waqar");
-
-  if (isChemistryWaqar) {
-    result.transactionStream = "OWNER_CHEMISTRY";
-    result.transactionStatus = "VERIFIED"; // Waqar's money is immediately verified
-    result.teacherShare = amount;
-    result.academyShare = 0;
-    result.teacherPercentage = 100;
-    result.academyPercentage = 0;
-    result.revenueSource = "partner-waqar-chemistry";
-    result.isPartnerSubject = true;
-    result.partnerKey = "waqar";
-    console.log(`🧪 PARTNER CHEMISTRY (Waqar): 100% → VERIFIED`);
-    return result;
-  }
-
-  // Check for Physics/Saud
-  const isPhysicsSaud =
-    subjectLower.includes("physics") || teacherNameLower.includes("saud");
-
-  if (isPhysicsSaud) {
-    result.transactionStream = "PARTNER_PHYSICS";
-    result.transactionStatus = "FLOATING"; // Partners need to close day
-    result.teacherShare = amount;
-    result.academyShare = 0;
-    result.teacherPercentage = 100;
-    result.academyPercentage = 0;
-    result.revenueSource = "partner-saud-physics";
-    result.isPartnerSubject = true;
-    result.partnerKey = "saud";
-    console.log(`⚛️ PARTNER PHYSICS (Saud): 100% → FLOATING`);
-    return result;
-  }
-
-  // Check for Zoology/Biology/Zahid
-  const isBioZahid =
-    subjectLower.includes("biology") ||
-    subjectLower.includes("zoology") ||
-    subjectLower.includes("bio") ||
-    teacherNameLower.includes("zahid");
-
-  if (isBioZahid) {
-    result.transactionStream = "PARTNER_BIO";
-    result.transactionStatus = "FLOATING"; // Partners need to close day
-    result.teacherShare = amount;
-    result.academyShare = 0;
-    result.teacherPercentage = 100;
-    result.academyPercentage = 0;
-    result.revenueSource = "partner-zahid-bio";
-    result.isPartnerSubject = true;
-    result.partnerKey = "zahid";
-    console.log(`🧬 PARTNER BIO (Zahid): 100% → FLOATING`);
-    return result;
-  }
-
-  // ========================================
-  // CHECK 3: Staff Tuition (70/30 Rule)
-  // ========================================
-  // 70% credited to Teacher's Ledger (verified)
-  // 30% credited to UNALLOCATED_POOL
-
-  const teacherPercent = config?.salaryConfig?.teacherShare || 70;
-  const academyPercent = config?.salaryConfig?.academyShare || 30;
-
-  result.transactionStream = "STAFF_TUITION";
-  result.transactionStatus = "FLOATING";
-  result.teacherShare = Math.round((amount * teacherPercent) / 100);
-  result.academyShare = amount - result.teacherShare; // Remainder to academy
-  result.teacherPercentage = teacherPercent;
-  result.academyPercentage = academyPercent;
-  result.revenueSource = "staff-tuition-split";
-
-  console.log(
-    `👨‍🏫 STAFF TUITION: ${teacherPercent}/${academyPercent} split → Teacher: ${result.teacherShare} | Pool: ${result.academyShare}`,
-  );
-
-  return result;
-};
-
 // @desc    Collect Fee from Student (Module 2: Fee Collection)
 // @route   POST /api/students/:id/collect-fee
 // @access  Protected (Staff/Admin)
@@ -570,32 +475,55 @@ exports.collectFee = async (req, res) => {
       studentClass?.sessionType || "standard",
     );
 
-    // Find the teacher
+    // Find the teacher - NOW uses subject-specific teacher mapping
     let teacher = null;
     if (teacherId) {
+      // If teacherId explicitly provided, use it
       teacher = await Teacher.findById(teacherId);
-    } else if (studentClass?.assignedTeacher) {
+    } else if (subject && studentClass?.subjectTeachers?.length > 0) {
+      // Look for subject-specific teacher in Class.subjectTeachers
+      const subjectTeacherMapping = studentClass.subjectTeachers.find(
+        (st) => st.subject?.toLowerCase() === subject?.toLowerCase(),
+      );
+      if (subjectTeacherMapping?.teacherId) {
+        teacher = await Teacher.findById(subjectTeacherMapping.teacherId);
+        console.log(
+          `🎯 Found subject-specific teacher: ${teacher?.name} for ${subject}`,
+        );
+      }
+    }
+
+    // Fallback to class's assigned teacher
+    if (!teacher && studentClass?.assignedTeacher) {
       teacher = studentClass.assignedTeacher;
-    } else if (subject) {
-      // Fallback: Try to find teacher by subject
+      console.log(`⚠️ Fallback to class teacher: ${teacher?.name}`);
+    }
+
+    // Last fallback: Find any teacher by subject
+    if (!teacher && subject) {
       teacher = await Teacher.findOne({
         subject: subject.toLowerCase(),
         status: "active",
       });
+      console.log(`⚠️ Fallback to any ${subject} teacher: ${teacher?.name}`);
     }
 
     // Get the configuration
     const config = await Configuration.findOne();
 
+    // Get teacher role for revenue split
+    const teacherRole = teacher ? await getTeacherRole(teacher) : "STAFF";
+
     // ========================================
     // SMART FEE LOGIC: Calculate Revenue Split
     // ========================================
     const splitResult = await calculateRevenueSplit({
-      student,
-      studentClass,
-      teacher,
-      subject,
-      amount,
+      fee: amount,
+      gradeLevel: studentClass?.gradeLevel,
+      sessionType: studentClass?.sessionType || "regular",
+      subject: subject || studentClass?.subjects?.[0]?.name || "General",
+      teacherId: teacher?._id,
+      teacherRole: teacherRole,
       config,
     });
 
@@ -614,13 +542,17 @@ exports.collectFee = async (req, res) => {
       collectedByName: req.user?.fullName || "Staff",
       teacher: teacher?._id,
       teacherName: teacher?.name,
-      isPartnerTeacher: splitResult.isPartnerSubject,
-      revenueSource: splitResult.revenueSource,
+      isPartnerTeacher: splitResult.isPartner,
+      revenueSource: splitResult.splitType,
       splitBreakdown: {
-        teacherShare: splitResult.teacherShare,
-        academyShare: splitResult.academyShare,
-        teacherPercentage: splitResult.teacherPercentage,
-        academyPercentage: splitResult.academyPercentage,
+        teacherShare: splitResult.teacherRevenue,
+        academyShare: splitResult.poolRevenue,
+        teacherPercentage: splitResult.isPartner
+          ? 100
+          : splitResult.config?.staffTeacherShare || 70,
+        academyPercentage: splitResult.isPartner
+          ? 0
+          : splitResult.config?.staffAcademyShare || 30,
       },
       paymentMethod: paymentMethod || "CASH",
       notes,
@@ -634,20 +566,25 @@ exports.collectFee = async (req, res) => {
     console.log("✅ Student paidAmount updated to:", student.paidAmount);
 
     // Create main Transaction for the ledger
+    const transactionStatus = splitResult.isPartner ? "VERIFIED" : "FLOATING";
     const transaction = await Transaction.create({
       type: "INCOME",
-      category: splitResult.isPartnerSubject ? "Chemistry" : "Tuition",
-      stream: splitResult.transactionStream,
+      category: "Tuition",
+      stream: splitResult.stream,
       amount,
       description: `Fee payment: ${student.studentName} - ${month} (${subject || "General"})`,
       collectedBy: req.user?._id,
-      status: splitResult.transactionStatus,
+      status: transactionStatus,
       studentId: student._id,
       splitDetails: {
-        teacherShare: splitResult.teacherShare,
-        academyShare: splitResult.academyShare,
-        teacherPercentage: splitResult.teacherPercentage,
-        academyPercentage: splitResult.academyPercentage,
+        teacherShare: splitResult.teacherRevenue,
+        academyShare: splitResult.poolRevenue,
+        teacherPercentage: splitResult.isPartner
+          ? 100
+          : splitResult.config?.staffTeacherShare || 70,
+        academyPercentage: splitResult.isPartner
+          ? 0
+          : splitResult.config?.staffAcademyShare || 30,
         teacherId: teacher?._id,
         teacherName: teacher?.name,
         isPaid: false,
@@ -656,110 +593,83 @@ exports.collectFee = async (req, res) => {
     });
 
     console.log(
-      `✅ Transaction created: ${transaction._id} | Stream: ${splitResult.transactionStream} | Status: ${splitResult.transactionStatus}`,
+      `✅ Transaction created: ${transaction._id} | Stream: ${splitResult.stream} | Status: ${transactionStatus}`,
     );
 
     // ========================================
-    // ETEA Teacher Ledger Entry (3000 PKR per student)
+    // Update Teacher Balance & Create Notifications
     // ========================================
-    if (splitResult.createTeacherLedger && teacher) {
-      // Create a separate ledger entry for teacher's ETEA bonus
-      await Transaction.create({
-        type: "INCOME",
-        category: "Tuition",
-        stream: "TEACHER_LEDGER",
-        amount: splitResult.teacherLedgerAmount,
-        description: `ETEA Bonus: ${student.studentName} - ${month} (+${splitResult.teacherLedgerAmount} PKR)`,
-        collectedBy: req.user?._id,
-        status: "VERIFIED", // Teacher's ledger entry is immediately verified
-        studentId: student._id,
-        splitDetails: {
-          teacherShare: splitResult.teacherLedgerAmount,
-          academyShare: 0,
-          teacherPercentage: 100,
-          academyPercentage: 0,
-          teacherId: teacher._id,
-          teacherName: teacher.name,
-          isPaid: false, // Pending payout
-        },
-        date: new Date(),
-      });
-
-      // Update teacher's pending balance
+    if (teacher && splitResult.teacherRevenue > 0) {
       if (!teacher.balance) {
-        teacher.balance = { floating: 0, verified: 0 };
+        teacher.balance = { floating: 0, verified: 0, pending: 0 };
       }
-      teacher.balance.verified =
-        (teacher.balance.verified || 0) + splitResult.teacherLedgerAmount;
+
+      // For ETEA Staff: Add to pending (paid at session end)
+      // For Partners: Add to verified (immediate cash)
+      // For Regular Staff: Add to floating
+      if (splitResult.isETEA && !splitResult.isPartner) {
+        teacher.balance.pending =
+          (teacher.balance.pending || 0) + splitResult.teacherCommission;
+        console.log(
+          `📚 ETEA Staff - Added to PENDING: ${teacher.name} +${splitResult.teacherCommission} PKR`,
+        );
+      } else if (splitResult.isPartner) {
+        teacher.balance.verified =
+          (teacher.balance.verified || 0) + splitResult.teacherRevenue;
+        console.log(
+          `👑 Partner - Added to VERIFIED: ${teacher.name} +${splitResult.teacherRevenue} PKR`,
+        );
+      } else {
+        teacher.balance.floating =
+          (teacher.balance.floating || 0) + splitResult.teacherRevenue;
+        console.log(
+          `📤 Staff - Added to FLOATING: ${teacher.name} +${splitResult.teacherRevenue} PKR`,
+        );
+      }
       await teacher.save();
 
-      console.log(
-        `📚 ETEA Teacher Ledger: ${teacher.name} +${splitResult.teacherLedgerAmount} PKR`,
-      );
-
-      // Notify teacher
+      // Create notification for teacher
+      const balanceType =
+        splitResult.isETEA && !splitResult.isPartner
+          ? "pending"
+          : splitResult.isPartner
+            ? "verified"
+            : "floating";
       await Notification.create({
         recipient: teacher._id,
-        message: `📚 ETEA Bonus: Student ${student.studentName} enrolled. +PKR ${splitResult.teacherLedgerAmount.toLocaleString()} added to your verified balance.`,
+        message: `💸 Fee received: ${student.studentName} - ${month}. +PKR ${splitResult.teacherRevenue.toLocaleString()} added to your ${balanceType} balance.`,
         type: "FINANCE",
         relatedId: feeRecord._id.toString(),
       });
+      console.log("✅ Teacher notification created");
     }
 
     // ========================================
-    // Staff Tuition: Create UNALLOCATED_POOL entry for 30%
+    // Create Pool Entry if Academy gets a share
     // ========================================
-    if (
-      splitResult.revenueSource === "staff-tuition-split" &&
-      splitResult.academyShare > 0
-    ) {
+    if (splitResult.poolRevenue > 0) {
       await Transaction.create({
         type: "INCOME",
         category: "Pool",
         stream: "UNALLOCATED_POOL",
-        amount: splitResult.academyShare,
-        description: `Academy Share (${splitResult.academyPercentage}%): ${student.studentName} - ${month}`,
+        amount: splitResult.poolRevenue,
+        description: `Academy Share: ${student.studentName} - ${month} (${splitResult.splitType})`,
         collectedBy: req.user?._id,
         status: "VERIFIED",
         studentId: student._id,
-        isDistributed: false, // Will be distributed to partners later
+        isDistributed: false,
         date: new Date(),
       });
 
       console.log(
-        `🏦 UNALLOCATED_POOL: +${splitResult.academyShare} PKR (30% academy share)`,
+        `🏦 UNALLOCATED_POOL: +${splitResult.poolRevenue} PKR (${splitResult.splitType})`,
       );
     }
 
-    // Update Teacher's floating balance (for non-ETEA subjects)
-    if (
-      teacher &&
-      splitResult.teacherShare > 0 &&
-      !splitResult.createTeacherLedger
-    ) {
-      if (!teacher.balance) {
-        teacher.balance = { floating: 0, verified: 0 };
-      }
-      teacher.balance.floating =
-        (teacher.balance.floating || 0) + splitResult.teacherShare;
-      await teacher.save();
-      console.log(
-        `📤 Teacher ${teacher.name} floating balance: PKR ${teacher.balance.floating}`,
-      );
-
-      // Create notification for teacher
-      await Notification.create({
-        recipient: teacher._id,
-        message: `💸 Student ${student.studentName} paid fees for ${month}. Your share (PKR ${splitResult.teacherShare.toLocaleString()}) is now in your floating balance.`,
-        type: "FINANCE",
-        relatedId: feeRecord._id.toString(),
-      });
-
-      console.log("✅ Teacher notification created");
-    }
-
-    // Update the collector's floating balance (if they are a partner)
-    if (req.user && req.user.walletBalance && splitResult.academyShare > 0) {
+    // ========================================
+    // Update the collector's balance (if applicable)
+    // ========================================
+    if (req.user && req.user.walletBalance && splitResult.poolRevenue > 0) {
       if (typeof req.user.walletBalance === "object") {
         req.user.walletBalance.floating =
           (req.user.walletBalance.floating || 0) + splitResult.academyShare;

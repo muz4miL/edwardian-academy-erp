@@ -309,6 +309,120 @@ exports.getDashboardStats = async (req, res) => {
         ]);
 
         stats.teacherPayables = teacherPayables?.[0]?.total ?? 0;
+
+        // === MY NET REVENUE CALCULATION WITH CATEGORIZED BREAKDOWN ===
+        // Direct Teaching: Sum of 100% fees from classes where teacher = Waqar
+        const waqarTeacher = await Teacher.findOne({
+          $or: [{ userId: userId }, { name: { $regex: /waqar/i } }],
+        });
+
+        let directTeaching = 0;
+        let revenueBreakdown = {
+          matricRevenue: 0, // 9th/10th Grade
+          fscRevenue: 0, // 11th/12th Grade
+          chemistryRevenue: 0, // Chemistry subject (any grade)
+          eteaRevenue: 0, // ETEA/MDCAT prep courses
+          poolDividends: 0, // Pool distribution dividends
+        };
+
+        if (waqarTeacher) {
+          // Get all owner chemistry transactions with category breakdown
+          const ownerTransactions = await Transaction.find({
+            stream: "OWNER_CHEMISTRY",
+            status: "VERIFIED",
+            type: "INCOME",
+          }).lean();
+
+          // Categorize by description or linked student's class
+          for (const tx of ownerTransactions) {
+            directTeaching += tx.amount;
+            revenueBreakdown.chemistryRevenue += tx.amount;
+
+            // Try to categorize by description patterns
+            const desc = (tx.description || "").toLowerCase();
+            if (
+              desc.includes("9th") ||
+              desc.includes("10th") ||
+              desc.includes("matric")
+            ) {
+              revenueBreakdown.matricRevenue += tx.amount;
+            } else if (
+              desc.includes("11th") ||
+              desc.includes("12th") ||
+              desc.includes("fsc")
+            ) {
+              revenueBreakdown.fscRevenue += tx.amount;
+            } else if (
+              desc.includes("etea") ||
+              desc.includes("mdcat") ||
+              desc.includes("ecat")
+            ) {
+              revenueBreakdown.eteaRevenue += tx.amount;
+            }
+          }
+
+          // Get ETEA revenue where Waqar is the teacher
+          const eteaResult = await Transaction.aggregate([
+            {
+              $match: {
+                stream: { $in: ["ETEA_POOL", "ETEA_ENGLISH"] },
+                status: "VERIFIED",
+                type: "INCOME",
+                "splitDetails.teacherId": waqarTeacher._id,
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$splitDetails.teacherShare" },
+              },
+            },
+          ]);
+          const eteaTeacherEarnings = eteaResult?.[0]?.total ?? 0;
+          revenueBreakdown.eteaRevenue += eteaTeacherEarnings;
+          directTeaching += eteaTeacherEarnings;
+        }
+
+        // Pool Dividends: Sum of all DIVIDEND transactions where recipient = Waqar
+        const poolDividendsResult = await Transaction.aggregate([
+          {
+            $match: {
+              stream: "DIVIDEND",
+              status: "VERIFIED",
+              type: "INCOME",
+              recipientPartner: userId,
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        const poolDividends = poolDividendsResult?.[0]?.total ?? 0;
+        revenueBreakdown.poolDividends = poolDividends;
+
+        // Expenses Paid: Sum of all expenses where paidBy = Waqar
+        const expensesPaidResult = await Expense.aggregate([
+          {
+            $match: {
+              paidBy: userId,
+              status: "paid",
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        const expensesPaid = expensesPaidResult?.[0]?.total ?? 0;
+
+        // Calculate Owner Net Revenue
+        stats.ownerNetRevenue = directTeaching + poolDividends - expensesPaid;
+        stats.revenueBreakdown = revenueBreakdown;
+        stats.expensesPaid = expensesPaid;
+
+        console.log(`💰 Owner Net Revenue Breakdown:
+  - Chemistry Revenue: PKR ${revenueBreakdown.chemistryRevenue.toLocaleString()}
+  - 9th/10th (Matric): PKR ${revenueBreakdown.matricRevenue.toLocaleString()}
+  - 11th/12th (FSc): PKR ${revenueBreakdown.fscRevenue.toLocaleString()}
+  - ETEA Revenue: PKR ${revenueBreakdown.eteaRevenue.toLocaleString()}
+  - Pool Dividends: PKR ${revenueBreakdown.poolDividends.toLocaleString()}
+  - Expenses Paid: PKR ${expensesPaid.toLocaleString()}
+  - NET REVENUE: PKR ${stats.ownerNetRevenue.toLocaleString()}`);
       }
     }
 
@@ -1997,6 +2111,132 @@ exports.repayDebtToOwner = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to record debt repayment",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Process Teacher Payout (Admin pays teacher from pending balance)
+ * - Deducts from teacher.balance.pending
+ * - Credits to teacher.totalPaid
+ * - Creates PAYOUT transaction for audit
+ *
+ * @route   POST /api/finance/teacher-payout
+ * @access  Protected (OWNER only)
+ */
+exports.processTeacherPayout = async (req, res) => {
+  try {
+    const { teacherId, amount, notes } = req.body;
+    const Teacher = require("../models/Teacher");
+
+    // Security: Only OWNER can process payouts
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can process teacher payouts.",
+      });
+    }
+
+    // Validate inputs
+    if (!teacherId || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher ID and valid amount are required.",
+      });
+    }
+
+    // Find the teacher
+    const teacher = await Teacher.findById(teacherId);
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: "Teacher not found.",
+      });
+    }
+
+    const pendingBalance = teacher.balance?.pending || 0;
+
+    // Validate: Can't pay more than pending
+    if (amount > pendingBalance) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot pay PKR ${amount.toLocaleString()}. Pending balance is only PKR ${pendingBalance.toLocaleString()}.`,
+      });
+    }
+
+    console.log(`\n=== TEACHER PAYOUT ===`);
+    console.log(`👤 Teacher: ${teacher.name}`);
+    console.log(`💰 Pending Balance: PKR ${pendingBalance.toLocaleString()}`);
+    console.log(`💵 Payout Amount: PKR ${amount.toLocaleString()}`);
+
+    // Deduct from pending, add to totalPaid
+    teacher.balance.pending -= amount;
+    teacher.totalPaid = (teacher.totalPaid || 0) + amount;
+    await teacher.save();
+
+    console.log(
+      `✅ New Pending: PKR ${teacher.balance.pending.toLocaleString()}`,
+    );
+    console.log(`✅ Total Paid: PKR ${teacher.totalPaid.toLocaleString()}`);
+
+    // Create a PAYOUT transaction for audit trail
+    const transaction = await Transaction.create({
+      type: "EXPENSE",
+      category: "Salaries",
+      stream: "TEACHER_PAYOUT",
+      amount: amount,
+      description: `Payout to ${teacher.name}${notes ? ": " + notes : ""}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      splitDetails: {
+        teacherId: teacher._id,
+        teacherName: teacher.name,
+        isPaid: true,
+      },
+      date: new Date(),
+    });
+
+    console.log(`📝 Payout Transaction Created: ${transaction._id}`);
+
+    // Mark related FLOATING transactions as paid
+    await Transaction.updateMany(
+      {
+        "splitDetails.teacherId": teacher._id,
+        "splitDetails.isPaid": false,
+        status: "FLOATING",
+      },
+      {
+        $set: { "splitDetails.isPaid": true },
+      },
+    );
+
+    // Notify the teacher
+    if (teacher.userId) {
+      await Notification.create({
+        recipient: teacher.userId,
+        message: `💰 You received a payout of PKR ${amount.toLocaleString()}!${notes ? " Note: " + notes : ""}`,
+        type: "FINANCE",
+        relatedId: transaction._id.toString(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payout of PKR ${amount.toLocaleString()} to ${teacher.name} processed successfully!`,
+      data: {
+        paidAmount: amount,
+        previousPending: pendingBalance,
+        newPending: teacher.balance.pending,
+        totalPaid: teacher.totalPaid,
+        transactionId: transaction._id,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in processTeacherPayout:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process teacher payout",
       error: error.message,
     });
   }

@@ -13,10 +13,13 @@ const TeacherSchema = new mongoose.Schema(
       required: [true, "Phone number is required"],
       trim: true,
     },
+    // Subject specialization - dynamic, pulled from Configuration
+    // No longer hardcoded enum - allows any subject defined in config
     subject: {
       type: String,
       required: [true, "Subject specialization is required"],
-      enum: ["biology", "chemistry", "physics", "math", "english"],
+      trim: true,
+      lowercase: true,
     },
     joiningDate: {
       type: Date,
@@ -51,7 +54,11 @@ const TeacherSchema = new mongoose.Schema(
     balance: {
       floating: { type: Number, default: 0 }, // Unverified earnings (pending day close)
       verified: { type: Number, default: 0 }, // Verified earnings (available for payout)
+      pending: { type: Number, default: 0 }, // Staff: Commission owed (not yet paid)
     },
+
+    // Total paid out to teacher (lifetime)
+    totalPaid: { type: Number, default: 0 },
 
     // Compensation Package (Triple-Mode Support)
     compensation: {

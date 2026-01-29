@@ -17,6 +17,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +38,8 @@ import {
   Loader2,
   CreditCard,
   CheckCircle2,
+  TrendingUp,
+  HelpCircle,
 } from "lucide-react";
 
 // API Base URL
@@ -54,6 +62,7 @@ const OwnerDashboard = () => {
     pendingReimbursements: 0,
     poolRevenue: 0,
     floatingCash: 0,
+    ownerNetRevenue: 0,
   });
 
   // Fetch dashboard stats
@@ -164,201 +173,222 @@ const OwnerDashboard = () => {
   }
 
   return (
-    <DashboardLayout title="Owner Dashboard">
-      {/* Royal Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 p-8 shadow-2xl border-b-4 border-yellow-500">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2djRoNHYtNGgtNHptMC0yaDZ2Nmgtdi02eiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
-        <div className="relative z-10">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome back,{" "}
-            <span className="text-yellow-400">{user?.fullName || "Owner"}</span>
-          </h1>
-          <p className="text-blue-200 text-lg">
-            Manage your financial streams and academy operations
-          </p>
-        </div>
-      </div>
-
-      {/* Success/Error Alerts */}
-      {successMessage && (
-        <div className="mt-6 bg-green-50 border-2 border-green-400 rounded-xl p-4 shadow-lg">
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white">
-              ✓
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-green-900">Success!</p>
-              <p className="text-sm text-green-800">{successMessage}</p>
-            </div>
-            <button
-              onClick={() => setSuccessMessage(null)}
-              className="text-green-600 hover:text-green-800"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-6 bg-red-50 border-2 border-red-400 rounded-xl p-4 shadow-lg">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-6 w-6 text-red-600 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-bold text-red-900">Error</p>
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-600 hover:text-red-800"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Owner KPI Cards */}
-      <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-cyan-500">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Chemistry Collection
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR{" "}
-                {stats.chemistryRevenue > 0
-                  ? Math.round(stats.chemistryRevenue / 1000)
-                  : 0}
-                K
-              </p>
-              <p className="text-xs text-slate-500">Your subject revenue</p>
-            </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 text-white shadow-lg">
-              <FlaskConical className="h-7 w-7" />
-            </div>
+    <TooltipProvider>
+      <DashboardLayout title="Owner Dashboard">
+        {/* Royal Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 via-blue-800 to-slate-900 p-8 shadow-2xl border-b-4 border-yellow-500">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2djRoNHYtNGgtNHptMC0yaDZ2Nmgtdi02eiIvPjwvZz48L2c+PC9zdmc+')] opacity-20"></div>
+          <div className="relative z-10">
+            <h1 className="text-4xl font-bold text-white mb-2">
+              Welcome back,{" "}
+              <span className="text-yellow-400">
+                {user?.fullName || "Owner"}
+              </span>
+            </h1>
+            <p className="text-blue-200 text-lg">
+              Manage your financial streams and academy operations
+            </p>
           </div>
         </div>
 
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-orange-500">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Partner Debt (Recoverable)
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR{" "}
-                {stats.pendingReimbursements > 0
-                  ? Math.round(stats.pendingReimbursements / 1000)
-                  : 0}
-                K
-              </p>
-              <p className="text-xs text-slate-500">Zahid/Saud owe you</p>
+        {/* Success/Error Alerts */}
+        {successMessage && (
+          <div className="mt-6 bg-green-50 border-2 border-green-400 rounded-xl p-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white">
+                ✓
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-green-900">Success!</p>
+                <p className="text-sm text-green-800">{successMessage}</p>
+              </div>
+              <button
+                onClick={() => setSuccessMessage(null)}
+                className="text-green-600 hover:text-green-800"
+              >
+                ✕
+              </button>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-lg">
-              <AlertCircle className="h-7 w-7" />
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-6 bg-red-50 border-2 border-red-400 rounded-xl p-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 text-red-600 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-900">Error</p>
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-600 hover:text-red-800"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Owner KPI Cards */}
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-emerald-500">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm font-medium text-slate-600">
+                    My Net Revenue
+                  </p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="text-slate-400 hover:text-slate-600"
+                        aria-label="More information about My Net Revenue"
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-sm">
+                        Chemistry Fees + Pool Share - Expenses Paid
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <p className="text-4xl font-bold text-slate-900 mb-1">
+                  PKR{" "}
+                  {stats.ownerNetRevenue > 0
+                    ? Math.round(stats.ownerNetRevenue / 1000)
+                    : 0}
+                  K
+                </p>
+                <p className="text-xs text-slate-500">Your actual take-home</p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg">
+                <Wallet className="h-7 w-7" />
+              </div>
+            </div>
+          </div>
+
+          <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-orange-500">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-slate-600 mb-2">
+                  Partner Debt (Recoverable)
+                </p>
+                <p className="text-4xl font-bold text-slate-900 mb-1">
+                  PKR{" "}
+                  {stats.pendingReimbursements > 0
+                    ? Math.round(stats.pendingReimbursements / 1000)
+                    : 0}
+                  K
+                </p>
+                <p className="text-xs text-slate-500">Zahid/Saud owe you</p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-lg">
+                <AlertCircle className="h-7 w-7" />
+              </div>
+            </div>
+          </div>
+
+          <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-yellow-500">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-slate-600 mb-2">
+                  Academy Pool
+                </p>
+                <p className="text-4xl font-bold text-slate-900 mb-1">
+                  PKR{" "}
+                  {stats.poolRevenue > 0
+                    ? Math.round(stats.poolRevenue / 1000)
+                    : 0}
+                  K
+                </p>
+                <p className="text-xs text-slate-500">30% shared revenue</p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 text-white shadow-lg">
+                <Wallet className="h-7 w-7" />
+              </div>
+            </div>
+          </div>
+
+          <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-blue-500">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-slate-600 mb-2">
+                  Total Enrolled
+                </p>
+                <p className="text-4xl font-bold text-slate-900 mb-1">
+                  {activeStudents > 0 ? activeStudents : "0"}
+                </p>
+                <p className="text-xs text-slate-500">Active students</p>
+              </div>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+                <Users className="h-7 w-7" />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-yellow-500">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Academy Pool
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                PKR{" "}
-                {stats.poolRevenue > 0
-                  ? Math.round(stats.poolRevenue / 1000)
-                  : 0}
-                K
-              </p>
-              <p className="text-xs text-slate-500">30% shared revenue</p>
+        {/* Owner Quick Actions */}
+        <Card className="mt-8 border-slate-200 bg-white/95 backdrop-blur-sm shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
+              <ClipboardCheck className="h-6 w-6 text-blue-600" />
+              Quick Actions
+            </CardTitle>
+            <CardDescription className="text-slate-600">
+              Perform daily operations and manage finances
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Button
+                size="lg"
+                onClick={handleCloseDay}
+                disabled={isClosing}
+                className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <DollarSign className="mr-2 h-5 w-5" />
+                {isClosing ? "Closing..." : "End of Day Closing"}
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full h-14 bg-white border-2 border-orange-400 text-orange-600 font-semibold hover:bg-orange-50 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
+              >
+                <FileText className="mr-2 h-5 w-5" />
+                Record Expense
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full h-14 bg-green-50 border-2 border-green-400 text-green-600 font-semibold hover:bg-green-100 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
+              >
+                <HandCoins className="mr-2 h-5 w-5" />
+                Receive Partner Payment
+              </Button>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 text-white shadow-lg">
-              <Wallet className="h-7 w-7" />
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="group relative overflow-hidden rounded-2xl bg-white/90 backdrop-blur-md p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border-l-4 border-blue-500">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-slate-600 mb-2">
-                Total Enrolled
-              </p>
-              <p className="text-4xl font-bold text-slate-900 mb-1">
-                {activeStudents > 0 ? activeStudents : "0"}
-              </p>
-              <p className="text-xs text-slate-500">Active students</p>
-            </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
-              <Users className="h-7 w-7" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Owner Quick Actions */}
-      <Card className="mt-8 border-slate-200 bg-white/95 backdrop-blur-sm shadow-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
-            <ClipboardCheck className="h-6 w-6 text-blue-600" />
-            Quick Actions
-          </CardTitle>
-          <CardDescription className="text-slate-600">
-            Perform daily operations and manage finances
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Button
-              size="lg"
-              onClick={handleCloseDay}
-              disabled={isClosing}
-              className="w-full h-14 bg-gradient-to-r from-blue-600 via-blue-700 to-purple-700 hover:from-blue-700 hover:via-blue-800 hover:to-purple-800 text-white font-semibold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <DollarSign className="mr-2 h-5 w-5" />
-              {isClosing ? "Closing..." : "End of Day Closing"}
-            </Button>
-
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full h-14 bg-white border-2 border-orange-400 text-orange-600 font-semibold hover:bg-orange-50 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
-            >
-              <FileText className="mr-2 h-5 w-5" />
-              Record Expense
-            </Button>
-
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full h-14 bg-green-50 border-2 border-green-400 text-green-600 font-semibold hover:bg-green-100 hover:-translate-y-1 hover:shadow-lg transition-all duration-300"
-            >
-              <HandCoins className="mr-2 h-5 w-5" />
-              Receive Partner Payment
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error && (
-        <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-yellow-800">
-                Demo Data Active
-              </p>
-              <p className="text-sm text-yellow-700">{error}</p>
+        {error && (
+          <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-yellow-800">
+                  Demo Data Active
+                </p>
+                <p className="text-sm text-yellow-700">{error}</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </DashboardLayout>
+        )}
+      </DashboardLayout>
+    </TooltipProvider>
   );
 };
 

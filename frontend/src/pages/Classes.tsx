@@ -101,6 +101,13 @@ interface SubjectWithFee {
   fee: number;
 }
 
+// Type for subject-teacher mapping
+interface SubjectTeacherMap {
+  subject: string;
+  teacherId: string;
+  teacherName: string;
+}
+
 const Classes = () => {
   const queryClient = useQueryClient();
 
@@ -120,8 +127,11 @@ const Classes = () => {
   const [formGroup, setFormGroup] = useState("");
   const [formShift, setFormShift] = useState("");
   const [formSubjects, setFormSubjects] = useState<SubjectWithFee[]>([]);
+  const [formSubjectTeachers, setFormSubjectTeachers] = useState<
+    SubjectTeacherMap[]
+  >([]);
   const [formStatus, setFormStatus] = useState("active");
-  const [formAssignedTeacher, setFormAssignedTeacher] = useState("");
+  const [formAssignedTeacher, setFormAssignedTeacher] = useState(""); // Class In-Charge (Form Master)
 
   // Schedule fields
   const [formDays, setFormDays] = useState<string[]>([]);
@@ -264,6 +274,7 @@ const Classes = () => {
     setFormGroup("");
     setFormShift("");
     setFormSubjects([]);
+    setFormSubjectTeachers([]);
     setFormStatus("active");
     setFormAssignedTeacher("");
     // Schedule fields
@@ -287,8 +298,17 @@ const Classes = () => {
       return { name: s.name, fee: 0 };
     });
     setFormSubjects(subjects);
+    // Load subject-teacher mappings
+    const subjectTeachers = (classDoc.subjectTeachers || []).map((st: any) => ({
+      subject: st.subject,
+      teacherId: st.teacherId?._id || st.teacherId || "",
+      teacherName: st.teacherName || "",
+    }));
+    setFormSubjectTeachers(subjectTeachers);
     setFormStatus(classDoc.status || "active");
-    setFormAssignedTeacher(classDoc.assignedTeacher || "");
+    setFormAssignedTeacher(
+      classDoc.assignedTeacher?._id || classDoc.assignedTeacher || "",
+    );
     // Schedule fields
     setFormDays(classDoc.days || []);
     setFormStartTime(classDoc.startTime || "16:00");
@@ -324,7 +344,21 @@ const Classes = () => {
       return;
     }
 
-    // Get teacher name for denormalization
+    // Validate that all selected subjects have a teacher assigned
+    const subjectsWithoutTeacher = formSubjects.filter(
+      (s) =>
+        !formSubjectTeachers.find(
+          (st) => st.subject === s.name && st.teacherId,
+        ),
+    );
+    if (subjectsWithoutTeacher.length > 0) {
+      toast.error("Missing subject teachers", {
+        description: `Please assign teachers for: ${subjectsWithoutTeacher.map((s) => s.name).join(", ")}`,
+      });
+      return;
+    }
+
+    // Get teacher name for denormalization (Class In-Charge)
     const selectedTeacher = teachers.find(
       (t: any) => t._id === formAssignedTeacher,
     );
@@ -338,6 +372,7 @@ const Classes = () => {
       group: formGroup,
       shift: formShift || undefined,
       subjects: subjectNames,
+      subjectTeachers: formSubjectTeachers.filter((st) => st.teacherId), // Only send valid mappings
       status: formStatus,
       assignedTeacher: formAssignedTeacher || undefined,
       teacherName: selectedTeacher?.name || undefined,
@@ -352,7 +387,21 @@ const Classes = () => {
   const handleSubmitEdit = () => {
     if (!selectedClass?._id) return;
 
-    // Get teacher name for denormalization
+    // Validate that all selected subjects have a teacher assigned
+    const subjectsWithoutTeacher = formSubjects.filter(
+      (s) =>
+        !formSubjectTeachers.find(
+          (st) => st.subject === s.name && st.teacherId,
+        ),
+    );
+    if (subjectsWithoutTeacher.length > 0) {
+      toast.error("Missing subject teachers", {
+        description: `Please assign teachers for: ${subjectsWithoutTeacher.map((s) => s.name).join(", ")}`,
+      });
+      return;
+    }
+
+    // Get teacher name for denormalization (Class In-Charge)
     const selectedTeacher = teachers.find(
       (t: any) => t._id === formAssignedTeacher,
     );
@@ -368,6 +417,7 @@ const Classes = () => {
         group: formGroup,
         shift: formShift || undefined,
         subjects: subjectNames,
+        subjectTeachers: formSubjectTeachers.filter((st) => st.teacherId), // Only send valid mappings
         status: formStatus,
         assignedTeacher: formAssignedTeacher || undefined,
         teacherName: selectedTeacher?.name || undefined,
@@ -385,12 +435,17 @@ const Classes = () => {
     setFormAssignedTeacher(teacherId);
   };
 
-  // Toggle subject selection
+  // Toggle subject selection - also manages subject-teacher mapping
   const handleSubjectToggle = (subjectId: string) => {
     const exists = formSubjects.find((s) => s.name === subjectId);
     if (exists) {
+      // Remove subject and its teacher mapping
       setFormSubjects((prev) => prev.filter((s) => s.name !== subjectId));
+      setFormSubjectTeachers((prev) =>
+        prev.filter((st) => st.subject !== subjectId),
+      );
     } else {
+      // Add subject
       setFormSubjects((prev) => [
         ...prev,
         {
@@ -399,6 +454,52 @@ const Classes = () => {
         },
       ]);
     }
+  };
+
+  // Handle subject-specific teacher selection
+  const handleSubjectTeacherChange = (
+    subjectName: string,
+    teacherId: string,
+  ) => {
+    const selectedTeacher = teachers.find((t: any) => t._id === teacherId);
+    setFormSubjectTeachers((prev) => {
+      const existing = prev.find((st) => st.subject === subjectName);
+      if (existing) {
+        // Update existing mapping
+        return prev.map((st) =>
+          st.subject === subjectName
+            ? { ...st, teacherId, teacherName: selectedTeacher?.name || "" }
+            : st,
+        );
+      } else {
+        // Add new mapping
+        return [
+          ...prev,
+          {
+            subject: subjectName,
+            teacherId,
+            teacherName: selectedTeacher?.name || "",
+          },
+        ];
+      }
+    });
+  };
+
+  // Get teacher ID for a specific subject
+  const getSubjectTeacherId = (subjectName: string): string => {
+    return (
+      formSubjectTeachers.find((st) => st.subject === subjectName)?.teacherId ||
+      ""
+    );
+  };
+
+  // Get teachers filtered by subject (for dropdown)
+  const getTeachersForSubject = (subjectName: string) => {
+    const subjectLower = subjectName.toLowerCase();
+    return teachers.filter((t: any) => {
+      const teacherSubject = (t.subject || "").toLowerCase();
+      return t.status === "active" && teacherSubject === subjectLower;
+    });
   };
 
   // Check if subject is selected
@@ -806,18 +907,18 @@ const Classes = () => {
               </div>
             </div>
 
-            {/* Assigned Professor */}
+            {/* Assigned Professor (Class In-Charge / Form Master) */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <User className="h-4 w-4" />
-                Assigned Professor
+                Class In-Charge (Form Master)
               </Label>
               <Select
                 value={formAssignedTeacher}
                 onValueChange={handleTeacherChange}
               >
                 <SelectTrigger className="bg-background">
-                  <SelectValue placeholder="Select professor" />
+                  <SelectValue placeholder="Select form master (optional)" />
                 </SelectTrigger>
                 <SelectContent>
                   {teachers
@@ -837,9 +938,13 @@ const Classes = () => {
                     ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                For administrative purposes. Subject-wise teachers are assigned
+                below.
+              </p>
             </div>
 
-            {/* Subjects Selection - Simplified (No Pricing) */}
+            {/* Subjects Selection with Teacher Assignment */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
@@ -854,48 +959,121 @@ const Classes = () => {
                 )}
               </div>
 
-              {/* Subject Checkboxes */}
+              {/* Subject Checkboxes with Teacher Dropdown */}
               {subjectOptions.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   {subjectOptions.map((subject) => {
                     const isSelected = isSubjectSelected(subject.id);
+                    const availableTeachers = getTeachersForSubject(subject.id);
+                    const selectedTeacherId = getSubjectTeacherId(subject.id);
+
                     return (
                       <div
                         key={subject.id}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        className={`rounded-lg border transition-all ${
                           isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                            ? "border-sky-500 bg-sky-50/50"
+                            : "border-border hover:border-sky-300"
                         }`}
                       >
-                        {/* Checkbox */}
+                        {/* Subject Checkbox Row */}
                         <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? "bg-sky-500 border-sky-500"
-                              : "border-slate-300 bg-white"
-                          }`}
+                          onClick={() => handleSubjectToggle(subject.id)}
+                          className="flex items-center gap-3 p-3 cursor-pointer"
                         >
+                          {/* Checkbox */}
+                          <div
+                            className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
+                              isSelected
+                                ? "bg-sky-500 border-sky-500"
+                                : "border-slate-300 bg-white"
+                            }`}
+                          >
+                            {isSelected && (
+                              <svg
+                                className="w-3 h-3 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                              </svg>
+                            )}
+                          </div>
+
+                          {/* Subject Name */}
+                          <span
+                            className={`text-sm font-medium flex-1 ${
+                              isSelected ? "text-sky-700" : "text-foreground"
+                            }`}
+                          >
+                            {subject.label}
+                          </span>
+
+                          {/* Teacher count indicator */}
                           {isSelected && (
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                            </svg>
+                            <span className="text-xs text-muted-foreground">
+                              {availableTeachers.length} teacher
+                              {availableTeachers.length !== 1 ? "s" : ""}{" "}
+                              available
+                            </span>
                           )}
                         </div>
 
-                        {/* Subject Name */}
-                        <span
-                          className={`text-sm font-medium ${
-                            isSelected ? "text-sky-700" : "text-foreground"
-                          }`}
-                        >
-                          {subject.label}
-                        </span>
+                        {/* Teacher Dropdown (shown when subject is selected) */}
+                        {isSelected && (
+                          <div className="px-3 pb-3 pt-0">
+                            <div className="flex items-center gap-2 pl-8">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <Select
+                                value={selectedTeacherId}
+                                onValueChange={(value) =>
+                                  handleSubjectTeacherChange(subject.id, value)
+                                }
+                              >
+                                <SelectTrigger className="flex-1 h-9 bg-white">
+                                  <SelectValue
+                                    placeholder={`Select ${subject.label} Teacher`}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableTeachers.length > 0 ? (
+                                    availableTeachers.map((teacher: any) => (
+                                      <SelectItem
+                                        key={teacher._id}
+                                        value={teacher._id}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          {teacher.name}
+                                          {partnerNames.some((name) =>
+                                            teacher.name
+                                              ?.toLowerCase()
+                                              .includes(name),
+                                          ) && (
+                                            <Crown className="h-3 w-3 text-yellow-500" />
+                                          )}
+                                        </span>
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                                      No {subject.label} teachers found.
+                                      <br />
+                                      <span className="text-xs">
+                                        Add one in Teachers section.
+                                      </span>
+                                    </div>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {!selectedTeacherId &&
+                              availableTeachers.length > 0 && (
+                                <p className="text-xs text-amber-600 mt-1 pl-8">
+                                  ⚠️ Please assign a teacher for {subject.label}
+                                </p>
+                              )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1103,18 +1281,18 @@ const Classes = () => {
               </div>
             </div>
 
-            {/* Assigned Professor */}
+            {/* Assigned Professor (Class In-Charge / Form Master) */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <User className="h-4 w-4" />
-                Assigned Professor
+                Class In-Charge (Form Master)
               </Label>
               <Select
                 value={formAssignedTeacher}
                 onValueChange={handleTeacherChange}
               >
                 <SelectTrigger className="bg-background">
-                  <SelectValue placeholder="Select professor" />
+                  <SelectValue placeholder="Select form master (optional)" />
                 </SelectTrigger>
                 <SelectContent>
                   {teachers
@@ -1134,9 +1312,13 @@ const Classes = () => {
                     ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                For administrative purposes. Subject-wise teachers are assigned
+                below.
+              </p>
             </div>
 
-            {/* Subjects Selection - Simplified (No Pricing) */}
+            {/* Subjects Selection with Teacher Assignment */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
@@ -1151,48 +1333,121 @@ const Classes = () => {
                 )}
               </div>
 
-              {/* Subject Checkboxes */}
+              {/* Subject Checkboxes with Teacher Dropdown */}
               {subjectOptions.length > 0 ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   {subjectOptions.map((subject) => {
                     const isSelected = isSubjectSelected(subject.id);
+                    const availableTeachers = getTeachersForSubject(subject.id);
+                    const selectedTeacherId = getSubjectTeacherId(subject.id);
+
                     return (
                       <div
                         key={subject.id}
-                        onClick={() => handleSubjectToggle(subject.id)}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        className={`rounded-lg border transition-all ${
                           isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300 hover:bg-sky-50/50"
+                            ? "border-sky-500 bg-sky-50/50"
+                            : "border-border hover:border-sky-300"
                         }`}
                       >
-                        {/* Checkbox */}
+                        {/* Subject Checkbox Row */}
                         <div
-                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
-                            isSelected
-                              ? "bg-sky-500 border-sky-500"
-                              : "border-slate-300 bg-white"
-                          }`}
+                          onClick={() => handleSubjectToggle(subject.id)}
+                          className="flex items-center gap-3 p-3 cursor-pointer"
                         >
+                          {/* Checkbox */}
+                          <div
+                            className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
+                              isSelected
+                                ? "bg-sky-500 border-sky-500"
+                                : "border-slate-300 bg-white"
+                            }`}
+                          >
+                            {isSelected && (
+                              <svg
+                                className="w-3 h-3 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                              </svg>
+                            )}
+                          </div>
+
+                          {/* Subject Name */}
+                          <span
+                            className={`text-sm font-medium flex-1 ${
+                              isSelected ? "text-sky-700" : "text-foreground"
+                            }`}
+                          >
+                            {subject.label}
+                          </span>
+
+                          {/* Teacher count indicator */}
                           {isSelected && (
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                            </svg>
+                            <span className="text-xs text-muted-foreground">
+                              {availableTeachers.length} teacher
+                              {availableTeachers.length !== 1 ? "s" : ""}{" "}
+                              available
+                            </span>
                           )}
                         </div>
 
-                        {/* Subject Name */}
-                        <span
-                          className={`text-sm font-medium ${
-                            isSelected ? "text-sky-700" : "text-foreground"
-                          }`}
-                        >
-                          {subject.label}
-                        </span>
+                        {/* Teacher Dropdown (shown when subject is selected) */}
+                        {isSelected && (
+                          <div className="px-3 pb-3 pt-0">
+                            <div className="flex items-center gap-2 pl-8">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <Select
+                                value={selectedTeacherId}
+                                onValueChange={(value) =>
+                                  handleSubjectTeacherChange(subject.id, value)
+                                }
+                              >
+                                <SelectTrigger className="flex-1 h-9 bg-white">
+                                  <SelectValue
+                                    placeholder={`Select ${subject.label} Teacher`}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableTeachers.length > 0 ? (
+                                    availableTeachers.map((teacher: any) => (
+                                      <SelectItem
+                                        key={teacher._id}
+                                        value={teacher._id}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          {teacher.name}
+                                          {partnerNames.some((name) =>
+                                            teacher.name
+                                              ?.toLowerCase()
+                                              .includes(name),
+                                          ) && (
+                                            <Crown className="h-3 w-3 text-yellow-500" />
+                                          )}
+                                        </span>
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                                      No {subject.label} teachers found.
+                                      <br />
+                                      <span className="text-xs">
+                                        Add one in Teachers section.
+                                      </span>
+                                    </div>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {!selectedTeacherId &&
+                              availableTeachers.length > 0 && (
+                                <p className="text-xs text-amber-600 mt-1 pl-8">
+                                  ⚠️ Please assign a teacher for {subject.label}
+                                </p>
+                              )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
