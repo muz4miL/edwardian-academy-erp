@@ -29,12 +29,31 @@ const configurationSchema = new mongoose.Schema(
       saud: { type: Number, default: 30, min: 0, max: 100 },
     },
 
-    // Card 6: Academy Pool Distribution (Income IN) - must total 100%
-    // This controls how the 30% academy pool from staff teachers is split among partners
-    poolDistribution: {
+    // ========================================
+    // WAQAR'S PROTOCOL: Dual-Pool Revenue Splits
+    // ========================================
+
+    // Protocol A: Tuition/Regular Pool Split (50/30/20)
+    // Applies to: 9th, 10th, 11th, 12th Grade regular tuition
+    tuitionPoolSplit: {
+      waqar: { type: Number, default: 50, min: 0, max: 100 },
+      zahid: { type: Number, default: 30, min: 0, max: 100 },
+      saud: { type: Number, default: 20, min: 0, max: 100 },
+    },
+
+    // Protocol B: ETEA/MDCAT Pool Split (40/30/30)
+    // Applies to: ETEA, MDCAT, ECAT preparation classes
+    eteaPoolSplit: {
       waqar: { type: Number, default: 40, min: 0, max: 100 },
       zahid: { type: Number, default: 30, min: 0, max: 100 },
       saud: { type: Number, default: 30, min: 0, max: 100 },
+    },
+
+    // Legacy: Keep for backwards compatibility (defaults to tuition split)
+    poolDistribution: {
+      waqar: { type: Number, default: 50, min: 0, max: 100 },
+      zahid: { type: Number, default: 30, min: 0, max: 100 },
+      saud: { type: Number, default: 20, min: 0, max: 100 },
     },
 
     // Card 7: ETEA/MDCAT Per-Student Commission
@@ -71,7 +90,33 @@ configurationSchema.pre("save", function (next) {
     return next(new Error(`Expense split must total 100%, got ${total}%`));
   }
 
-  // Pool distribution must also total 100%
+  // Tuition Pool distribution must total 100%
+  if (this.tuitionPoolSplit) {
+    const tuitionTotal =
+      this.tuitionPoolSplit.waqar +
+      this.tuitionPoolSplit.zahid +
+      this.tuitionPoolSplit.saud;
+    if (tuitionTotal !== 100) {
+      return next(
+        new Error(`Tuition pool split must total 100%, got ${tuitionTotal}%`),
+      );
+    }
+  }
+
+  // ETEA Pool distribution must total 100%
+  if (this.eteaPoolSplit) {
+    const eteaTotal =
+      this.eteaPoolSplit.waqar +
+      this.eteaPoolSplit.zahid +
+      this.eteaPoolSplit.saud;
+    if (eteaTotal !== 100) {
+      return next(
+        new Error(`ETEA pool split must total 100%, got ${eteaTotal}%`),
+      );
+    }
+  }
+
+  // Legacy pool distribution (for backwards compatibility)
   if (this.poolDistribution) {
     const poolTotal =
       this.poolDistribution.waqar +

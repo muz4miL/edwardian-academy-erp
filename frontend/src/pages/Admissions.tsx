@@ -447,6 +447,16 @@ const Admissions = () => {
       return;
     }
 
+    // ZERO-FEE PREVENTION: Warn if no payment received (for active students)
+    if (paidAmountNum === 0 && studentStatus === "active") {
+      toast.error("No Fee Received", {
+        description:
+          "Active students must have an initial fee payment. Set status to 'inactive' if this is intentional.",
+        duration: 5000,
+      });
+      return;
+    }
+
     setFeeValidationError("");
 
     // Calculate discount if custom fee mode is active
@@ -626,7 +636,9 @@ const Admissions = () => {
 
             {/* Profile Photo Section */}
             <div className="mb-6 flex flex-col items-center gap-3 p-4 bg-secondary/20 rounded-xl border border-border">
-              <Label className="text-sm font-medium text-muted-foreground">Student Photo</Label>
+              <Label className="text-sm font-medium text-muted-foreground">
+                Student Photo
+              </Label>
               <ImageCapture
                 value={photo || undefined}
                 onChange={(img) => setPhoto(img)}
@@ -771,10 +783,11 @@ const Admissions = () => {
                       return (
                         <div
                           key={subject.name}
-                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
-                            }`}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-sky-500 bg-sky-50"
+                              : "border-border hover:border-sky-300"
+                          }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
                           <div className="flex items-center gap-3">
@@ -791,10 +804,11 @@ const Admissions = () => {
                             </span>
                           </div>
                           <span
-                            className={`text-sm font-semibold ${isSelected
-                              ? "text-green-600"
-                              : "text-muted-foreground"
-                              }`}
+                            className={`text-sm font-semibold ${
+                              isSelected
+                                ? "text-green-600"
+                                : "text-muted-foreground"
+                            }`}
                           >
                             {subject.fee.toLocaleString()} PKR
                           </span>
@@ -901,12 +915,13 @@ const Admissions = () => {
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
                     readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
-                    className={`${isCustomFeeMode
-                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                      : !isCustomFeeMode && selectedSubjects.length > 0
-                        ? "border-sky-300 bg-sky-50 cursor-not-allowed"
-                        : ""
-                      }`}
+                    className={`${
+                      isCustomFeeMode
+                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                        : !isCustomFeeMode && selectedSubjects.length > 0
+                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
+                          : ""
+                    }`}
                   />
                   {!isCustomFeeMode && selectedSubjects.length > 0 && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">

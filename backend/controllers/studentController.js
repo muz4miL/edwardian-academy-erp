@@ -330,11 +330,14 @@ exports.updateStudent = async (req, res) => {
       "email",
       "status",
       "paidAmount",
+      "discountAmount",
+      "totalFee",
     ];
 
     allowedUpdates.forEach((field) => {
       if (req.body[field] !== undefined) {
         student[field] = req.body[field];
+        console.log(`Updated ${field}: ${req.body[field]}`);
       }
     });
 
@@ -370,10 +373,22 @@ exports.updateStudent = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error updating student:", error);
+    console.error("Error Name:", error.name);
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+    if (error.errors) {
+      console.error(
+        "Validation Errors:",
+        JSON.stringify(error.errors, null, 2),
+      );
+    }
+    console.error("Request Body:", JSON.stringify(req.body, null, 2));
+
     res.status(500).json({
       success: false,
-      message: "Failed to update student",
+      message: error.message || "Failed to update student",
       error: error.message,
+      validationErrors: error.errors,
     });
   }
 };
@@ -432,6 +447,7 @@ exports.collectFee = async (req, res) => {
     console.log("Month:", month);
     console.log("Subject:", subject);
     console.log("Teacher ID:", teacherId);
+    console.log("Full Request Body:", JSON.stringify(req.body, null, 2));
 
     // Validation
     if (!amount || !month) {
@@ -459,75 +475,135 @@ exports.collectFee = async (req, res) => {
 
     // Find the student's class with populated teacher
     let studentClass = null;
-    if (student.classRef) {
-      studentClass = await Class.findById(student.classRef).populate(
-        "assignedTeacher",
+    try {
+      if (student.classRef) {
+        studentClass = await Class.findById(student.classRef).populate(
+          "assignedTeacher",
+        );
+      } else if (student.class) {
+        studentClass = await Class.findOne({
+          $or: [{ classTitle: student.class }, { displayName: student.class }],
+        }).populate("assignedTeacher");
+      }
+      console.log(
+        "📚 Student Class:",
+        studentClass?.classTitle || studentClass?.displayName || "Not found",
+        "| Session Type:",
+        studentClass?.sessionType || "standard",
       );
-    } else if (student.class) {
-      studentClass = await Class.findOne({
-        $or: [{ classTitle: student.class }, { displayName: student.class }],
-      }).populate("assignedTeacher");
+      console.log(
+        "📚 Class Subject Teachers:",
+        JSON.stringify(studentClass?.subjectTeachers, null, 2),
+      );
+    } catch (classError) {
+      console.error("❌ Error finding class:", classError);
+      // Continue without class - we'll use fallback teacher lookup
     }
-    console.log(
-      "📚 Student Class:",
-      studentClass?.classTitle || studentClass?.displayName,
-      "| Session Type:",
-      studentClass?.sessionType || "standard",
-    );
 
     // Find the teacher - NOW uses subject-specific teacher mapping
     let teacher = null;
-    if (teacherId) {
-      // If teacherId explicitly provided, use it
-      teacher = await Teacher.findById(teacherId);
-    } else if (subject && studentClass?.subjectTeachers?.length > 0) {
-      // Look for subject-specific teacher in Class.subjectTeachers
-      const subjectTeacherMapping = studentClass.subjectTeachers.find(
-        (st) => st.subject?.toLowerCase() === subject?.toLowerCase(),
-      );
-      if (subjectTeacherMapping?.teacherId) {
-        teacher = await Teacher.findById(subjectTeacherMapping.teacherId);
+    let teacherLookupMethod = "none";
+
+    try {
+      if (teacherId) {
+        // Method 1: If teacherId explicitly provided, use it
+        teacher = await Teacher.findById(teacherId);
+        teacherLookupMethod = "explicit_id";
         console.log(
-          `🎯 Found subject-specific teacher: ${teacher?.name} for ${subject}`,
+          `🎯 Method 1: Explicit teacher ID - ${teacher?.name || "Not found"}`,
+        );
+      } else if (subject && studentClass?.subjectTeachers?.length > 0) {
+        // Method 2: Look for subject-specific teacher in Class.subjectTeachers
+        console.log(
+          `🔍 Searching for subject: "${subject}" in subjectTeachers array...`,
+        );
+        const subjectTeacherMapping = studentClass.subjectTeachers.find(
+          (st) => {
+            const stSubject = st?.subject?.toLowerCase()?.trim();
+            const reqSubject = subject?.toLowerCase()?.trim();
+            console.log(`  Comparing: "${stSubject}" === "${reqSubject}"`);
+            return stSubject === reqSubject;
+          },
+        );
+
+        if (subjectTeacherMapping?.teacherId) {
+          teacher = await Teacher.findById(subjectTeacherMapping.teacherId);
+          teacherLookupMethod = "subject_mapping";
+          console.log(
+            `🎯 Method 2: Found subject-specific teacher: ${teacher?.name} for ${subject}`,
+          );
+        } else {
+          console.log(`⚠️ No subject-specific teacher found for "${subject}"`);
+        }
+      }
+
+      // Fallback to class's assigned teacher
+      if (!teacher && studentClass?.assignedTeacher) {
+        teacher = studentClass.assignedTeacher;
+        teacherLookupMethod = "class_assigned";
+        console.log(`⚠️ Method 3: Fallback to class teacher: ${teacher?.name}`);
+      }
+
+      // Last fallback: Find any teacher by subject
+      if (!teacher && subject) {
+        teacher = await Teacher.findOne({
+          subject: subject.toLowerCase(),
+          status: "active",
+        });
+        teacherLookupMethod = "subject_search";
+        console.log(
+          `⚠️ Method 4: Fallback to any ${subject} teacher: ${teacher?.name || "Not found"}`,
         );
       }
-    }
 
-    // Fallback to class's assigned teacher
-    if (!teacher && studentClass?.assignedTeacher) {
-      teacher = studentClass.assignedTeacher;
-      console.log(`⚠️ Fallback to class teacher: ${teacher?.name}`);
-    }
-
-    // Last fallback: Find any teacher by subject
-    if (!teacher && subject) {
-      teacher = await Teacher.findOne({
-        subject: subject.toLowerCase(),
-        status: "active",
-      });
-      console.log(`⚠️ Fallback to any ${subject} teacher: ${teacher?.name}`);
+      // Final check: If still no teacher found, continue without one
+      if (!teacher) {
+        console.log(
+          `⚠️ WARNING: No teacher found for subject "${subject}". Proceeding with Academy-only split.`,
+        );
+      }
+    } catch (teacherError) {
+      console.error("❌ Error finding teacher:", teacherError);
+      // Continue without teacher - revenue will go to academy pool
     }
 
     // Get the configuration
     const config = await Configuration.findOne();
 
     // Get teacher role for revenue split
-    const teacherRole = teacher ? await getTeacherRole(teacher) : "STAFF";
+    let teacherRole = "STAFF"; // Default
+    try {
+      teacherRole = teacher ? await getTeacherRole(teacher) : "STAFF";
+    } catch (roleError) {
+      console.error("❌ Error getting teacher role:", roleError);
+      teacherRole = "STAFF"; // Fallback
+    }
 
     // ========================================
     // SMART FEE LOGIC: Calculate Revenue Split
     // ========================================
-    const splitResult = await calculateRevenueSplit({
-      fee: amount,
-      gradeLevel: studentClass?.gradeLevel,
-      sessionType: studentClass?.sessionType || "regular",
-      subject: subject || studentClass?.subjects?.[0]?.name || "General",
-      teacherId: teacher?._id,
-      teacherRole: teacherRole,
-      config,
-    });
+    let splitResult;
+    try {
+      splitResult = await calculateRevenueSplit({
+        fee: amount,
+        gradeLevel: studentClass?.gradeLevel,
+        sessionType: studentClass?.sessionType || "regular",
+        subject: subject || studentClass?.subjects?.[0]?.name || "General",
+        teacherId: teacher?._id,
+        teacherRole: teacherRole,
+        config,
+      });
 
-    console.log(`\n📊 SPLIT RESULT:`, JSON.stringify(splitResult, null, 2));
+      console.log(`\n📊 SPLIT RESULT:`, JSON.stringify(splitResult, null, 2));
+    } catch (splitError) {
+      console.error("❌ Error in calculateRevenueSplit:", splitError);
+      console.error("Split Error Stack:", splitError.stack);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to calculate revenue split",
+        error: splitError.message,
+      });
+    }
 
     // Create the FeeRecord
     const feeRecord = await FeeRecord.create({
@@ -699,10 +775,21 @@ exports.collectFee = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error in collectFee:", error);
+    console.error("Error Name:", error.name);
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+    if (error.errors) {
+      console.error(
+        "Validation Errors:",
+        JSON.stringify(error.errors, null, 2),
+      );
+    }
+
     return res.status(500).json({
       success: false,
-      message: "Failed to collect fee",
+      message: error.message || "Failed to collect fee",
       error: error.message,
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 };

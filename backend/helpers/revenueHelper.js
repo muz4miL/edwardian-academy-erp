@@ -46,151 +46,159 @@ async function calculateRevenueSplit({
   teacherRole,
   config = null,
 }) {
-  console.log("\n=== CALCULATE REVENUE SPLIT ===");
-  console.log(`Fee: PKR ${fee}`);
-  console.log(`Grade: ${gradeLevel}, Session: ${sessionType}`);
-  console.log(`Subject: ${subject}, Teacher Role: ${teacherRole}`);
+  try {
+    console.log("\n=== CALCULATE REVENUE SPLIT ===");
+    console.log(`Fee: PKR ${fee}`);
+    console.log(`Grade: ${gradeLevel}, Session: ${sessionType}`);
+    console.log(`Subject: ${subject}, Teacher Role: ${teacherRole}`);
 
-  // Fetch config if not provided
-  if (!config) {
-    config = await Configuration.findOne();
-  }
-
-  // Default split ratios from config
-  const staffTeacherShare = config?.salaryConfig?.teacherShare || 70;
-  const staffAcademyShare = config?.salaryConfig?.academyShare || 30;
-  const partner100Rule = config?.partner100Rule !== false; // Default true
-
-  // UNIVERSAL ETEA Commission Rate (same for ALL subjects)
-  const eteaCommission = config?.eteaConfig?.perStudentCommission || 3000;
-
-  // Determine if this is ETEA/MDCAT
-  const isETEA =
-    sessionType === "etea" ||
-    sessionType === "mdcat" ||
-    sessionType === "ecat" ||
-    sessionType === "test-prep" ||
-    gradeLevel === "MDCAT Prep" ||
-    gradeLevel === "ECAT Prep";
-
-  // Check if teacher is a partner (OWNER or PARTNER)
-  const isPartner = teacherRole === "OWNER" || teacherRole === "PARTNER";
-
-  // Initialize split values
-  let teacherCommission = 0; // Commission portion
-  let teacherTuition = 0; // Tuition portion (for partners only)
-  let poolRevenue = 0;
-  let stream = "STAFF_TUITION"; // Default
-  let splitType = "STAFF_70_30";
-
-  // === RULE 1: ETEA/MDCAT Logic ===
-  if (isETEA) {
-    // Universal commission for ALL ETEA teachers (regardless of subject)
-    teacherCommission = eteaCommission;
-
-    if (isPartner && partner100Rule) {
-      // PARTNERS: Get 100% of fee (Commission + Tuition) → VERIFIED (Cash)
-      teacherTuition = fee - eteaCommission;
-      poolRevenue = 0;
-      splitType = "ETEA_PARTNER_100";
-      stream = teacherRole === "OWNER" ? "OWNER_CHEMISTRY" : "PARTNER_ETEA";
-      console.log(
-        `👑 ETEA Partner: Commission PKR ${teacherCommission} + Tuition PKR ${teacherTuition} = 100% (PKR ${fee})`,
-      );
-    } else {
-      // STAFF: Get commission only → PENDING (Paid at end of session)
-      // Rest goes to Academy Pool
-      teacherTuition = 0;
-      poolRevenue = fee - eteaCommission;
-      splitType = "ETEA_STAFF_COMMISSION";
-      stream = "ETEA_POOL";
-      console.log(
-        `👨‍🏫 ETEA Staff: Commission PKR ${teacherCommission} (PENDING), Pool PKR ${poolRevenue}`,
-      );
+    // Fetch config if not provided
+    if (!config) {
+      config = await Configuration.findOne();
     }
-  }
-  // === RULE 2: Regular Partner 100% Rule ===
-  else if (partner100Rule && isPartner) {
-    teacherCommission = 0;
-    teacherTuition = fee;
-    poolRevenue = 0;
-    splitType = "PARTNER_100";
 
-    // Determine specific stream based on teacher
-    if (teacherRole === "OWNER") {
-      stream = "OWNER_CHEMISTRY";
-    } else {
-      // Identify partner stream based on subject
-      const subjectLower = (subject || "").toLowerCase();
-      if (
-        subjectLower.includes("bio") ||
-        subjectLower.includes("zoology") ||
-        subjectLower.includes("botany")
-      ) {
-        stream = "PARTNER_BIO";
-      } else if (subjectLower.includes("physics")) {
-        stream = "PARTNER_PHYSICS";
+    // Default split ratios from config
+    const staffTeacherShare = config?.salaryConfig?.teacherShare || 70;
+    const staffAcademyShare = config?.salaryConfig?.academyShare || 30;
+    const partner100Rule = config?.partner100Rule !== false; // Default true
+
+    // UNIVERSAL ETEA Commission Rate (same for ALL subjects)
+    const eteaCommission = config?.eteaConfig?.perStudentCommission || 3000;
+
+    // Determine if this is ETEA/MDCAT
+    const isETEA =
+      sessionType === "etea" ||
+      sessionType === "mdcat" ||
+      sessionType === "ecat" ||
+      sessionType === "test-prep" ||
+      gradeLevel === "MDCAT Prep" ||
+      gradeLevel === "ECAT Prep";
+
+    // Check if teacher is a partner (OWNER or PARTNER)
+    const isPartner = teacherRole === "OWNER" || teacherRole === "PARTNER";
+
+    // Initialize split values
+    let teacherCommission = 0; // Commission portion
+    let teacherTuition = 0; // Tuition portion (for partners only)
+    let poolRevenue = 0;
+    let stream = "STAFF_TUITION"; // Default
+    let splitType = "STAFF_70_30";
+
+    // === RULE 1: ETEA/MDCAT Logic ===
+    if (isETEA) {
+      // Universal commission for ALL ETEA teachers (regardless of subject)
+      teacherCommission = eteaCommission;
+
+      if (isPartner && partner100Rule) {
+        // PARTNERS: Get 100% of fee (Commission + Tuition) → VERIFIED (Cash)
+        teacherTuition = fee - eteaCommission;
+        poolRevenue = 0;
+        splitType = "ETEA_PARTNER_100";
+        stream = teacherRole === "OWNER" ? "OWNER_CHEMISTRY" : "PARTNER_ETEA";
+        console.log(
+          `👑 ETEA Partner: Commission PKR ${teacherCommission} + Tuition PKR ${teacherTuition} = 100% (PKR ${fee})`,
+        );
       } else {
-        stream = "STAFF_TUITION"; // Fallback
+        // STAFF: Get commission only → PENDING (Paid at end of session)
+        // Rest goes to Academy Pool
+        teacherTuition = 0;
+        poolRevenue = fee - eteaCommission;
+        splitType = "ETEA_STAFF_COMMISSION";
+        stream = "ETEA_POOL";
+        console.log(
+          `👨‍🏫 ETEA Staff: Commission PKR ${teacherCommission} (PENDING), Pool PKR ${poolRevenue}`,
+        );
       }
     }
-    console.log(`👑 Partner 100% Rule: ${stream} - Full PKR ${fee} to teacher`);
-  }
-  // === RULE 3: Default Staff 70/30 ===
-  else {
-    const totalTeacher = Math.round((fee * staffTeacherShare) / 100);
-    teacherCommission = 0;
-    teacherTuition = totalTeacher;
-    poolRevenue = fee - totalTeacher; // Ensures no rounding loss
-    stream = "STAFF_TUITION";
-    splitType = "STAFF_70_30";
-    console.log(
-      `👨‍🏫 Staff Split: Teacher ${staffTeacherShare}% = PKR ${totalTeacher}, Pool ${staffAcademyShare}% = PKR ${poolRevenue}`,
-    );
-  }
+    // === RULE 2: Regular Partner 100% Rule ===
+    else if (partner100Rule && isPartner) {
+      teacherCommission = 0;
+      teacherTuition = fee;
+      poolRevenue = 0;
+      splitType = "PARTNER_100";
 
-  // Total teacher revenue (for backward compatibility)
-  const teacherRevenue = teacherCommission + teacherTuition;
-
-  // Determine grade category for reporting
-  let gradeCategory = "OTHER";
-  if (gradeLevel) {
-    if (gradeLevel.includes("9th") || gradeLevel.includes("10th")) {
-      gradeCategory = "MATRIC";
-    } else if (gradeLevel.includes("11th") || gradeLevel.includes("12th")) {
-      gradeCategory = "FSC";
-    } else if (
-      gradeLevel.includes("MDCAT") ||
-      gradeLevel.includes("ECAT") ||
-      isETEA
-    ) {
-      gradeCategory = "ETEA";
+      // Determine specific stream based on teacher
+      if (teacherRole === "OWNER") {
+        stream = "OWNER_CHEMISTRY";
+      } else {
+        // Identify partner stream based on subject
+        const subjectLower = (subject || "").toLowerCase();
+        if (
+          subjectLower.includes("bio") ||
+          subjectLower.includes("zoology") ||
+          subjectLower.includes("botany")
+        ) {
+          stream = "PARTNER_BIO";
+        } else if (subjectLower.includes("physics")) {
+          stream = "PARTNER_PHYSICS";
+        } else {
+          stream = "STAFF_TUITION"; // Fallback
+        }
+      }
+      console.log(
+        `👑 Partner 100% Rule: ${stream} - Full PKR ${fee} to teacher`,
+      );
     }
+    // === RULE 3: Default Staff 70/30 ===
+    else {
+      const totalTeacher = Math.round((fee * staffTeacherShare) / 100);
+      teacherCommission = 0;
+      teacherTuition = totalTeacher;
+      poolRevenue = fee - totalTeacher; // Ensures no rounding loss
+      stream = "STAFF_TUITION";
+      splitType = "STAFF_70_30";
+      console.log(
+        `👨‍🏫 Staff Split: Teacher ${staffTeacherShare}% = PKR ${totalTeacher}, Pool ${staffAcademyShare}% = PKR ${poolRevenue}`,
+      );
+    }
+
+    // Total teacher revenue (for backward compatibility)
+    const teacherRevenue = teacherCommission + teacherTuition;
+
+    // Determine grade category for reporting
+    let gradeCategory = "OTHER";
+    if (gradeLevel) {
+      if (gradeLevel.includes("9th") || gradeLevel.includes("10th")) {
+        gradeCategory = "MATRIC";
+      } else if (gradeLevel.includes("11th") || gradeLevel.includes("12th")) {
+        gradeCategory = "FSC";
+      } else if (
+        gradeLevel.includes("MDCAT") ||
+        gradeLevel.includes("ECAT") ||
+        isETEA
+      ) {
+        gradeCategory = "ETEA";
+      }
+    }
+
+    const result = {
+      totalFee: fee,
+      teacherRevenue, // Total (Commission + Tuition)
+      teacherCommission, // Commission portion
+      teacherTuition, // Tuition portion
+      poolRevenue,
+      stream,
+      splitType,
+      teacherId,
+      teacherRole,
+      gradeCategory,
+      isETEA,
+      isPartner,
+      config: {
+        staffTeacherShare,
+        staffAcademyShare,
+        partner100Rule,
+        eteaCommission, // Universal ETEA per-student commission
+      },
+    };
+
+    console.log("📊 Split Result:", JSON.stringify(result, null, 2));
+    return result;
+  } catch (error) {
+    console.error("❌ Error in calculateRevenueSplit:", error);
+    console.error("Error Stack:", error.stack);
+    throw new Error(`Revenue split calculation failed: ${error.message}`);
   }
-
-  const result = {
-    totalFee: fee,
-    teacherRevenue, // Total (Commission + Tuition)
-    teacherCommission, // Commission portion
-    teacherTuition, // Tuition portion
-    poolRevenue,
-    stream,
-    splitType,
-    teacherId,
-    teacherRole,
-    gradeCategory,
-    isETEA,
-    isPartner,
-    config: {
-      staffTeacherShare,
-      staffAcademyShare,
-      partner100Rule,
-      eteaCommission, // Universal ETEA per-student commission
-    },
-  };
-
-  console.log("📊 Split Result:", JSON.stringify(result, null, 2));
-  return result;
 }
 
 /**
@@ -651,9 +659,240 @@ async function processMultiSubjectRevenue({
   return results;
 }
 
+/**
+ * Distribute Pool Revenue Among Partners (Waqar's Protocol)
+ *
+ * Protocol A (Tuition): 50% Waqar / 30% Zahid / 20% Saud
+ * Protocol B (ETEA): 40% Waqar / 30% Zahid / 30% Saud
+ *
+ * @param {Object} params
+ * @param {Number} params.poolAmount - Total pool amount to distribute
+ * @param {Boolean} params.isETEA - Whether this is ETEA/MDCAT pool
+ * @param {String} params.studentId - Student ID for transaction reference
+ * @param {String} params.collectedById - User ID who collected
+ * @param {String} params.description - Transaction description
+ * @param {Object} params.config - Configuration document (optional)
+ *
+ * @returns {Object} Distribution results
+ */
+async function distributePoolRevenue({
+  poolAmount,
+  isETEA = false,
+  studentId,
+  collectedById,
+  description,
+  config = null,
+}) {
+  const Transaction = require("../models/Transaction");
+
+  console.log("\n=== DISTRIBUTE POOL REVENUE (Waqar's Protocol) ===");
+  console.log(`Pool Amount: PKR ${poolAmount}`);
+  console.log(`Protocol: ${isETEA ? "ETEA (40/30/30)" : "Tuition (50/30/20)"}`);
+
+  if (!config) {
+    config = await Configuration.findOne();
+  }
+
+  // Get the appropriate pool split based on protocol
+  let poolSplit;
+  if (isETEA) {
+    poolSplit = config?.eteaPoolSplit || { waqar: 40, zahid: 30, saud: 30 };
+  } else {
+    poolSplit = config?.tuitionPoolSplit || { waqar: 50, zahid: 30, saud: 20 };
+  }
+
+  // Calculate individual shares
+  const waqarShare = Math.round((poolAmount * poolSplit.waqar) / 100);
+  const zahidShare = Math.round((poolAmount * poolSplit.zahid) / 100);
+  const saudShare = poolAmount - waqarShare - zahidShare; // Ensures no rounding loss
+
+  console.log(`Waqar (${poolSplit.waqar}%): PKR ${waqarShare}`);
+  console.log(`Zahid (${poolSplit.zahid}%): PKR ${zahidShare}`);
+  console.log(`Saud (${poolSplit.saud}%): PKR ${saudShare}`);
+
+  const transactions = [];
+  const poolType = isETEA ? "ETEA_POOL" : "TUITION_POOL";
+  const protocolLabel = isETEA ? "ETEA Protocol" : "Tuition Protocol";
+
+  // Create dividend transactions for each partner
+  if (waqarShare > 0) {
+    const waqarTx = await Transaction.create({
+      type: "INCOME",
+      category: "Dividend",
+      stream: "OWNER_DIVIDEND",
+      amount: waqarShare,
+      description: `${description} - Waqar's Share (${poolSplit.waqar}%) [${protocolLabel}]`,
+      collectedBy: collectedById,
+      studentId: studentId,
+      status: "VERIFIED",
+      splitDetails: {
+        partnerName: "Waqar",
+        percentage: poolSplit.waqar,
+        poolType: poolType,
+      },
+      date: new Date(),
+    });
+    transactions.push(waqarTx);
+  }
+
+  if (zahidShare > 0) {
+    const zahidTx = await Transaction.create({
+      type: "INCOME",
+      category: "Dividend",
+      stream: "PARTNER_DIVIDEND",
+      amount: zahidShare,
+      description: `${description} - Zahid's Share (${poolSplit.zahid}%) [${protocolLabel}]`,
+      collectedBy: collectedById,
+      studentId: studentId,
+      status: "VERIFIED",
+      splitDetails: {
+        partnerName: "Zahid",
+        percentage: poolSplit.zahid,
+        poolType: poolType,
+      },
+      date: new Date(),
+    });
+    transactions.push(zahidTx);
+  }
+
+  if (saudShare > 0) {
+    const saudTx = await Transaction.create({
+      type: "INCOME",
+      category: "Dividend",
+      stream: "PARTNER_DIVIDEND",
+      amount: saudShare,
+      description: `${description} - Saud's Share (${poolSplit.saud}%) [${protocolLabel}]`,
+      collectedBy: collectedById,
+      studentId: studentId,
+      status: "VERIFIED",
+      splitDetails: {
+        partnerName: "Saud",
+        percentage: poolSplit.saud,
+        poolType: poolType,
+      },
+      date: new Date(),
+    });
+    transactions.push(saudTx);
+  }
+
+  console.log(`✅ Created ${transactions.length} dividend transactions`);
+
+  return {
+    transactions,
+    waqarShare,
+    zahidShare,
+    saudShare,
+    poolSplit,
+    protocol: isETEA ? "ETEA" : "TUITION",
+  };
+}
+
+/**
+ * Create Expense Debt Records for Partners (Waqar's Protocol)
+ *
+ * When Waqar pays an expense, create DEBT records for Zahid and Saud
+ * based on the expense split ratio (40/30/30).
+ *
+ * @param {Object} params
+ * @param {Number} params.expenseAmount - Total expense amount
+ * @param {String} params.expenseId - Expense/Transaction ID for reference
+ * @param {String} params.description - Expense description
+ * @param {String} params.paidById - User ID who paid (Waqar)
+ * @param {Object} params.config - Configuration document (optional)
+ *
+ * @returns {Object} Debt records created
+ */
+async function createExpenseDebtRecords({
+  expenseAmount,
+  expenseId,
+  description,
+  paidById,
+  config = null,
+}) {
+  const Transaction = require("../models/Transaction");
+
+  console.log("\n=== CREATE EXPENSE DEBT RECORDS (Waqar's Protocol) ===");
+  console.log(`Expense Amount: PKR ${expenseAmount}`);
+
+  if (!config) {
+    config = await Configuration.findOne();
+  }
+
+  // Get expense split from config (default: 40/30/30)
+  const expenseSplit = config?.expenseSplit || {
+    waqar: 40,
+    zahid: 30,
+    saud: 30,
+  };
+
+  // Calculate each partner's share of the expense
+  const waqarPaid = expenseAmount; // Waqar paid the full amount
+  const zahidOwes = Math.round((expenseAmount * expenseSplit.zahid) / 100);
+  const saudOwes = Math.round((expenseAmount * expenseSplit.saud) / 100);
+
+  console.log(`Zahid owes (${expenseSplit.zahid}%): PKR ${zahidOwes}`);
+  console.log(`Saud owes (${expenseSplit.saud}%): PKR ${saudOwes}`);
+
+  const debtRecords = [];
+
+  // Create DEBT record for Zahid
+  if (zahidOwes > 0) {
+    const zahidDebt = await Transaction.create({
+      type: "DEBT",
+      category: "ExpenseShare",
+      stream: "PARTNER_EXPENSE_DEBT",
+      amount: zahidOwes,
+      description: `Expense Share: ${description} - Zahid owes (${expenseSplit.zahid}%)`,
+      collectedBy: paidById,
+      status: "PENDING", // Pending until partner pays
+      splitDetails: {
+        partnerName: "Zahid",
+        percentage: expenseSplit.zahid,
+        expenseId: expenseId,
+        paidByWaqar: true,
+      },
+      date: new Date(),
+    });
+    debtRecords.push(zahidDebt);
+  }
+
+  // Create DEBT record for Saud
+  if (saudOwes > 0) {
+    const saudDebt = await Transaction.create({
+      type: "DEBT",
+      category: "ExpenseShare",
+      stream: "PARTNER_EXPENSE_DEBT",
+      amount: saudOwes,
+      description: `Expense Share: ${description} - Saud owes (${expenseSplit.saud}%)`,
+      collectedBy: paidById,
+      status: "PENDING", // Pending until partner pays
+      splitDetails: {
+        partnerName: "Saud",
+        percentage: expenseSplit.saud,
+        expenseId: expenseId,
+        paidByWaqar: true,
+      },
+      date: new Date(),
+    });
+    debtRecords.push(saudDebt);
+  }
+
+  console.log(`✅ Created ${debtRecords.length} expense debt records`);
+
+  return {
+    debtRecords,
+    zahidOwes,
+    saudOwes,
+    totalDebt: zahidOwes + saudOwes,
+    expenseSplit,
+  };
+}
+
 module.exports = {
   calculateRevenueSplit,
   createRevenueSplitTransactions,
   getTeacherRole,
   processMultiSubjectRevenue,
+  distributePoolRevenue,
+  createExpenseDebtRecords,
 };

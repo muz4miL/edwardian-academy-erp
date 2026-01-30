@@ -35,7 +35,8 @@ exports.updateConfig = async (req, res) => {
   if (req.user.role !== "OWNER")
     return res.status(403).json({ success: false });
 
-  const { expenseSplit, defaultSubjectFees } = req.body;
+  const { expenseSplit, defaultSubjectFees, tuitionPoolSplit, eteaPoolSplit } =
+    req.body;
 
   if (
     expenseSplit &&
@@ -43,7 +44,28 @@ exports.updateConfig = async (req, res) => {
   ) {
     return res
       .status(400)
-      .json({ success: false, message: "Splits must total 100%" });
+      .json({ success: false, message: "Expense splits must total 100%" });
+  }
+
+  // Waqar's Protocol: Validate Tuition Pool Split (50/30/20)
+  if (
+    tuitionPoolSplit &&
+    tuitionPoolSplit.waqar + tuitionPoolSplit.zahid + tuitionPoolSplit.saud !==
+      100
+  ) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Tuition pool splits must total 100%" });
+  }
+
+  // Waqar's Protocol: Validate ETEA Pool Split (40/30/30)
+  if (
+    eteaPoolSplit &&
+    eteaPoolSplit.waqar + eteaPoolSplit.zahid + eteaPoolSplit.saud !== 100
+  ) {
+    return res
+      .status(400)
+      .json({ success: false, message: "ETEA pool splits must total 100%" });
   }
 
   try {

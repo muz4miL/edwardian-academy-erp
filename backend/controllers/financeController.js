@@ -9,6 +9,9 @@ const Configuration = require("../models/Configuration");
 const User = require("../models/User");
 const Teacher = require("../models/Teacher");
 
+// Waqar's Protocol: Import expense debt creation from revenueHelper
+const { createExpenseDebtRecords } = require("../helpers/revenueHelper");
+
 // @desc    Close Day - Lock floating cash into verified balance
 // @route   POST /api/finance/close-day
 // @access  Protected (Partners Only)
@@ -229,6 +232,71 @@ exports.getDashboardStats = async (req, res) => {
         stats.expenseDebt = liveDebtToOwner;
         stats.hasExpenseDebt = liveDebtToOwner > 0; // Alert flag for UI
         stats.expenseDebtDetails = []; // Historical details no longer needed
+
+        // ========================================
+        // WAQAR'S PROTOCOL: Net Cash Closing for Partners
+        // ========================================
+
+        // Get partner name from user profile for dividend lookup
+        const partnerName = (
+          req.user.fullName ||
+          req.user.username ||
+          ""
+        ).toLowerCase();
+        let dividendFilter = "Zahid"; // Default
+        if (partnerName.includes("zahid")) dividendFilter = "Zahid";
+        else if (partnerName.includes("saud")) dividendFilter = "Saud";
+
+        // 1. Total Cash Collected (All verified income for this partner)
+        const totalCashCollectedResult = await Transaction.aggregate([
+          {
+            $match: {
+              collectedBy: collectedByMatch,
+              status: "VERIFIED",
+              type: "INCOME",
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        stats.totalCashCollected = totalCashCollectedResult?.[0]?.total ?? 0;
+
+        // 2. Pool Dividends Received (From protocol-based pool splits)
+        const dividendsResult = await Transaction.aggregate([
+          {
+            $match: {
+              category: "Dividend",
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.partnerName": dividendFilter,
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        stats.poolDividends = dividendsResult?.[0]?.total ?? 0;
+
+        // 3. Expense Share Payable (Pending DEBT transactions for this partner)
+        const expenseDebtResult = await Transaction.aggregate([
+          {
+            $match: {
+              type: "DEBT",
+              category: "ExpenseShare",
+              status: "PENDING",
+              "splitDetails.partnerName": dividendFilter,
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        stats.expenseSharePayable = expenseDebtResult?.[0]?.total ?? 0;
+
+        // 4. Net Cash to Close = Total Cash Collected - Expense Share Payable
+        stats.netCashToClose =
+          stats.totalCashCollected - stats.expenseSharePayable;
+
+        console.log(`💰 Partner Net Cash Closing (${dividendFilter}):
+  - Total Cash Collected: PKR ${stats.totalCashCollected.toLocaleString()}
+  - Pool Dividends: PKR ${stats.poolDividends.toLocaleString()}
+  - Expense Share Payable: PKR ${stats.expenseSharePayable.toLocaleString()}
+  - Net Cash to Close: PKR ${stats.netCashToClose.toLocaleString()}`);
 
         // Link Partner to Teacher profile to get Teacher floatingCash
         // Try to find Teacher by userId first, then by name match
@@ -722,6 +790,32 @@ exports.createSharedExpense = async (req, res) => {
       });
       console.log(
         `📊 Added PKR ${share.amount} to ${share.partnerName}'s debt`,
+      );
+    }
+
+    // ========================================
+    // WAQAR'S PROTOCOL: Create DEBT Transaction Records
+    // ========================================
+    // These provide detailed transaction-level tracking for partner dashboards
+    try {
+      const config = await Configuration.findOne();
+      const debtResult = await createExpenseDebtRecords({
+        expenseAmount: amount,
+        expenseId: expense._id.toString(),
+        description: `Expense Share: ${title}`,
+        paidById: req.user._id,
+        config,
+      });
+
+      console.log(`📝 Created DEBT records for expense:
+  - Zahid owes: PKR ${debtResult.zahidOwes.toLocaleString()}
+  - Saud owes: PKR ${debtResult.saudOwes.toLocaleString()}
+  - Total debt created: PKR ${debtResult.totalDebt.toLocaleString()}`);
+    } catch (debtError) {
+      // Non-critical - debt records are supplementary, User.debtToOwner is source of truth
+      console.warn(
+        "⚠️ Failed to create DEBT transaction records:",
+        debtError.message,
       );
     }
 

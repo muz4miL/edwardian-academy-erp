@@ -203,7 +203,7 @@ exports.createTeacher = async (req, res) => {
       username,
       password: plainPassword, // Will be hashed by pre-save hook
       fullName: name,
-      role: "Teacher",
+      role: "TEACHER", // Must match User schema enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"]
       permissions: ["dashboard", "lectures"],
       phone,
       profileImage: profileImage || null,
