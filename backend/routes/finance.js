@@ -14,6 +14,8 @@ const {
   getPartnerPortalStats,
   repayDebtToOwner,
   processTeacherPayout,
+  resetSystem,
+  deleteTransaction,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -41,6 +43,26 @@ router.get(
 // @desc    Get finance history (ledger) - OWNER sees all, PARTNER sees own
 // @access  Protected (OWNER, PARTNER)
 router.get("/history", protect, getFinanceHistory);
+
+// @route   POST /api/finance/reset-system
+// @desc    DANGER: Wipe all financial data for clean testing (Testing only)
+// @access  Protected (ADMIN, OWNER)
+router.post(
+  "/reset-system",
+  protect,
+  restrictTo("ADMIN", "OWNER"),
+  resetSystem,
+);
+
+// @route   DELETE /api/finance/transaction/:id
+// @desc    Delete a single transaction (for testing cleanup)
+// @access  Protected (OWNER only)
+router.delete(
+  "/transaction/:id",
+  protect,
+  restrictTo("OWNER", "ADMIN"),
+  deleteTransaction,
+);
 
 // @route   POST /api/finance/close-day
 // @desc    Close the day and lock floating cash

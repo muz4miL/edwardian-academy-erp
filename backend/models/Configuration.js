@@ -61,6 +61,15 @@ const configurationSchema = new mongoose.Schema(
     // Partners get 100% (Commission + Tuition), Staff get Commission only (Pending)
     eteaConfig: {
       perStudentCommission: { type: Number, default: 3000, min: 0 }, // Universal rate for all ETEA teachers
+      // English teacher exception: Fixed salary per session (not per-student)
+      englishFixedSalary: { type: Number, default: 80000, min: 0 },
+    },
+
+    // Partner User IDs for pool distribution (robust lookup)
+    partnerIds: {
+      waqar: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      zahid: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      saud: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
 
     // Card 5: Master Subject Pricing - Global base fees synced across all modules

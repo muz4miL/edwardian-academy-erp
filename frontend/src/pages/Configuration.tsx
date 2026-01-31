@@ -106,6 +106,7 @@ const Configuration = () => {
 
   // --- Card 7: ETEA/MDCAT Config ---
   const [eteaCommission, setEteaCommission] = useState(3000);
+  const [englishFixedSalary, setEnglishFixedSalary] = useState(80000);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -191,6 +192,7 @@ const Configuration = () => {
           // Card 7: ETEA Config
           if (data.eteaConfig) {
             setEteaCommission(data.eteaConfig.perStudentCommission ?? 3000);
+            setEnglishFixedSalary(data.eteaConfig.englishFixedSalary ?? 80000);
           }
         }
       } catch (error) {
@@ -287,6 +289,7 @@ const Configuration = () => {
         },
         eteaConfig: {
           perStudentCommission: eteaCommission,
+          englishFixedSalary: englishFixedSalary,
         },
         academyName,
         academyAddress,
@@ -385,7 +388,10 @@ const Configuration = () => {
           zahid: eteaPoolZahid,
           saud: eteaPoolSaud,
         },
-        eteaConfig: { perStudentCommission: eteaCommission },
+        eteaConfig: {
+          perStudentCommission: eteaCommission,
+          englishFixedSalary: englishFixedSalary,
+        },
         academyName,
         academyAddress,
         academyPhone,
@@ -1026,6 +1032,16 @@ const Configuration = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
+                        <span className="inline-block h-5 w-5 rounded-full bg-amber-500 text-white text-center text-xs leading-5">
+                          E
+                        </span>
+                        <span>
+                          <strong>ETEA English:</strong> Fixed PKR{" "}
+                          {englishFixedSalary.toLocaleString()}/session → Full
+                          fee to pool
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <span className="inline-block h-5 w-5 rounded-full bg-orange-500 text-white text-center text-xs leading-5">
                           C
                         </span>
@@ -1057,7 +1073,8 @@ const Configuration = () => {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="pt-6">
+                <CardContent className="pt-6 space-y-6">
+                  {/* Per-Student Commission */}
                   <div className="max-w-md">
                     <Label className="text-sm font-semibold mb-2 block">
                       Per-Student Commission (PKR)
@@ -1078,7 +1095,37 @@ const Configuration = () => {
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
                       Fixed amount credited to teachers for each ETEA/MDCAT
-                      student enrolled
+                      student enrolled (Physics, Biology, Chemistry, etc.)
+                    </p>
+                  </div>
+
+                  {/* English Fixed Salary - NEW */}
+                  <div className="max-w-md border-t pt-6">
+                    <Label className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+                        English Exception
+                      </span>
+                      Fixed Salary per Session (PKR)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
+                        PKR
+                      </span>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={englishFixedSalary}
+                        onChange={(e) =>
+                          setEnglishFixedSalary(Number(e.target.value) || 0)
+                        }
+                        className="h-12 pl-12 text-lg font-bold border-amber-200 focus:border-amber-400"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      <strong>English teachers only:</strong> Fixed salary paid
+                      once per session. Unlike other subjects, English teachers
+                      do NOT get per-student commission. Full student fees go to
+                      pool instead.
                     </p>
                   </div>
                 </CardContent>
@@ -1316,6 +1363,94 @@ const Configuration = () => {
                 )}
               </Button>
             </div>
+
+            {/* ========== DANGER ZONE CARD ========== */}
+            <Card className="border-red-200 bg-red-50 mt-12">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-red-700">
+                  <AlertCircle className="h-5 w-5" />
+                  Danger Zone
+                </CardTitle>
+                <CardDescription className="text-red-600">
+                  These actions cannot be undone. Use only for testing and
+                  cleanup.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-red-100 border border-red-300 rounded-lg p-4">
+                  <p className="text-sm text-red-800 font-medium mb-4">
+                    🛑 <strong>Reset All Financial Data</strong>
+                  </p>
+                  <p className="text-xs text-red-700 mb-4">
+                    This will permanently delete:
+                    <br />
+                    • All transactions and ledger entries
+                    <br />
+                    • All fee records and receipts
+                    <br />
+                    • All students
+                    <br />
+                    • All notifications
+                    <br />• All user balance and revenue counters will be reset
+                    to 0
+                  </p>
+                  <Button
+                    variant="destructive"
+                    className="w-full bg-red-600 hover:bg-red-700"
+                    onClick={async () => {
+                      if (
+                        window.confirm(
+                          "⚠️ WARNING: This will delete ALL financial data and students. This cannot be undone. Are you sure?",
+                        )
+                      ) {
+                        try {
+                          const response = await fetch(
+                            `${API_BASE_URL}/api/finance/reset-system`,
+                            {
+                              method: "POST",
+                              credentials: "include",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                            },
+                          );
+
+                          const data = await response.json();
+
+                          if (data.success) {
+                            toast({
+                              title: "✅ System Reset Complete",
+                              description:
+                                "Database wiped. All balances reset to 0. Reloading...",
+                              className: "bg-green-50 border-green-200",
+                            });
+                            setTimeout(() => {
+                              window.location.reload();
+                            }, 2000);
+                          } else {
+                            toast({
+                              title: "❌ Reset Failed",
+                              description:
+                                data.message || "Failed to reset system",
+                              variant: "destructive",
+                            });
+                          }
+                        } catch (error) {
+                          console.error("Reset error:", error);
+                          toast({
+                            title: "❌ Error",
+                            description: "Failed to reset system",
+                            variant: "destructive",
+                          });
+                        }
+                      }
+                    }}
+                  >
+                    🛑 RESET ALL FINANCE DATA
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 

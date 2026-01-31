@@ -33,7 +33,6 @@ import {
   Users,
   Loader2,
   Plus,
-  Trash2,
   TrendingDown,
   HelpCircle,
   Info,
@@ -49,6 +48,7 @@ import {
   Shield,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -74,7 +74,7 @@ const API_BASE_URL =
 interface FinanceHistoryItem {
   _id: string;
   date: string;
-  type: "INCOME" | "EXPENSE" | "PARTNER_WITHDRAWAL";
+  type: "INCOME" | "EXPENSE" | "PARTNER_WITHDRAWAL" | "DIVIDEND" | "DEBT";
   description: string;
   amount: number;
   status: string;
@@ -83,6 +83,14 @@ interface FinanceHistoryItem {
   collectedBy?: string;
   studentName?: string;
   paidBy?: string;
+  stream?: string;
+  splitDetails?: {
+    partnerName?: string;
+    percentage?: number;
+    poolType?: string;
+    teacherShare?: number;
+    academyShare?: number;
+  };
   vendorName?: string;
 }
 
@@ -248,6 +256,37 @@ const Finance = () => {
       queryClient.invalidateQueries({ queryKey: ["finance-history"] });
       queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
       toast.success("🗑️ Expense deleted");
+    },
+  });
+
+  // Delete transaction mutation
+  const deleteTransactionMutation = useMutation({
+    mutationFn: async (transactionId: string) => {
+      const response = await fetch(
+        `${API_BASE_URL}/api/finance/transaction/${transactionId}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to delete transaction");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["finance-history"] });
+      queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
+
+      const isExpense = data.deletedTransaction?.type === "EXPENSE";
+      toast.success("✅ Transaction deleted", {
+        description: isExpense
+          ? `${data.deletedTransaction.description} removed\n✓ Partner expense shares also cleared`
+          : data.message || "Transaction removed from ledger",
+      });
+    },
+    onError: (error: any) => {
+      toast.error("Failed to delete transaction", {
+        description: error.message || "Please try again",
+      });
     },
   });
 
@@ -584,6 +623,8 @@ const Finance = () => {
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="INCOME">Income</SelectItem>
                   <SelectItem value="EXPENSE">Expense</SelectItem>
+                  <SelectItem value="DIVIDEND">Dividends</SelectItem>
+                  <SelectItem value="DEBT">Debts</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -619,6 +660,9 @@ const Finance = () => {
                     <TableHead className="font-semibold text-gray-700">
                       Status
                     </TableHead>
+                    <TableHead className="text-right font-semibold text-gray-700">
+                      Action
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -646,7 +690,8 @@ const Finance = () => {
                     .map((item) => {
                       const isPositive =
                         item.type === "INCOME" ||
-                        item.type === "PARTNER_WITHDRAWAL";
+                        item.type === "PARTNER_WITHDRAWAL" ||
+                        item.type === "DIVIDEND";
                       const amountColorClass = isPositive
                         ? "text-emerald-600 font-semibold"
                         : "text-red-600 font-semibold";
@@ -675,6 +720,34 @@ const Finance = () => {
                         }
                       };
 
+                      // Get badge variant based on transaction type
+                      const getTypeBadgeVariant = (type: string) => {
+                        switch (type) {
+                          case "INCOME":
+                            return "default";
+                          case "EXPENSE":
+                            return "destructive";
+                          case "DIVIDEND":
+                            return "secondary"; // Purple-ish for dividends
+                          case "DEBT":
+                            return "outline";
+                          default:
+                            return "default";
+                        }
+                      };
+
+                      // Get badge color class for better distinction
+                      const getTypeBadgeClass = (type: string) => {
+                        switch (type) {
+                          case "DIVIDEND":
+                            return "bg-violet-100 text-violet-700 border-violet-200";
+                          case "DEBT":
+                            return "bg-amber-100 text-amber-700 border-amber-200";
+                          default:
+                            return "";
+                        }
+                      };
+
                       return (
                         <TableRow key={item._id} className="hover:bg-gray-50">
                           <TableCell className="whitespace-nowrap text-gray-600">
@@ -682,10 +755,8 @@ const Finance = () => {
                           </TableCell>
                           <TableCell>
                             <Badge
-                              variant={
-                                item.isExpense ? "destructive" : "default"
-                              }
-                              className="text-xs"
+                              variant={getTypeBadgeVariant(item.type)}
+                              className={`text-xs ${getTypeBadgeClass(item.type)}`}
                             >
                               {item.type}
                             </Badge>
@@ -711,6 +782,26 @@ const Finance = () => {
                             >
                               {item.status}
                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isOwner && (
+                              <button
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Delete this transaction?\n\n${item.description}\n-PKR ${item.amount.toLocaleString()}`,
+                                    )
+                                  ) {
+                                    deleteTransactionMutation.mutate(item._id);
+                                  }
+                                }}
+                                disabled={deleteTransactionMutation.isPending}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -909,6 +1000,111 @@ const Finance = () => {
                   </TooltipContent>
                 </InfoTooltip>
               </div>
+            </div>
+
+            {/* ============================================ */}
+            {/* POOL DIVIDENDS SUMMARY (NEW) */}
+            {/* Shows recent pool distributions to partners */}
+            {/* ============================================ */}
+            <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl border border-violet-200 p-5 mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-violet-100 rounded-lg">
+                  <DollarSign className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-violet-900">
+                    Pool Distribution (Waqar's Protocol)
+                  </h3>
+                  <p className="text-sm text-violet-600">
+                    Revenue from staff tuition split among partners
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Waqar's Share */}
+                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                      W
+                    </div>
+                    <span className="font-medium text-gray-700">Waqar</span>
+                    <Badge className="ml-auto bg-blue-100 text-blue-700 text-xs">
+                      50%
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
+                  <p className="text-lg font-bold text-blue-600">
+                    PKR{" "}
+                    {(
+                      (historyData || [])
+                        .filter(
+                          (t) =>
+                            t.type === "DIVIDEND" &&
+                            t.splitDetails?.partnerName === "Waqar",
+                        )
+                        .reduce((sum, t) => sum + t.amount, 0) || 0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Zahid's Share */}
+                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">
+                      Z
+                    </div>
+                    <span className="font-medium text-gray-700">Zahid</span>
+                    <Badge className="ml-auto bg-emerald-100 text-emerald-700 text-xs">
+                      30%
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
+                  <p className="text-lg font-bold text-emerald-600">
+                    PKR{" "}
+                    {(
+                      (historyData || [])
+                        .filter(
+                          (t) =>
+                            t.type === "DIVIDEND" &&
+                            t.splitDetails?.partnerName === "Zahid",
+                        )
+                        .reduce((sum, t) => sum + t.amount, 0) || 0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Saud's Share */}
+                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-sm">
+                      S
+                    </div>
+                    <span className="font-medium text-gray-700">Saud</span>
+                    <Badge className="ml-auto bg-amber-100 text-amber-700 text-xs">
+                      20%
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
+                  <p className="text-lg font-bold text-amber-600">
+                    PKR{" "}
+                    {(
+                      (historyData || [])
+                        .filter(
+                          (t) =>
+                            t.type === "DIVIDEND" &&
+                            t.splitDetails?.partnerName === "Saud",
+                        )
+                        .reduce((sum, t) => sum + t.amount, 0) || 0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-violet-500 mt-3 text-center">
+                💡 Pool dividends are automatically distributed when staff
+                tuition fees are collected (50/30/20 split)
+              </p>
             </div>
 
             {/* Warning for Negative Profit */}

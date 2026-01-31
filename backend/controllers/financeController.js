@@ -1079,14 +1079,17 @@ exports.getFinanceHistory = async (req, res) => {
       unifiedHistory.push({
         _id: tx._id,
         date: tx.createdAt || tx.date,
-        type: tx.type, // INCOME, EXPENSE, PARTNER_WITHDRAWAL
+        type: tx.type, // INCOME, EXPENSE, PARTNER_WITHDRAWAL, DIVIDEND, DEBT
         description: tx.description || `${tx.category} - ${tx.type}`,
         amount: tx.amount,
         status: tx.status, // FLOATING, VERIFIED, CANCELLED
-        isExpense: false,
+        isExpense: tx.type === "EXPENSE" || tx.type === "DEBT",
         category: tx.category,
         collectedBy: tx.collectedBy?.fullName || "Unknown",
         studentName: tx.studentId?.fullName || null,
+        // NEW: Include stream and splitDetails for pool distribution tracking
+        stream: tx.stream,
+        splitDetails: tx.splitDetails || null,
       });
     }
 
@@ -2332,6 +2335,213 @@ exports.processTeacherPayout = async (req, res) => {
       success: false,
       message: "Failed to process teacher payout",
       error: error.message,
+    });
+  }
+};
+
+// @desc    Reset System - Wipe all financial data for clean testing
+// @route   POST /api/finance/reset-system
+// @access  Protected (ADMIN only)
+exports.resetSystem = async (req, res) => {
+  try {
+    // Delete all transactions (complete ledger wipe)
+    await Transaction.deleteMany({});
+    console.log("✓ Wiped Transaction ledger");
+
+    // Delete all fee records (receipt history)
+    const FeeRecord = require("../models/FeeRecord");
+    await FeeRecord.deleteMany({});
+    console.log("✓ Wiped FeeRecord receipts");
+
+    // Delete all expenses (CRITICAL FIX!)
+    await Expense.deleteMany({});
+    console.log("✓ Wiped Expense records");
+
+    // Delete all students
+    const Student = require("../models/Student");
+    await Student.deleteMany({});
+    console.log("✓ Wiped Student records");
+
+    // Delete all notifications
+    await Notification.deleteMany({});
+    console.log("✓ Wiped Notification alerts");
+
+    // Reset all user balances and revenue counters
+    await User.updateMany(
+      {},
+      {
+        $set: {
+          "balance.verified": 0,
+          "balance.floating": 0,
+          "balance.pending": 0,
+          totalRevenue: 0,
+          totalPaid: 0,
+          debtToOwner: 0,
+        },
+      },
+    );
+    console.log("✓ Reset all user balances and debts to 0");
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "✅ System wiped. All financial history, students, expenses, and balances reset to 0. Ready for clean testing.",
+      wiped: {
+        transactions: "All deleted",
+        feeRecords: "All deleted",
+        expenses: "All deleted",
+        students: "All deleted",
+        notifications: "All deleted",
+        userBalances: "All reset to 0",
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in resetSystem:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reset system",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Delete Single Transaction or Expense - For testing cleanup
+// @route   DELETE /api/finance/transaction/:id
+// @access  Protected (OWNER only)
+exports.deleteTransaction = async (req, res) => {
+  const { id } = req.params;
+  console.log(`\n🗑️  DELETE REQUEST for ID: ${id}`);
+
+  try {
+    // Validate ID format
+    if (!id || id.length !== 24) {
+      console.log(`❌ Invalid ID length: ${id?.length}`);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID format",
+      });
+    }
+
+    let recordId;
+    try {
+      recordId = new mongoose.Types.ObjectId(id);
+      console.log(`✓ ID converted successfully`);
+    } catch (err) {
+      console.log(`❌ ObjectId conversion failed: ${err.message}`);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID format: " + err.message,
+      });
+    }
+
+    // First, try as Transaction
+    console.log(`📋 Looking for Transaction...`);
+    let transaction = await Transaction.findById(recordId);
+
+    if (transaction) {
+      console.log(`✓ Found Transaction: ${transaction.description}`);
+      const amount = transaction.amount;
+      const description = transaction.description;
+
+      // Delete transaction
+      await Transaction.findByIdAndDelete(recordId);
+      console.log(`✓ Deleted Transaction\n`);
+
+      return res.status(200).json({
+        success: true,
+        message: `✅ Transaction deleted: ${description}`,
+        deleted: {
+          type: "Transaction",
+          description,
+          amount,
+        },
+      });
+    }
+
+    // Not a transaction, try as Expense
+    console.log(`📋 Looking for Expense...`);
+    const Expense = require("../models/Expense");
+    let expense = await Expense.findById(recordId).populate(
+      "shares.partner",
+      "_id fullName",
+    );
+
+    if (expense) {
+      console.log(`✓ Found Expense: ${expense.title}`);
+      const amount = expense.amount;
+      const title = expense.title;
+
+      // Clean up partner debts
+      if (expense.shares && expense.shares.length > 0) {
+        console.log(`📍 Cleaning ${expense.shares.length} partner shares...`);
+
+        for (const share of expense.shares) {
+          if (share.partner && share.partner._id) {
+            console.log(`  ├─ Processing ${share.partner.fullName}...`);
+
+            // Find and delete debt transactions
+            const debtsToDelete = await Transaction.find({
+              type: "DEBT",
+              category: "ExpenseShare",
+              collectedBy: share.partner._id,
+            });
+
+            console.log(
+              `     Found ${debtsToDelete.length} DEBT transactions to delete`,
+            );
+
+            for (const debt of debtsToDelete) {
+              await Transaction.findByIdAndDelete(debt._id);
+            }
+
+            // Update partner balance
+            const partner = await User.findById(share.partner._id);
+            if (partner && partner.balance) {
+              const oldBalance = partner.balance.pending || 0;
+              partner.balance.pending = Math.max(
+                0,
+                oldBalance - (share.amount || 0),
+              );
+              await partner.save();
+              console.log(
+                `     ✓ Updated balance: PKR ${oldBalance.toLocaleString()} → PKR ${partner.balance.pending.toLocaleString()}`,
+              );
+            } else if (partner) {
+              console.log(
+                `     ⚠️  Partner has no balance object, skipping balance update`,
+              );
+            }
+          }
+        }
+      }
+
+      // Delete the expense
+      await Expense.findByIdAndDelete(recordId);
+      console.log(`✓ Deleted Expense\n`);
+
+      return res.status(200).json({
+        success: true,
+        message: `✅ Expense deleted: ${title}\n✓ Partner shares cleared`,
+        deleted: {
+          type: "Expense",
+          description: title,
+          amount,
+        },
+      });
+    }
+
+    // Not found as either
+    console.log(`❌ Record not found as Transaction or Expense\n`);
+    return res.status(404).json({
+      success: false,
+      message: "Record not found",
+    });
+  } catch (error) {
+    console.error(`\n❌ DELETION ERROR: ${error.message}`);
+    console.error(error.stack);
+    return res.status(500).json({
+      success: false,
+      message: `Error: ${error.message}`,
     });
   }
 };

@@ -4,7 +4,16 @@ const transactionSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["INCOME", "EXPENSE", "PARTNER_WITHDRAWAL", "REFUND"],
+      enum: [
+        "INCOME",
+        "EXPENSE",
+        "PARTNER_WITHDRAWAL",
+        "REFUND",
+        "DEBT", // Partner expense debt (Zahid/Saud owes Waqar)
+        "TRANSFER", // Internal fund movements
+        "DIVIDEND", // Pool distribution to partners
+        "POOL_DISTRIBUTION", // Pool split operation
+      ],
       required: [true, "Transaction type is required"],
     },
     category: {
@@ -18,6 +27,12 @@ const transactionSchema = new mongoose.Schema(
         "Salaries",
         "Miscellaneous",
         "Refund",
+        "Dividend", // Pool distribution dividends
+        "ExpenseShare", // Partner's share of expenses
+        "Teacher_Payout", // Teacher salary payments
+        "Pool_Dividend", // Pool dividend (new)
+        "Expense_Share", // Alternate for expense share
+        "Daily_Close", // End of day closing
       ],
       required: [true, "Category is required"],
     },
@@ -35,7 +50,14 @@ const transactionSchema = new mongoose.Schema(
         "TEACHER_LEDGER", // ETEA teacher bonus entries
         "UNALLOCATED_POOL", // 30% from staff tuition awaiting distribution
         "JOINT_POOL", // Shared expenses pool
-        "DIVIDEND", // Partner dividend from pool distribution
+        "DIVIDEND", // Partner dividend from pool distribution (legacy)
+        // Waqar's Protocol: Additional streams
+        "TUITION_POOL", // Regular tuition pool (50/30/20 split)
+        "ETEA_POOL", // ETEA pool (40/30/30 split)
+        "ETEA_ENGLISH_POOL", // English teacher fixed salary remainder
+        "OWNER_DIVIDEND", // Waqar's pool dividend
+        "PARTNER_DIVIDEND", // Partner (Zahid/Saud) pool dividend
+        "PARTNER_EXPENSE_DEBT", // Partner owes for expense share
       ],
       default: "ACADEMY_POOL",
     },
@@ -57,7 +79,7 @@ const transactionSchema = new mongoose.Schema(
       enum: ["FLOATING", "VERIFIED", "CANCELLED", "REFUNDED"],
       default: "FLOATING",
     },
-    // SRS 3.0: Split Details (for 70/30 staff logic)
+    // SRS 3.0: Split Details (for 70/30 staff logic + pool dividends)
     splitDetails: {
       teacherShare: { type: Number, default: 0 }, // Amount (e.g., 7000)
       academyShare: { type: Number, default: 0 }, // Amount (e.g., 3000)
@@ -66,6 +88,10 @@ const transactionSchema = new mongoose.Schema(
       teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
       teacherName: { type: String },
       isPaid: { type: Boolean, default: false }, // Has teacher been paid?
+      // Pool dividend tracking (Waqar's Protocol)
+      partnerName: { type: String }, // "Waqar", "Zahid", "Saud"
+      percentage: { type: Number }, // Partner's percentage (e.g., 50)
+      poolType: { type: String, enum: ["TUITION", "ETEA"] }, // Which protocol
     },
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
