@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { motion } from "framer-motion";
+import { Skeleton } from "@/components/ui/skeleton";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Phone,
   Mail,
@@ -29,6 +30,7 @@ import {
   Youtube,
   Send,
   CheckCircle2,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,6 +69,38 @@ const iconMap: Record<string, React.ReactNode> = {
   Trophy: <Trophy className="h-8 w-8" />,
   Star: <Star className="h-8 w-8" />,
   Award: <Award className="h-8 w-8" />,
+};
+
+// Motion Variants
+const waterfall = {
+  initial: { y: 60, opacity: 0 },
+  whileInView: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 40,
+      damping: 15,
+      mass: 1,
+    },
+  },
+  viewport: { once: true, margin: "-100px" },
+};
+
+const float = {
+  animate: {
+    y: [0, -10, 0],
+    transition: {
+      duration: 5,
+      repeat: Infinity,
+      ease: "easeInOut" as const,
+    },
+  },
+};
+
+const ripple = {
+  whileHover: { scale: 1.02, transition: { type: "spring" as const, stiffness: 400, damping: 10 } },
+  whileTap: { scale: 0.98 },
 };
 
 // Inquiry Form Component
@@ -138,44 +172,40 @@ function InquiryForm() {
         animate={{ opacity: 1, scale: 1 }}
         className="max-w-md mx-auto text-center py-12"
       >
-        <div className="h-20 w-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center shadow-lg">
+        <div className="h-20 w-20 mx-auto mb-6 rounded-3xl bg-brand-primary text-white flex items-center justify-center shadow-2xl shadow-brand-primary/20">
           <CheckCircle2 className="h-10 w-10" />
         </div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Thank You!</h3>
-        <p className="text-gray-600">
-          Our staff will contact you shortly to assist with your inquiry.
+        <h3 className="text-2xl font-black text-brand-primary mb-2 uppercase tracking-tighter">Thank You!</h3>
+        <p className="text-slate-500 font-medium">
+          Our team will contact you shortly to assist with your inquiry.
         </p>
       </motion.div>
     );
   }
 
   return (
-    <motion.form
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.6 }}
+    <form
       onSubmit={handleSubmit}
-      className="max-w-2xl mx-auto glass-card p-8 rounded-2xl shadow-xl"
+      className="space-y-6"
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <Label htmlFor="inquiry-name" className="text-gray-700 font-semibold">
+          <Label htmlFor="inquiry-name" className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-1">
             Full Name *
           </Label>
           <Input
             id="inquiry-name"
-            placeholder="Enter your name"
+            placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="bg-white border-gray-300"
+            className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
             required
           />
         </div>
         <div className="space-y-2">
           <Label
             htmlFor="inquiry-phone"
-            className="text-gray-700 font-semibold"
+            className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-1"
           >
             Phone Number *
           </Label>
@@ -185,14 +215,14 @@ function InquiryForm() {
             placeholder="03XX-XXXXXXX"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="bg-white border-gray-300"
+            className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
             required
           />
         </div>
       </div>
 
-      <div className="space-y-2 mb-6">
-        <Label htmlFor="inquiry-email" className="text-gray-700 font-semibold">
+      <div className="space-y-2">
+        <Label htmlFor="inquiry-email" className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-1">
           Email Address (Optional)
         </Label>
         <Input
@@ -201,46 +231,78 @@ function InquiryForm() {
           placeholder="your.email@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="bg-white border-gray-300"
+          className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
         />
       </div>
 
-      <div className="space-y-2 mb-6">
+      <div className="space-y-2">
         <Label
           htmlFor="inquiry-message"
-          className="text-gray-700 font-semibold"
+          className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-1"
         >
-          Your Message / Query *
+          Your Message *
         </Label>
         <Textarea
           id="inquiry-message"
           placeholder="How can we help you?"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="bg-white border-gray-300 resize-none h-32"
+          className="rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold min-h-[120px] resize-none"
           required
         />
       </div>
 
       <Button
         type="submit"
-        size="lg"
         disabled={inquiryMutation.isPending}
-        className="w-full bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 text-white shadow-lg btn-glow-cyan"
+        className="w-full h-16 bg-brand-primary hover:bg-brand-primary/90 text-white text-lg font-black uppercase tracking-widest rounded-full transition-all shadow-xl shadow-brand-primary/20"
       >
         {inquiryMutation.isPending ? (
           <>
-            <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-            Submitting...
+            <Loader2 className="h-6 w-6 mr-3 animate-spin" />
+            Sending...
           </>
         ) : (
           <>
-            <Send className="h-5 w-5 mr-2" />
+            <Send className="h-5 w-5 mr-3" />
             Send Message
           </>
         )}
       </Button>
-    </motion.form>
+    </form>
+  );
+}
+
+// Skeleton Loaders
+function HeroSkeleton() {
+  return (
+    <div className="bg-brand-primary py-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Skeleton className="h-8 w-32 mb-6 bg-white/20" />
+        <Skeleton className="h-16 w-3/4 mb-6 bg-white/20" />
+        <Skeleton className="h-8 w-1/2 mb-8 bg-white/20" />
+        <div className="flex gap-4">
+          <Skeleton className="h-12 w-40 bg-white/20" />
+          <Skeleton className="h-12 w-40 bg-white/20" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="py-20 max-w-7xl mx-auto px-4">
+      <div className="text-center mb-12">
+        <Skeleton className="h-10 w-64 mx-auto mb-4" />
+        <Skeleton className="h-6 w-96 mx-auto" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -274,244 +336,232 @@ export default function PublicLanding() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="h-12 w-12 animate-spin text-cyan-600" />
+      <div className="min-h-screen bg-brand-secondary">
+        <nav className="h-20 bg-white border-b border-slate-200" />
+        <HeroSkeleton />
+        <SectionSkeleton />
+        <SectionSkeleton />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Custom Styles for Glassmorphism & Glow Effects */}
-      <style>{`
-        .glass-card {
-          backdrop-filter: blur(12px);
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .btn-glow:hover {
-          box-shadow: 0 0 20px rgba(251, 146, 60, 0.5),
-                      0 0 40px rgba(251, 146, 60, 0.3);
-          transition: box-shadow 0.3s ease-in-out;
-        }
-        .btn-glow-cyan:hover {
-          box-shadow: 0 0 20px rgba(8, 145, 178, 0.5),
-                      0 0 40px rgba(8, 145, 178, 0.3);
-          transition: box-shadow 0.3s ease-in-out;
-        }
-      `}</style>
-      {/* Decorative Dot Pattern - Top Left */}
-      <div className="fixed top-0 left-0 w-20 h-64 opacity-20 pointer-events-none">
-        <div className="grid grid-cols-6 gap-2 p-4">
-          {Array.from({ length: 48 }).map((_, i) => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-          ))}
-        </div>
-      </div>
-
-      {/* Decorative Dot Pattern - Bottom Right */}
-      <div className="fixed bottom-0 right-0 w-20 h-64 opacity-20 pointer-events-none">
-        <div className="grid grid-cols-6 gap-2 p-4">
-          {Array.from({ length: 48 }).map((_, i) => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-          ))}
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-brand-secondary font-sans text-brand-primary">
       {/* Top Navigation Bar */}
-      <nav className="bg-white border-b border-gray-200">
+      <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-2xl border-b border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.03)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-24">
             {/* Logo with Dynamic Title */}
-            <div className="flex items-center gap-3">
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              className="flex items-center gap-4 cursor-pointer"
+            >
               <img
                 src="/logo.png"
                 alt="Edwardian Academy"
-                className="h-10 w-10 object-contain"
+                className="h-14 w-14 object-contain"
               />
               <div className="flex flex-col">
-                <span className="text-lg font-bold text-gray-800 leading-tight">
+                <span className="text-2xl font-serif font-black tracking-tight text-brand-primary leading-none">
                   {config?.heroSection?.title?.split("'")[0] || "Edwardian"}
                 </span>
-                <span className="text-lg font-bold text-gray-800 leading-tight">
+                <span className="text-sm font-bold tracking-[0.4em] text-brand-gold uppercase">
                   Academy
                 </span>
               </div>
-              <span className="text-xs text-gray-500 italic ml-1">
-                Advancing Knowledge, Transforming Lives
-              </span>
-            </div>
+            </motion.div>
 
             {/* Primary Action Buttons */}
-            <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-8">
               <Link to="/register">
-                <Button className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md btn-glow px-6">
-                  Register Now
-                </Button>
+                <motion.div {...ripple}>
+                  <Button className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-10 h-12 transition-all shadow-xl shadow-brand-gold/20 font-bold tracking-wide">
+                    Apply Now
+                  </Button>
+                </motion.div>
               </Link>
               <Link to="/student-portal">
-                <Button
-                  variant="outline"
-                  className="border-2 border-cyan-600 text-cyan-700 hover:bg-cyan-50 px-6"
-                >
-                  Student Portal
-                </Button>
+                <motion.div {...ripple}>
+                  <Button
+                    variant="outline"
+                    className="border-brand-primary/20 text-brand-primary hover:bg-brand-primary hover:text-white rounded-full px-10 h-12 transition-all font-bold tracking-wide bg-white/50 backdrop-blur-sm"
+                  >
+                    Student Portal
+                  </Button>
+                </motion.div>
               </Link>
+            </div>
+
+            {/* Mobile Menu Button - Placeholder for future expansion */}
+            <div className="md:hidden">
+              <Button variant="ghost" size="icon">
+                <Users className="h-6 w-6" />
+              </Button>
             </div>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-cyan-600 via-cyan-700 to-cyan-800 text-white overflow-hidden">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRoLTJ2LTRoMnYyaDR2Mmgtdjh6Ii8+PC9nPjwvZz48L3N2Zz4=')]" />
-        </div>
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="max-w-3xl">
-            {/* Admission Status Badge - Pulsing Animation */}
-            {config?.admissionStatus && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-              >
+      <section className="relative pt-20 pb-32 overflow-hidden liquid-mesh">
+        <div className="absolute inset-0 bg-brand-primary/40 backdrop-blur-[2px]" />
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-white/5 -skew-x-12 transform origin-top-right backdrop-blur-3xl" />
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="max-w-2xl text-left">
+              {/* Admission Status Badge */}
+              {config?.admissionStatus && (
                 <motion.div
-                  animate={
-                    config.admissionStatus.isOpen
-                      ? {
-                          scale: [1, 1.05, 1],
-                        }
-                      : {}
-                  }
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, type: "spring" }}
                 >
                   <Badge
-                    className={`mb-6 text-sm px-4 py-1.5 ${
+                    className={`mb-6 text-xs font-bold uppercase tracking-[0.2em] px-5 py-2 rounded-full backdrop-blur-xl border ${
                       config.admissionStatus.isOpen
-                        ? "bg-green-500/90 hover:bg-green-500 text-white"
-                        : "bg-red-500/90 hover:bg-red-500 text-white"
+                        ? "bg-emerald-400/10 text-emerald-300 border-emerald-400/20"
+                        : "bg-red-400/10 text-red-300 border-red-400/20"
                     }`}
                   >
                     {config.admissionStatus.isOpen
-                      ? `🟢 ${config.admissionStatus.notice || "Admissions Open!"}`
+                      ? `🟢 ${config.admissionStatus.notice || "Admissions Open"}`
                       : `🔴 ${config.admissionStatus.closedMessage || "Admissions Closed"}`}
                   </Badge>
                 </motion.div>
-              </motion.div>
-            )}
+              )}
 
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
-            >
-              {config?.heroSection?.title || "The Edwardian's Academy"}
-            </motion.h1>
+              <motion.h1
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 1, type: "spring", stiffness: 50 }}
+                className="text-5xl sm:text-6xl lg:text-7xl font-serif font-black text-white mb-8 leading-[1.1] tracking-tight"
+              >
+                {config?.heroSection?.title || "The Edwardian Academy"}
+              </motion.h1>
 
-            <motion.p
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
-              className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-cyan-50 mb-6 leading-relaxed font-light tracking-wide"
-            >
-              {config?.heroSection?.subtitle ||
-                "Advancing Knowledge. Transforming Lives"}
-            </motion.p>
-
-            {config?.heroSection?.tagline && (
               <motion.p
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.7 }}
-                className="text-lg text-cyan-200 mb-8"
+                transition={{ duration: 1, delay: 0.1, type: "spring", stiffness: 50 }}
+                className="text-xl text-slate-200/80 mb-10 leading-relaxed font-medium max-w-xl"
               >
-                {config.heroSection.tagline}
+                {config?.heroSection?.subtitle ||
+                  "Advancing Knowledge. Transforming Lives."}
               </motion.p>
-            )}
 
-            {/* CTA Buttons - Animated Entrance with Glow */}
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.9 }}
-              className="flex flex-wrap gap-4"
-            >
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white shadow-lg px-8 btn-glow"
-                onClick={() =>
-                  (window.location.href = `tel:${config?.contactInfo?.mobile}`)
-                }
+              {config?.heroSection?.tagline && (
+                <motion.p
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 1, delay: 0.2, type: "spring", stiffness: 50 }}
+                  className="text-sm font-bold uppercase tracking-[0.3em] text-brand-gold mb-8"
+                >
+                  {config.heroSection.tagline}
+                </motion.p>
+              )}
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 1, delay: 0.3, type: "spring", stiffness: 50 }}
+                className="flex flex-wrap gap-5"
               >
-                <Phone className="h-5 w-5 mr-2" />
-                Call Now
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-2 border-white text-white hover:bg-white hover:text-cyan-700 bg-transparent px-8"
-                onClick={() =>
-                  window.open(config?.contactInfo?.facebook, "_blank")
-                }
+                <motion.div {...ripple}>
+                  <Button
+                    size="lg"
+                    className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-12 h-16 text-base font-bold shadow-2xl shadow-brand-gold/20"
+                    onClick={() =>
+                      (window.location.href = `tel:${config?.contactInfo?.mobile}`)
+                    }
+                  >
+                    <Phone className="h-5 w-5 mr-2" />
+                    Inquiry Now
+                  </Button>
+                </motion.div>
+                <motion.div {...ripple}>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-white/20 text-white hover:bg-white/10 rounded-full px-12 h-16 text-base font-bold bg-white/5 backdrop-blur-md"
+                    onClick={() =>
+                      window.open(config?.contactInfo?.facebook, "_blank")
+                    }
+                  >
+                    <Facebook className="h-5 w-5 mr-2" />
+                    Official Page
+                  </Button>
+                </motion.div>
+              </motion.div>
+            </div>
+            
+            <div className="hidden lg:block relative">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 1.2, type: "spring" }}
+                className="relative z-10 rounded-[3rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.3)] border-[12px] border-white/5 backdrop-blur-3xl"
               >
-                <Facebook className="h-5 w-5 mr-2" />
-                Follow Us
-              </Button>
-            </motion.div>
+                <img 
+                  src="edwardian.png" 
+                  alt="Academy Life" 
+                  className="w-full h-[600px] object-cover mix-blend-overlay opacity-90"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-brand-primary/80 to-transparent" />
+              </motion.div>
+              <motion.div 
+                {...float}
+                className="absolute -bottom-10 -left-10 w-48 h-48 bg-brand-gold rounded-full -z-0 opacity-20 blur-3xl" 
+              />
+              <motion.div 
+                animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.2, 0.1] }}
+                transition={{ duration: 8, repeat: Infinity }}
+                className="absolute -top-10 -right-10 w-72 h-72 bg-brand-navy rounded-full -z-0 blur-3xl" 
+              />
+            </div>
           </div>
-        </div>
-
-        {/* Wave Divider */}
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg
-            viewBox="0 0 1440 120"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-full h-auto"
-          >
-            <path
-              d="M0 120L60 110C120 100 240 80 360 70C480 60 600 60 720 65C840 70 960 80 1080 85C1200 90 1320 90 1380 90L1440 90V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z"
-              fill="#F9FAFB"
-            />
-          </svg>
         </div>
       </section>
 
-      {/* Announcements Ticker - Styled like "Become a Member" section */}
+      {/* Announcements Section */}
       {config?.announcements && config.announcements.length > 0 && (
-        <section className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div className="flex items-start gap-8">
-              <div className="flex-shrink-0">
-                <p className="text-sm text-gray-500 mb-2">Important Notice</p>
-                <h2 className="text-4xl font-bold text-gray-900">
-                  Announcements
+        <section className="bg-white py-12 border-y border-slate-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="flex-shrink-0 flex items-center gap-3">
+                <div className="w-12 h-12 bg-brand-primary rounded-2xl flex items-center justify-center shadow-lg shadow-brand-primary/20">
+                  <Megaphone className="h-6 w-6 text-white" />
+                </div>
+                <h2 className="text-xl font-black text-brand-primary uppercase tracking-tighter">
+                  Notice<br />Board
                 </h2>
               </div>
-              <div className="flex-1 border-l-4 border-orange-400 pl-8">
-                <div className="text-gray-700 space-y-3">
-                  {config.announcements
-                    .slice(0, 3)
-                    .map((announcement, index) => (
-                      <div
-                        key={announcement._id}
-                        className="flex items-start gap-2"
-                      >
-                        <ChevronRight className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-base leading-relaxed">
-                          {announcement.text}
-                        </p>
-                      </div>
-                    ))}
-                </div>
+              <div className="flex-1 overflow-hidden relative h-12 flex items-center">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={currentAnnouncement}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.5 }}
+                    className="absolute inset-0 flex items-center"
+                  >
+                    <p className="text-lg font-medium text-slate-700 truncate">
+                      {config.announcements[currentAnnouncement].text}
+                    </p>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+              <div className="flex gap-2">
+                {config.announcements.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentAnnouncement(idx)}
+                    className={`h-2 rounded-full transition-all ${
+                      idx === currentAnnouncement ? "w-8 bg-brand-primary" : "w-2 bg-slate-200"
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -519,77 +569,86 @@ export default function PublicLanding() {
       )}
 
       {/* Featured Subjects Section */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Fresh Tuition Classes
+      <section className="py-32 bg-brand-secondary">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            {...waterfall}
+            className="text-center mb-20"
+          >
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+              Academic Programs
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              F.Sc Classes for First & Second Year Students. Choose a plan that
-              fits your learning goals and budget without any hidden costs.
+            <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
+            <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+              Explore our specialized tuition tracks designed for board exam excellence.
             </p>
-          </div>
+          </motion.div>
 
-          <div className="flex flex-wrap justify-center gap-4">
-            {(
-              config?.featuredSubjects || [
-                "Chemistry",
-                "Physics",
-                "Biology",
-                "Mathematics",
-              ]
-            ).map((subject) => (
-              <div
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {(config?.featuredSubjects || ["Chemistry", "Physics", "Biology", "Mathematics"]).map((subject, idx) => (
+              <motion.div
                 key={subject}
-                className="bg-white border-2 border-cyan-600 rounded-lg px-6 py-3 text-cyan-700 font-semibold hover:bg-cyan-50 transition-colors cursor-pointer shadow-sm"
+                {...waterfall}
+                transition={{ ...waterfall.whileInView.transition, delay: idx * 0.1 }}
+                className="group cursor-pointer"
               >
-                {subject}
-              </div>
+                <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)] group-hover:-translate-y-3 group-hover:shadow-[0_40px_80px_rgba(0,0,0,0.1)] transition-all duration-500 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-brand-gold/5 rounded-bl-[4rem] -mr-8 -mt-8 group-hover:bg-brand-gold/10 transition-colors" />
+                  
+                  <div className="w-20 h-20 bg-brand-secondary rounded-[1.5rem] flex items-center justify-center mb-8 group-hover:bg-brand-primary group-hover:scale-110 transition-all duration-500">
+                    <BookOpen className="h-10 w-10 text-brand-primary group-hover:text-white" />
+                  </div>
+                  <h3 className="text-2xl font-black text-brand-primary mb-4">
+                    {subject}
+                  </h3>
+                  <p className="text-slate-500 text-sm leading-relaxed font-medium mb-8">
+                    Comprehensive syllabus coverage with expert guidance and testing.
+                  </p>
+                  <Link to="/register" className="flex items-center text-brand-gold font-bold group-hover:gap-3 transition-all tracking-wide">
+                    Enroll Now <ChevronRight className="h-5 w-5" />
+                  </Link>
+                </div>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Why Choose Us - Highlights with Scroll Reveal */}
+      {/* Why Choose Us - Highlights */}
       {config?.highlights && config.highlights.length > 0 && (
-        <section className="py-16 px-4 bg-white">
+        <section className="py-32 px-4 bg-white relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-full bg-slate-50/50 -z-10" />
           <div className="max-w-7xl mx-auto">
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-12"
+              {...waterfall}
+              className="text-center mb-20"
             >
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-                Why Choose Edwardian's?
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+                Why Edwardian's?
               </h2>
-              <p className="text-lg text-gray-600">
-                Every option gives you access to high-quality courses designed
-                to build real, practical skills.
+              <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
+              <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+                We combine traditional academic excellence with modern interactive learning systems.
               </p>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
               {config.highlights.map((highlight, index) => (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 50 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                  className="text-center group hover:scale-105 transition-transform"
+                  {...waterfall}
+                  transition={{ ...waterfall.whileInView.transition, delay: index * 0.1 }}
+                  className="text-center group"
                 >
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-cyan-500 to-cyan-600 text-white flex items-center justify-center shadow-lg group-hover:shadow-xl transition-shadow">
-                    {iconMap[highlight.icon] || (
-                      <Sparkles className="h-8 w-8" />
-                    )}
+                  <div className="w-24 h-24 mx-auto mb-8 rounded-[2rem] bg-brand-secondary flex items-center justify-center shadow-lg group-hover:bg-brand-primary group-hover:rotate-6 group-hover:scale-110 transition-all duration-500">
+                    <div className="text-brand-primary group-hover:text-white transition-colors">
+                      {iconMap[highlight.icon] || <Sparkles className="h-10 w-10" />}
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  <h3 className="text-2xl font-black text-brand-primary mb-4 tracking-tight">
                     {highlight.title}
                   </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">
+                  <p className="text-slate-500 text-sm leading-relaxed font-medium">
                     {highlight.description}
                   </p>
                 </motion.div>
@@ -599,204 +658,192 @@ export default function PublicLanding() {
         </section>
       )}
 
-      {/* Faculty Section - Staggered Card Entrance */}
-      <section className="py-16 px-4 bg-gray-50" id="faculty">
-        <div className="max-w-7xl mx-auto">
+      {/* Faculty Section */}
+      <section className="py-32 px-4 bg-brand-secondary relative overflow-hidden" id="faculty">
+        <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white to-transparent opacity-50" />
+        <div className="max-w-7xl mx-auto relative z-10">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-12"
+            {...waterfall}
+            className="text-center mb-20"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Our Expert Faculty
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+              Expert Faculty
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Learn from experienced professors dedicated to your success. Our
-              instructors bring years of expertise and passion.
+            <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
+            <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+              Learn from the region's most experienced professors and subject matter experts.
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {config?.faculty?.map((professor, index) => (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, scale: 0.8, y: 30 }}
-                whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
+                {...waterfall}
+                transition={{ ...waterfall.whileInView.transition, delay: index * 0.1 }}
               >
-                <Card
-                  className={`overflow-hidden hover:shadow-xl transition-all ${
-                    professor.isPartner ? "ring-2 ring-orange-400" : ""
-                  }`}
-                >
-                  {professor.isPartner && (
-                    <div className="bg-gradient-to-r from-orange-400 to-orange-500 text-white text-xs font-bold py-1.5 px-3 flex items-center justify-center gap-1">
-                      <Crown className="h-3 w-3" />
-                      Partner
-                    </div>
-                  )}
-                  <CardContent className="pt-8 pb-6 text-center">
-                    <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-600 text-white flex items-center justify-center text-3xl font-bold shadow-lg">
+                <div className={`group relative bg-white rounded-[3rem] p-10 text-center border transition-all duration-500 hover:-translate-y-3 ${
+                  professor.isPartner 
+                    ? "border-brand-gold/30 shadow-[0_20px_50px_rgba(180,83,9,0.1)]" 
+                    : "border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
+                }`}>
+                  <div className="relative inline-block mb-8">
+                    <div className="w-32 h-32 mx-auto rounded-full bg-slate-50 flex items-center justify-center text-4xl font-black text-brand-primary shadow-inner border-[6px] border-white overflow-hidden group-hover:scale-105 transition-transform duration-500">
                       {professor.name?.charAt(0)?.toUpperCase() || "?"}
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">
-                      {professor.name}
-                    </h3>
-                    <p className="text-sm text-cyan-600 capitalize font-medium">
-                      {professor.subject} Teacher
-                    </p>
-                  </CardContent>
-                </Card>
+                    {professor.isPartner && (
+                      <motion.div 
+                        animate={{ rotate: [0, 10, -10, 0] }}
+                        transition={{ duration: 4, repeat: Infinity }}
+                        className="absolute -top-1 -right-1 bg-brand-gold text-white p-2.5 rounded-full shadow-lg"
+                      >
+                        <Crown className="h-5 w-5" />
+                      </motion.div>
+                    )}
+                  </div>
+                  <h3 className="text-2xl font-black text-brand-primary mb-2">
+                    {professor.name}
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold uppercase tracking-[0.2em] mb-6">
+                    {professor.subject}
+                  </p>
+                  {professor.isPartner && (
+                    <Badge className="bg-brand-gold/10 text-brand-gold border-brand-gold/20 hover:bg-brand-gold/20 transition-colors px-4 py-1.5 rounded-full">
+                      Academy Partner
+                    </Badge>
+                  )}
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Contact Us Inquiry Form */}
-      <section className="py-16 px-4 bg-white" id="contact">
+      {/* Contact & Inquiry Section */}
+      <section className="py-32 px-4 bg-white" id="contact">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Contact Us
-            </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Have a question or need assistance? Fill out the form below and
-              our team will get back to you shortly!
-            </p>
-          </div>
-
-          <InquiryForm />
-
-          {/* Footer Content - Glassmorphism Cards */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-12 pt-8 border-t border-gray-200"
-          >
-            {/* About */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-lg flex items-center justify-center shadow-md">
-                  <span className="text-white font-bold text-xl">E</span>
-                </div>
-                <span className="text-xl font-bold text-gray-800">
-                  Education
-                </span>
-              </div>
-              <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                We provide simple, practical online courses that help you learn
-                web skills and build websites with confidence.
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+            <motion.div {...waterfall}>
+              <h2 className="text-4xl md:text-6xl font-serif font-black text-brand-primary mb-10 tracking-tight leading-[1.1]">
+                Have a Question? <br /><span className="text-brand-gold italic">Get in Touch.</span>
+              </h2>
+              <p className="text-xl text-slate-500 mb-12 font-medium leading-relaxed">
+                Our admissions team is ready to help you plan your academic journey. Send us a message and we'll respond within 24 hours.
               </p>
-              <div className="flex gap-3">
-                <a
-                  href={config?.contactInfo?.facebook || "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
-                  aria-label="Facebook"
-                  title="Follow us on Facebook"
-                >
-                  <Facebook className="h-4 w-4" />
-                </a>
-                <a
-                  href="#"
-                  className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
-                  aria-label="Twitter"
-                  title="Follow us on Twitter"
-                >
-                  <Twitter className="h-4 w-4" />
-                </a>
-                <a
-                  href="#"
-                  className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
-                  aria-label="Instagram"
-                  title="Follow us on Instagram"
-                >
-                  <Instagram className="h-4 w-4" />
-                </a>
-                <a
-                  href="#"
-                  className="w-8 h-8 rounded-full bg-gray-800 text-white flex items-center justify-center hover:bg-cyan-600 transition-colors"
-                  aria-label="YouTube"
-                  title="Subscribe on YouTube"
-                >
-                  <Youtube className="h-4 w-4" />
-                </a>
-              </div>
-            </div>
-
-            {/* Popular Courses */}
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-4">
-                Popular Courses
-              </h3>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>LMS Interactive Content</li>
-                <li>Become a PHP Master</li>
-                <li>HTML5/CSS3 Essentials</li>
-                <li>JavaScript Development</li>
-                <li>WordPress Basic Tutorial</li>
-                <li>Introduction to Coding</li>
-              </ul>
-            </div>
-
-            {/* Contact Info */}
-            <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-4">
-                Contact Info
-              </h3>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="font-semibold text-gray-900">Address</p>
-                  <p className="text-gray-600">
-                    {config?.contactInfo?.address ||
-                      "Opposite Islamia College Behind, Danishabad University Road Peshawar"}
-                  </p>
+              
+              <div className="space-y-10">
+                <div className="flex items-start gap-8 group">
+                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <Phone className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Call Us</p>
+                    <p className="text-2xl font-black text-brand-primary">{config?.contactInfo?.mobile || "0300-0000000"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Landline</p>
-                  <p className="text-gray-600">
-                    {config?.contactInfo?.phone || "091-5601600"}
-                  </p>
+                <div className="flex items-start gap-8 group">
+                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <Mail className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Email Us</p>
+                    <p className="text-2xl font-black text-brand-primary">{config?.contactInfo?.email || "academy@example.com"}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Mobile</p>
-                  <p className="text-gray-600">
-                    {config?.contactInfo?.mobile || "0300-0000000"}
-                  </p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Email</p>
-                  <p className="text-gray-600">
-                    {config?.contactInfo?.email ||
-                      "theedwardianacademy2017@gmail.com"}
-                  </p>
+                <div className="flex items-start gap-8 group">
+                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <MapPin className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Visit Us</p>
+                    <p className="text-xl font-black text-brand-primary max-w-sm">
+                      {config?.contactInfo?.address || "University Road, Peshawar"}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+
+            <motion.div 
+              {...waterfall}
+              className="bg-brand-secondary p-10 md:p-16 rounded-[4rem] shadow-[0_40px_100px_rgba(0,0,0,0.08)] relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-gold/5 rounded-bl-[5rem]" />
+              <h3 className="text-3xl font-serif font-black text-brand-primary mb-10">Send an Inquiry</h3>
+              <InquiryForm />
+            </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-6 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-600">
-          <p>Copyright © {new Date().getFullYear()} Online Courses</p>
-          <div className="flex items-center gap-2">
-            <span>Powered by Online Courses</span>
-            <Link
-              to="/login"
-              className="text-cyan-600 hover:text-cyan-700 font-medium flex items-center gap-1 btn-glow-cyan"
-            >
-              <LogIn className="h-3 w-3" />
-              Staff Login
-            </Link>
+      {/* Institutional Footer */}
+      <footer className="bg-brand-primary text-white pt-32 pb-16 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-gold/50 to-transparent" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16 mb-24">
+            <div className="col-span-1 lg:col-span-1">
+              <div className="flex items-center gap-4 mb-10">
+                <img src="/logo.png" alt="Logo" className="h-14 w-14 brightness-0 invert opacity-90" />
+                <div className="flex flex-col">
+                  <span className="text-2xl font-serif font-black tracking-tight">EDWARDIAN</span>
+                  <span className="text-sm font-bold tracking-[0.4em] text-brand-gold">ACADEMY</span>
+                </div>
+              </div>
+              <p className="text-slate-400 font-medium leading-relaxed mb-10 text-lg">
+                Advancing knowledge and transforming lives through excellence in education since 2017.
+              </p>
+              <div className="flex gap-5">
+                {[Facebook, Twitter, Instagram, Youtube].map((Icon, i) => (
+                  <motion.a 
+                    key={i} 
+                    href="#" 
+                    whileHover={{ y: -5, scale: 1.1 }}
+                    className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-brand-gold hover:text-white transition-all border border-white/5 hover:border-brand-gold"
+                  >
+                    <Icon className="h-5 w-5" />
+                  </motion.a>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Programs</h4>
+              <ul className="space-y-5 text-slate-400 font-medium text-lg">
+                <li><Link to="/register" className="hover:text-brand-gold transition-colors">F.Sc Pre-Medical</Link></li>
+                <li><Link to="/register" className="hover:text-brand-gold transition-colors">F.Sc Pre-Engineering</Link></li>
+                <li><Link to="/register" className="hover:text-brand-gold transition-colors">Computer Science</Link></li>
+                <li><Link to="/register" className="hover:text-brand-gold transition-colors">Matric Science</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Quick Links</h4>
+              <ul className="space-y-5 text-slate-400 font-medium text-lg">
+                <li><Link to="/student-portal" className="hover:text-brand-gold transition-colors">Student Portal</Link></li>
+                <li><Link to="/register" className="hover:text-brand-gold transition-colors">Online Admission</Link></li>
+                <li><a href="#faculty" className="hover:text-brand-gold transition-colors">Our Faculty</a></li>
+                <li><Link to="/login" className="hover:text-brand-gold transition-colors">Staff Login</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Newsletter</h4>
+              <p className="text-slate-400 text-base font-medium mb-8">Subscribe to get updates on admissions and academic calendars.</p>
+              <div className="flex gap-3">
+                <Input className="h-14 bg-white/5 border-white/10 rounded-2xl px-6 text-white placeholder:text-slate-500 focus:ring-brand-gold focus:border-brand-gold" placeholder="Email Address" />
+                <Button className="h-14 bg-brand-gold hover:bg-brand-gold/90 rounded-2xl px-8 shadow-lg shadow-brand-gold/20">
+                  <Send className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-sm font-bold text-slate-500 uppercase tracking-[0.2em]">
+            <p>© {new Date().getFullYear()} The Edwardian Academy. All Rights Reserved.</p>
+            <div className="flex gap-10">
+              <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+              <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
+            </div>
           </div>
         </div>
       </footer>

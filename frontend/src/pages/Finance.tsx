@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -25,52 +24,46 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  DollarSign,
   TrendingUp,
   AlertCircle,
   GraduationCap,
   Wallet,
-  Users,
   Loader2,
   Plus,
   TrendingDown,
   HelpCircle,
-  Info,
   Search,
   History,
   FileText,
   Building2,
   Calendar,
-  Tag,
   CheckCircle2,
   Clock,
   BarChart3,
-  Shield,
-  Eye,
-  EyeOff,
   Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from "recharts";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PaymentReceipt } from "@/components/finance/PaymentReceipt";
 import { TeacherPayrollTable } from "@/components/finance/TeacherPayrollTable";
 import { useAuth } from "@/context/AuthContext";
-import { KPICard } from "@/components/dashboard/KPICard";
+import { motion, useMotionValue, useSpring, Variants } from "framer-motion";
+
+// --- VISUAL CONFIGURATION ---
+const COLORS = {
+  navy: "#0F172A",
+  slate: "#F8FAFC",
+  gold: "#D97706",
+  glass: "bg-white/70 backdrop-blur-xl border border-white/20 shadow-xl",
+  glassInput: "bg-white/40 border-b border-slate-300 focus:border-[#D97706] focus:border-b-2 rounded-none transition-all",
+};
 
 // API Base URL
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
-// Finance History Item Type
+// --- TYPES ---
 interface FinanceHistoryItem {
   _id: string;
   date: string;
@@ -94,7 +87,6 @@ interface FinanceHistoryItem {
   vendorName?: string;
 }
 
-// Expense Type
 interface Expense {
   _id: string;
   title: string;
@@ -108,34 +100,55 @@ interface Expense {
   paidByType?: "ACADEMY_CASH" | "WAQAR" | "ZAHID" | "SAUD";
 }
 
+// --- MOTION VARIANTS ---
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { y: 20, opacity: 0 },
+  show: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 20,
+    },
+  },
+};
+
+// --- MAIN COMPONENT ---
 const Finance = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  // Determine if user can see analytics (Owner only)
   const isOwner = user?.role === "OWNER";
   const showAnalytics = isOwner;
 
-  // Expense form state
+  // --- STATE ---
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [vendorName, setVendorName] = useState("");
   const [dueDate, setDueDate] = useState(
     () => new Date().toISOString().split("T")[0],
-  ); // Default to today
-  const [paidByType, setPaidByType] = useState("WAQAR"); // Always Waqar
-
-  // Payment receipt modal state
+  );
+  const [paidByType, setPaidByType] = useState("WAQAR");
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [voucherData, setVoucherData] = useState<any>(null);
   const [teacherFilter, setTeacherFilter] = useState<string>("all");
-
-  // Finance History state
   const [historySearch, setHistorySearch] = useState("");
   const [historyTypeFilter, setHistoryTypeFilter] = useState<string>("all");
 
-  // Fetch Finance History
+  // --- QUERIES ---
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ["finance-history"],
     queryFn: async () => {
@@ -149,7 +162,6 @@ const Finance = () => {
     refetchInterval: 30000,
   });
 
-  // Fetch real-time finance stats (Owner only sees full data)
   const {
     data: financeData,
     isLoading: statsLoading,
@@ -167,10 +179,9 @@ const Finance = () => {
     },
     refetchInterval: 30000,
     retry: 2,
-    enabled: showAnalytics, // Only fetch if owner
+    enabled: showAnalytics,
   });
 
-  // Fetch expenses
   const { data: expensesData, isLoading: expensesLoading } = useQuery({
     queryKey: ["expenses"],
     queryFn: async () => {
@@ -183,7 +194,7 @@ const Finance = () => {
     },
   });
 
-  // Create expense mutation - invalidates finance-history for instant ledger update
+  // --- MUTATIONS ---
   const createExpenseMutation = useMutation({
     mutationFn: async (expenseData: any) => {
       const response = await fetch(`${API_BASE_URL}/api/expenses`, {
@@ -199,7 +210,6 @@ const Finance = () => {
       return response.json();
     },
     onSuccess: (data) => {
-      // Invalidate finance-history for instant ledger update
       queryClient.invalidateQueries({ queryKey: ["finance-history"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
@@ -208,7 +218,6 @@ const Finance = () => {
         description: `${data.data?.title || "Expense"} - PKR ${data.data?.amount?.toLocaleString() || "0"}`,
       });
 
-      // Reset form
       setExpenseTitle("");
       setExpenseCategory("");
       setExpenseAmount("");
@@ -223,7 +232,6 @@ const Finance = () => {
     },
   });
 
-  // Mark expense as paid mutation
   const markAsPaidMutation = useMutation({
     mutationFn: async (expenseId: string) => {
       const response = await fetch(
@@ -241,7 +249,6 @@ const Finance = () => {
     },
   });
 
-  // Delete expense mutation
   const deleteExpenseMutation = useMutation({
     mutationFn: async (expenseId: string) => {
       const response = await fetch(
@@ -259,7 +266,6 @@ const Finance = () => {
     },
   });
 
-  // Delete transaction mutation
   const deleteTransactionMutation = useMutation({
     mutationFn: async (transactionId: string) => {
       const response = await fetch(
@@ -275,7 +281,6 @@ const Finance = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["finance-history"] });
       queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
-
       const isExpense = data.deletedTransaction?.type === "EXPENSE";
       toast.success("✅ Transaction deleted", {
         description: isExpense
@@ -290,7 +295,6 @@ const Finance = () => {
     },
   });
 
-  // Process teacher payment mutation
   const processPaymentMutation = useMutation({
     mutationFn: async ({
       teacherId,
@@ -323,6 +327,7 @@ const Finance = () => {
     },
   });
 
+  // --- HANDLERS ---
   const handleAddExpense = () => {
     if (
       !expenseTitle ||
@@ -334,19 +339,17 @@ const Finance = () => {
       toast.error("⚠️ Please fill all required fields");
       return;
     }
-
     if (parseFloat(expenseAmount) <= 0) {
       toast.error("⚠️ Amount must be greater than 0");
       return;
     }
-
     createExpenseMutation.mutate({
       title: expenseTitle,
       category: expenseCategory,
       amount: parseFloat(expenseAmount),
       vendorName,
-      dueDate: dueDate || new Date().toISOString().split("T")[0], // Auto-set to today if empty
-      paidByType: "WAQAR", // Always deduct from Waqar's revenue
+      dueDate: dueDate || new Date().toISOString().split("T")[0],
+      paidByType: "WAQAR",
     });
   };
 
@@ -361,38 +364,7 @@ const Finance = () => {
     });
   };
 
-  // Loading state - only for stats if owner
-  if (statsLoading && isOwner) {
-    return (
-      <DashboardLayout title="Finance">
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // Error state for stats (Owner only)
-  if (statsError && isOwner) {
-    return (
-      <DashboardLayout title="Finance">
-        <div className="flex flex-col items-center justify-center h-96 gap-4">
-          <AlertCircle className="h-12 w-12 text-red-500" />
-          <p className="text-lg font-medium text-foreground">
-            Failed to load finance data
-          </p>
-          <Button
-            onClick={() =>
-              queryClient.invalidateQueries({ queryKey: ["finance"] })
-            }
-          >
-            Retry
-          </Button>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
+  // --- DATA DERIVATION ---
   const {
     totalIncome = 0,
     totalExpected = 0,
@@ -411,29 +383,27 @@ const Finance = () => {
   const pendingExpenses = expenses.filter(
     (e) => e.status === "pending" || e.status === "overdue",
   );
-  const paidExpenses = expenses.filter((e) => e.status === "paid");
   const pendingTotal = pendingExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-  // Status badge helper
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "paid":
         return (
-          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
+          <Badge className="bg-emerald-600/90 hover:bg-emerald-700 text-white text-xs border-0 shadow-sm backdrop-blur-sm">
             <CheckCircle2 className="h-3 w-3 mr-1" />
             PAID
           </Badge>
         );
       case "overdue":
         return (
-          <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs animate-pulse">
+          <Badge className="bg-red-600/90 hover:bg-red-700 text-white text-xs animate-pulse border-0 shadow-sm backdrop-blur-sm">
             <AlertCircle className="h-3 w-3 mr-1" />
             OVERDUE
           </Badge>
         );
       default:
         return (
-          <Badge className="bg-amber-600 hover:bg-amber-700 text-white text-xs">
+          <Badge className="bg-amber-600/90 hover:bg-amber-700 text-white text-xs border-0 shadow-sm backdrop-blur-sm">
             <Clock className="h-3 w-3 mr-1" />
             PENDING
           </Badge>
@@ -441,704 +411,434 @@ const Finance = () => {
     }
   };
 
+  // --- UI HELPERS ---
+  const MagneticWrapper = ({ children }: { children: React.ReactNode }) => {
+    const x = useMotionValue(0);
+    const y = useMotionValue(0);
+    const mouseX = useSpring(x, { stiffness: 150, damping: 15 });
+    const mouseY = useSpring(y, { stiffness: 150, damping: 15 });
+
+    function onMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+      const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
+      const offsetX = event.clientX - left - width / 2;
+      const offsetY = event.clientY - top - height / 2;
+      x.set(offsetX / 8);
+      y.set(offsetY / 8);
+    }
+    function onMouseLeave() {
+      x.set(0);
+      y.set(0);
+    }
+
+    return (
+      <motion.div onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ x: mouseX, y: mouseY }} className="h-full w-full">
+        {children}
+      </motion.div>
+    );
+  };
+
+  if (statsLoading && isOwner) {
+    return (
+      <DashboardLayout title="Finance">
+        <div className="flex items-center justify-center h-96 bg-[#F8FAFC]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#D97706]" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (statsError && isOwner) {
+    return (
+      <DashboardLayout title="Finance">
+        <div className="flex flex-col items-center justify-center h-96 gap-4 bg-[#F8FAFC]">
+          <AlertCircle className="h-12 w-12 text-red-500" />
+          <p className="text-lg font-medium text-[#0F172A]">
+            Failed to load finance data
+          </p>
+          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["finance"] })} className="bg-[#D97706] hover:bg-[#B45309]">
+            Retry
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <TooltipProvider>
       <DashboardLayout title="Finance">
-        {/* ============================================ */}
-        {/* HERO SECTION: EXPENSE ENTRY FORM */}
-        {/* ============================================ */}
-        <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 bg-gray-100 rounded-lg">
-              <Plus className="h-5 w-5 text-gray-700" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Add New Expense
-              </h2>
-              <p className="text-sm text-gray-500">
-                Record operational costs and bills
-              </p>
-            </div>
-          </div>
-
-          {/* Form Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="space-y-2">
-              <Label
-                htmlFor="expense-title"
-                className="text-xs font-medium text-gray-700 flex items-center gap-1"
-              >
-                <FileText className="h-3 w-3 text-gray-500" />
-                Expense Title <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="expense-title"
-                placeholder="e.g., Electricity Bill"
-                value={expenseTitle}
-                onChange={(e) => setExpenseTitle(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500 focus:ring-gray-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="vendor-name"
-                className="text-xs font-medium text-gray-700 flex items-center gap-1"
-              >
-                <Building2 className="h-3 w-3 text-gray-500" />
-                Vendor/Supplier <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="vendor-name"
-                placeholder="e.g., PESCO, SNGPL"
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="expense-category"
-                className="text-xs font-medium text-gray-700 flex items-center gap-1"
-              >
-                <Tag className="h-3 w-3 text-gray-500" />
-                Category <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={expenseCategory}
-                onValueChange={setExpenseCategory}
-              >
-                <SelectTrigger className="bg-gray-50 h-10 border-gray-300">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Utilities">💡 Utilities</SelectItem>
-                  <SelectItem value="Rent">🏢 Rent/Lease</SelectItem>
-                  <SelectItem value="Salaries">💵 Salaries</SelectItem>
-                  <SelectItem value="Stationery">📚 Stationery</SelectItem>
-                  <SelectItem value="Marketing">📣 Marketing</SelectItem>
-                  <SelectItem value="Misc">📦 Miscellaneous</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="expense-amount"
-                className="text-xs font-medium text-gray-700 flex items-center gap-1"
-              >
-                <DollarSign className="h-3 w-3 text-gray-500" />
-                Amount (PKR) <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="expense-amount"
-                type="number"
-                placeholder="0"
-                value={expenseAmount}
-                onChange={(e) => setExpenseAmount(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
-          </div>
-
-          {/* Expense Source - Auto-assigned to Sir Waqar */}
-          <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
-            <Label className="text-sm font-medium text-amber-800 flex items-center gap-2 mb-2">
-              <Users className="h-4 w-4 text-amber-600" />
-              Expense Source
-            </Label>
-            <div className="flex items-center gap-2 bg-white px-4 py-3 rounded-lg border border-amber-300">
-              <div className="h-8 w-8 rounded-full bg-amber-500 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">W</span>
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="min-h-screen bg-[#F8FAFC] p-4 md:p-6 space-y-8 font-sans selection:bg-[#D97706] selection:text-white"
+        >
+          
+          {/* ============================================ */}
+          {/* SECTION: PREMIUM INPUT BAR */}
+          {/* ============================================ */}
+          <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
+            <div className={`${COLORS.glass} rounded-[2.5rem] p-2 md:p-3 flex flex-col md:flex-row items-center gap-4 shadow-2xl shadow-[#0F172A]/5 relative overflow-hidden`}>
+              {/* Decorative Gold Glow */}
+              <div className="absolute inset-0 bg-gradient-to-r from-[#D97706]/5 to-transparent pointer-events-none" />
+              
+              <div className="hidden md:flex items-center justify-center w-12 h-12 rounded-full bg-[#0F172A] text-[#D97706] shrink-0 z-10 shadow-lg">
+                <Plus className="h-6 w-6" />
               </div>
-              <div>
-                <p className="font-medium text-amber-900">
-                  Sir Waqar's Revenue
-                </p>
-                <p className="text-xs text-amber-600">
-                  All expenses deducted from Owner's revenue
-                </p>
-              </div>
-            </div>
-          </div>
 
-          {/* Submit Button */}
-          <Button
-            onClick={handleAddExpense}
-            disabled={createExpenseMutation.isPending}
-            className="w-full mt-4 bg-gray-900 hover:bg-gray-800 h-11 font-medium text-white"
-          >
-            {createExpenseMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Recording...
-              </>
-            ) : (
-              <>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* ============================================ */}
-        {/* LIVE LEDGER: FINANCE HISTORY TABLE */}
-        {/* ============================================ */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
-            <div className="flex items-center gap-2">
-              <History className="h-5 w-5 text-gray-600" />
-              <h3 className="text-lg font-semibold text-gray-900">
-                Finance History
-              </h3>
-              <Badge variant="outline" className="text-xs">
-                Live Ledger
-              </Badge>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* Search Input - Owner only */}
-              {isOwner && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <form onSubmit={(e) => { e.preventDefault(); handleAddExpense(); }} className="flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-3 z-10">
+                
+                {/* Title */}
+                <div className="md:col-span-4 relative group">
                   <Input
-                    placeholder="Search by partner..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    className="pl-9 w-full sm:w-56 bg-gray-50 border-gray-300"
+                    placeholder="Expense Title (e.g. Electricity)"
+                    value={expenseTitle}
+                    onChange={(e) => setExpenseTitle(e.target.value)}
+                    className={`${COLORS.glassInput} bg-transparent text-[#0F172A] font-medium placeholder:text-slate-400 h-12`}
                   />
                 </div>
-              )}
-              {/* Type Filter */}
-              <Select
-                value={historyTypeFilter}
-                onValueChange={setHistoryTypeFilter}
-              >
-                <SelectTrigger className="w-full sm:w-36 bg-gray-50 border-gray-300">
-                  <SelectValue placeholder="Filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="INCOME">Income</SelectItem>
-                  <SelectItem value="EXPENSE">Expense</SelectItem>
-                  <SelectItem value="DIVIDEND">Dividends</SelectItem>
-                  <SelectItem value="DEBT">Debts</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          {historyLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-            </div>
-          ) : !historyData || historyData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-              <FileText className="h-12 w-12 mb-3 opacity-50" />
-              <p className="text-lg font-medium">No records found</p>
-              <p className="text-sm">Transactions will appear here</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold text-gray-700">
-                      Date
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700">
-                      Type
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700">
-                      Description
-                    </TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700">
-                      Amount
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700">
-                      Status
-                    </TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700">
-                      Action
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {historyData
-                    .filter((item) => {
-                      if (
-                        historyTypeFilter !== "all" &&
-                        item.type !== historyTypeFilter
-                      ) {
-                        return false;
-                      }
-                      if (isOwner && historySearch) {
-                        const searchLower = historySearch.toLowerCase();
-                        const collectedBy =
-                          item.collectedBy?.toLowerCase() || "";
-                        const paidBy = item.paidBy?.toLowerCase() || "";
-                        return (
-                          collectedBy.includes(searchLower) ||
-                          paidBy.includes(searchLower)
-                        );
-                      }
-                      return true;
-                    })
-                    .slice(0, 50)
-                    .map((item) => {
-                      const isPositive =
-                        item.type === "INCOME" ||
-                        item.type === "PARTNER_WITHDRAWAL" ||
-                        item.type === "DIVIDEND";
-                      const amountColorClass = isPositive
-                        ? "text-emerald-600 font-semibold"
-                        : "text-red-600 font-semibold";
-
-                      const formattedDate = new Date(
-                        item.date,
-                      ).toLocaleDateString("en-PK", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      });
-
-                      const getStatusVariant = (status: string) => {
-                        switch (status?.toUpperCase()) {
-                          case "VERIFIED":
-                          case "PAID":
-                            return "default";
-                          case "FLOATING":
-                          case "PENDING":
-                            return "secondary";
-                          case "CANCELLED":
-                          case "OVERDUE":
-                            return "destructive";
-                          default:
-                            return "outline";
-                        }
-                      };
-
-                      // Get badge variant based on transaction type
-                      const getTypeBadgeVariant = (type: string) => {
-                        switch (type) {
-                          case "INCOME":
-                            return "default";
-                          case "EXPENSE":
-                            return "destructive";
-                          case "DIVIDEND":
-                            return "secondary"; // Purple-ish for dividends
-                          case "DEBT":
-                            return "outline";
-                          default:
-                            return "default";
-                        }
-                      };
-
-                      // Get badge color class for better distinction
-                      const getTypeBadgeClass = (type: string) => {
-                        switch (type) {
-                          case "DIVIDEND":
-                            return "bg-violet-100 text-violet-700 border-violet-200";
-                          case "DEBT":
-                            return "bg-amber-100 text-amber-700 border-amber-200";
-                          default:
-                            return "";
-                        }
-                      };
-
-                      return (
-                        <TableRow key={item._id} className="hover:bg-gray-50">
-                          <TableCell className="whitespace-nowrap text-gray-600">
-                            {formattedDate}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getTypeBadgeVariant(item.type)}
-                              className={`text-xs ${getTypeBadgeClass(item.type)}`}
-                            >
-                              {item.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-xs truncate text-gray-700">
-                            {item.description}
-                            {item.collectedBy && isOwner && (
-                              <span className="text-xs text-gray-400 ml-2">
-                                (by {item.collectedBy})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right ${amountColorClass}`}
-                          >
-                            {isPositive ? "+" : "-"}PKR{" "}
-                            {item.amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getStatusVariant(item.status)}
-                              className="text-xs"
-                            >
-                              {item.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {isOwner && (
-                              <button
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      `Delete this transaction?\n\n${item.description}\n-PKR ${item.amount.toLocaleString()}`,
-                                    )
-                                  ) {
-                                    deleteTransactionMutation.mutate(item._id);
-                                  }
-                                }}
-                                disabled={deleteTransactionMutation.isPending}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                                Delete
-                              </button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-
-        {/* ============================================ */}
-        {/* PENDING EXPENSES LIST */}
-        {/* ============================================ */}
-        {pendingExpenses.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-600" />
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Pending Bills ({pendingExpenses.length})
-                </h3>
-              </div>
-              <span className="text-sm font-medium text-gray-500">
-                Total: PKR {pendingTotal.toLocaleString()}
-              </span>
-            </div>
-            <div className="space-y-3">
-              {pendingExpenses.map((expense) => (
-                <div
-                  key={expense._id}
-                  className={`flex items-center justify-between p-4 rounded-lg border ${
-                    expense.status === "overdue"
-                      ? "border-red-200 bg-red-50"
-                      : "border-amber-200 bg-amber-50"
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <p className="font-medium text-gray-900">
-                        {expense.title}
-                      </p>
-                      {getStatusBadge(expense.status)}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span className="px-2 py-0.5 rounded bg-white border">
-                        {expense.category}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Building2 className="h-3 w-3" />
-                        {expense.vendorName}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Due:{" "}
-                        {new Date(expense.dueDate).toLocaleDateString("en-PK", {
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-900">
-                      PKR {expense.amount.toLocaleString()}
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => markAsPaidMutation.mutate(expense._id)}
-                      disabled={markAsPaidMutation.isPending}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Mark Paid
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100"
-                      onClick={() => deleteExpenseMutation.mutate(expense._id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                {/* Vendor */}
+                <div className="md:col-span-3 relative">
+                   <Input
+                    placeholder="Vendor"
+                    value={vendorName}
+                    onChange={(e) => setVendorName(e.target.value)}
+                    className={`${COLORS.glassInput} bg-transparent text-[#0F172A] font-medium placeholder:text-slate-400 h-12`}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Empty state for no expenses */}
-        {!expensesLoading && expenses.length === 0 && (
-          <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center mb-6">
-            <TrendingDown className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">
-              No Expenses Yet
-            </h4>
-            <p className="text-sm text-gray-500 mb-4">
-              Start by adding your first expense using the form above
+                {/* Category */}
+                <div className="md:col-span-2">
+                  <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                    <SelectTrigger className="h-12 bg-transparent border-b border-slate-300 focus:border-[#D97706] rounded-none text-[#0F172A] font-medium">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-slate-200 shadow-xl">
+                      <SelectItem value="Utilities">Utilities</SelectItem>
+                      <SelectItem value="Rent">Rent</SelectItem>
+                      <SelectItem value="Salaries">Salaries</SelectItem>
+                      <SelectItem value="Stationery">Stationery</SelectItem>
+                      <SelectItem value="Marketing">Marketing</SelectItem>
+                      <SelectItem value="Misc">Misc</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Amount */}
+                <div className="md:col-span-3 relative">
+                  <Input
+                    type="number"
+                    placeholder="PKR Amount"
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    className={`${COLORS.glassInput} bg-transparent text-[#D97706] font-bold text-lg text-right placeholder:text-slate-400 h-12`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">PKR</span>
+                </div>
+
+                {/* Hidden Date Input (Defaulted to today) */}
+                <input type="hidden" value={dueDate} readOnly />
+
+                <div className="md:col-span-12 flex justify-end">
+                  <Button 
+                    type="submit" 
+                    disabled={createExpenseMutation.isPending}
+                    className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-full px-8 h-12 font-bold tracking-wide transition-all hover:scale-105 shadow-lg shadow-[#0F172A]/20 flex items-center gap-2"
+                  >
+                    {createExpenseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Add Expense
+                  </Button>
+                </div>
+              </form>
+            </div>
+            <p className="text-center text-slate-500 text-xs mt-3 font-medium">
+              * Deducted from Sir Waqar's Revenue Pool
             </p>
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-              <FileText className="h-3 w-3" />
-              <span>Rent • Utilities • Salaries • Supplies</span>
-            </div>
-          </div>
-        )}
+          </motion.div>
 
-        {/* ============================================ */}
-        {/* OWNER-ONLY: ANALYTICS SECTION */}
-        {/* ============================================ */}
-        {showAnalytics && financeData && (
-          <>
-            {/* Analytics Header */}
-            <div className="flex items-center gap-3 mb-4 mt-8">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BarChart3 className="h-5 w-5 text-blue-600" />
+          {/* ============================================ */}
+          {/* SECTION: LIVE LEDGER */}
+          {/* ============================================ */}
+          <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
+            <div className={`${COLORS.glass} rounded-[2rem] p-6 md:p-8 mb-8`}>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-[#0F172A]">Finance History</h2>
+                  <p className="text-slate-500 text-sm font-medium">Real-time transaction ledger</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {isOwner && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search by partner..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        className="pl-9 w-full sm:w-56 bg-white/40 border-slate-200 rounded-full focus:border-[#D97706] focus:ring-[#D97706]/20"
+                      />
+                    </div>
+                  )}
+                  <Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}>
+                    <SelectTrigger className="w-full sm:w-40 bg-white/40 border-slate-200 rounded-full">
+                      <SelectValue placeholder="Filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="INCOME">Income</SelectItem>
+                      <SelectItem value="EXPENSE">Expense</SelectItem>
+                      <SelectItem value="DIVIDEND">Dividends</SelectItem>
+                      <SelectItem value="DEBT">Debts</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Owner Analytics
-                </h3>
-                <p className="text-sm text-gray-500 flex items-center gap-1">
-                  <Shield className="h-3 w-3" />
-                  Visible only to you
-                </p>
-              </div>
+
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#D97706]" />
+                </div>
+              ) : !historyData || historyData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <motion.div 
+                    animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                    className="w-24 h-24 rounded-full bg-gradient-to-b from-white to-slate-200 shadow-inner mb-6 relative"
+                  >
+                     <div className="absolute inset-0 rounded-full border border-white/50 blur-sm" />
+                  </motion.div>
+                  <h3 className="font-serif text-xl text-slate-600">Ledger is Empty</h3>
+                  <p className="text-sm">Transactions will appear here in real-time.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                  <Table>
+                    <TableHeader className="bg-slate-50/80 backdrop-blur-sm">
+                      <TableRow className="hover:bg-slate-50 border-b border-slate-200">
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Date</TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Type</TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Description</TableHead>
+                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">Amount</TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Status</TableHead>
+                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {historyData
+                        .filter((item) => {
+                          if (historyTypeFilter !== "all" && item.type !== historyTypeFilter) return false;
+                          if (isOwner && historySearch) {
+                            const searchLower = historySearch.toLowerCase();
+                            return (item.collectedBy?.toLowerCase() || "").includes(searchLower) ||
+                                   (item.paidBy?.toLowerCase() || "").includes(searchLower);
+                          }
+                          return true;
+                        })
+                        .slice(0, 50)
+                        .map((item) => {
+                          const isPositive = ["INCOME", "PARTNER_WITHDRAWAL", "DIVIDEND"].includes(item.type);
+                          const amountColorClass = isPositive ? "text-emerald-600 font-bold" : "text-red-500 font-bold";
+                          const formattedDate = new Date(item.date).toLocaleDateString("en-PK", {
+                            day: "2-digit", month: "short", year: "numeric",
+                          });
+
+                          const getTypeBadgeClass = (type: string) => {
+                            switch (type) {
+                              case "INCOME": return "bg-emerald-100 text-emerald-700 border-emerald-200";
+                              case "EXPENSE": return "bg-red-100 text-red-700 border-red-200";
+                              case "DIVIDEND": return "bg-violet-100 text-violet-700 border-violet-200";
+                              case "DEBT": return "bg-amber-100 text-amber-700 border-amber-200";
+                              default: return "bg-slate-100 text-slate-700 border-slate-200";
+                            }
+                          };
+
+                          return (
+                            <motion.tr
+                              key={item._id}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="hover:bg-white/50 transition-colors border-b border-slate-50 last:border-0 group"
+                            >
+                              <TableCell className="whitespace-nowrap text-slate-600 font-medium py-4">{formattedDate}</TableCell>
+                              <TableCell>
+                                <Badge className={`text-xs border-0 font-medium ${getTypeBadgeClass(item.type)}`}>
+                                  {item.type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="max-w-xs text-slate-800 py-4">
+                                <div className="font-semibold">{item.description}</div>
+                                {item.collectedBy && isOwner && (
+                                  <div className="text-xs text-slate-400 mt-1">by {item.collectedBy}</div>
+                                )}
+                              </TableCell>
+                              <TableCell className={`text-right py-4 ${amountColorClass}`}>
+                                {isPositive ? "+" : "-"}PKR {item.amount.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="py-4">
+                                <Badge variant="outline" className="text-xs capitalize font-medium border-slate-200 text-slate-600">
+                                  {item.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right py-4">
+                                {isOwner && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm(`Delete this transaction?\n\n${item.description}\n-PKR ${item.amount.toLocaleString()}`)) {
+                                        deleteTransactionMutation.mutate(item._id);
+                                      }
+                                    }}
+                                    disabled={deleteTransactionMutation.isPending}
+                                    className="text-slate-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </TableCell>
+                            </motion.tr>
+                          );
+                        })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
+          </motion.div>
 
-            {/* KPI Cards (Owner Only) */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-              <KPICard
-                title="Total Collected"
-                value={`PKR ${(totalIncome / 1000).toFixed(0)}K`}
-                subtitle={`${collectionRate}% collection rate`}
-                icon={TrendingUp}
-                variant="success"
-                trend={{
-                  value: collectionRate,
-                  isPositive: collectionRate > 70,
-                }}
-              />
-
-              <div className="relative">
-                <KPICard
-                  title="Teacher Liabilities"
-                  value={`PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`}
-                  subtitle={`${teacherPayroll.length} active teachers`}
-                  icon={GraduationCap}
-                  variant="warning"
-                />
-                <InfoTooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
-                      aria-label="More information about Teacher Liabilities"
+          {/* ============================================ */}
+          {/* SECTION: PENDING BILLS */}
+          {/* ============================================ */}
+          {pendingExpenses.length > 0 && (
+            <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
+              <div className={`${COLORS.glass} rounded-[2rem] p-8 mb-8`}>
+                 <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Pending Liabilities</h2>
+                  <span className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider border border-amber-200">
+                    Total Due: PKR {pendingTotal.toLocaleString()}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pendingExpenses.map((expense) => (
+                    <motion.div 
+                      key={expense._id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`p-5 rounded-2xl border backdrop-blur-md shadow-sm flex flex-col justify-between h-full ${
+                        expense.status === "overdue"
+                          ? "bg-red-50/60 border-red-200"
+                          : "bg-amber-50/60 border-amber-200"
+                      }`}
                     >
-                      <HelpCircle className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-sm">
-                      Total amount owed to teachers based on collected fees.
-                    </p>
-                  </TooltipContent>
-                </InfoTooltip>
+                      <div>
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="font-bold text-[#0F172A]">{expense.title}</h4>
+                          {getStatusBadge(expense.status)}
+                        </div>
+                        <div className="space-y-2 text-sm text-slate-600 mb-4">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-3 w-3" /> {expense.vendorName}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-3 w-3" /> Due: {new Date(expense.dueDate).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between pt-4 border-t border-black/5 mt-2">
+                        <span className="text-lg font-serif font-bold text-[#0F172A]">PKR {expense.amount.toLocaleString()}</span>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => markAsPaidMutation.mutate(expense._id)} disabled={markAsPaidMutation.isPending} className="bg-[#0F172A] hover:bg-[#1E293B] h-8 rounded-full text-xs">
+                            Pay
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full" onClick={() => deleteExpenseMutation.mutate(expense._id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
+            </motion.div>
+          )}
 
-              <KPICard
-                title="Total Expenses"
-                value={`PKR ${(totalExpenses / 1000).toFixed(0)}K`}
-                subtitle="Operational costs"
-                icon={TrendingDown}
-                variant="danger"
-              />
-
-              <div className="relative">
-                <KPICard
-                  title="My Net Position"
-                  value={`PKR ${(ownerNetRevenue / 1000).toFixed(0)}K`}
-                  subtitle="Your actual take-home"
-                  icon={Wallet}
-                  variant={ownerNetRevenue > 0 ? "primary" : "danger"}
-                />
-                <InfoTooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
-                      aria-label="More information about My Net Position"
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-sm">
-                      Chemistry Fees + Pool Share - Expenses Paid
-                    </p>
-                  </TooltipContent>
-                </InfoTooltip>
-              </div>
-            </div>
-
-            {/* ============================================ */}
-            {/* POOL DIVIDENDS SUMMARY (NEW) */}
-            {/* Shows recent pool distributions to partners */}
-            {/* ============================================ */}
-            <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl border border-violet-200 p-5 mb-6">
+          {/* ============================================ */}
+          {/* SECTION: OWNER ANALYTICS (Refined) */}
+          {/* ============================================ */}
+          {showAnalytics && financeData && (
+            <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto space-y-8">
+              
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-violet-100 rounded-lg">
-                  <DollarSign className="h-5 w-5 text-violet-600" />
-                </div>
+                <div className="h-10 w-1 bg-[#D97706] rounded-full" />
                 <div>
-                  <h3 className="text-lg font-semibold text-violet-900">
-                    Pool Distribution (Waqar's Protocol)
-                  </h3>
-                  <p className="text-sm text-violet-600">
-                    Revenue from staff tuition split among partners
-                  </p>
+                  <h3 className="font-serif text-3xl font-bold text-[#0F172A]">Owner Analytics</h3>
+                  <p className="text-sm text-slate-500 uppercase tracking-widest font-medium">Confidential Data</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Waqar's Share */}
-                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
-                      W
-                    </div>
-                    <span className="font-medium text-gray-700">Waqar</span>
-                    <Badge className="ml-auto bg-blue-100 text-blue-700 text-xs">
-                      50%
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
-                  <p className="text-lg font-bold text-blue-600">
-                    PKR{" "}
-                    {(
-                      (historyData || [])
-                        .filter(
-                          (t) =>
-                            t.type === "DIVIDEND" &&
-                            t.splitDetails?.partnerName === "Waqar",
-                        )
-                        .reduce((sum, t) => sum + t.amount, 0) || 0
-                    ).toLocaleString()}
-                  </p>
-                </div>
-
-                {/* Zahid's Share */}
-                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">
-                      Z
-                    </div>
-                    <span className="font-medium text-gray-700">Zahid</span>
-                    <Badge className="ml-auto bg-emerald-100 text-emerald-700 text-xs">
-                      30%
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
-                  <p className="text-lg font-bold text-emerald-600">
-                    PKR{" "}
-                    {(
-                      (historyData || [])
-                        .filter(
-                          (t) =>
-                            t.type === "DIVIDEND" &&
-                            t.splitDetails?.partnerName === "Zahid",
-                        )
-                        .reduce((sum, t) => sum + t.amount, 0) || 0
-                    ).toLocaleString()}
-                  </p>
-                </div>
-
-                {/* Saud's Share */}
-                <div className="bg-white rounded-lg p-4 border border-violet-100 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-sm">
-                      S
-                    </div>
-                    <span className="font-medium text-gray-700">Saud</span>
-                    <Badge className="ml-auto bg-amber-100 text-amber-700 text-xs">
-                      20%
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-500">Tuition Pool Share</p>
-                  <p className="text-lg font-bold text-amber-600">
-                    PKR{" "}
-                    {(
-                      (historyData || [])
-                        .filter(
-                          (t) =>
-                            t.type === "DIVIDEND" &&
-                            t.splitDetails?.partnerName === "Saud",
-                        )
-                        .reduce((sum, t) => sum + t.amount, 0) || 0
-                    ).toLocaleString()}
-                  </p>
-                </div>
+              {/* KPI ORBS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  { title: "Total Collected", value: `PKR ${(totalIncome / 1000).toFixed(0)}K`, sub: `${collectionRate}% rate`, icon: TrendingUp, color: "text-emerald-600" },
+                  { title: "Teacher Liabilities", value: `PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`, sub: `${teacherPayroll.length} teachers`, icon: GraduationCap, color: "text-amber-600" },
+                  { title: "Total Expenses", value: `PKR ${(totalExpenses / 1000).toFixed(0)}K`, sub: "Operational", icon: TrendingDown, color: "text-red-500" },
+                  { title: "Net Position", value: `PKR ${(ownerNetRevenue / 1000).toFixed(0)}K`, sub: "Take-home", icon: Wallet, color: ownerNetRevenue > 0 ? "text-[#0F172A]" : "text-red-600" },
+                ].map((kpi, i) => (
+                  <MagneticWrapper key={i}>
+                    <motion.div 
+                      whileHover={{ y: -5 }}
+                      className={`${COLORS.glass} rounded-3xl p-6 h-full flex flex-col justify-between group hover:border-[#D97706]/50 transition-colors cursor-default`}
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="p-3 rounded-2xl bg-[#0F172A]/5 text-[#0F172A] group-hover:bg-[#D97706] group-hover:text-white transition-colors">
+                          <kpi.icon className="h-5 w-5" />
+                        </div>
+                        {kpi.title === "Net Position" && (
+                           <InfoTooltip>
+                              <TooltipTrigger><HelpCircle className="h-4 w-4 text-slate-400 hover:text-[#D97706]" /></TooltipTrigger>
+                              <TooltipContent>Chemistry + Pool - Expenses</TooltipContent>
+                           </InfoTooltip>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-500 mb-1">{kpi.title}</p>
+                        <h3 className={`text-2xl font-serif font-bold ${kpi.color}`}>{kpi.value}</h3>
+                        <p className="text-xs text-slate-400 mt-2 font-medium uppercase tracking-wide">{kpi.sub}</p>
+                      </div>
+                    </motion.div>
+                  </MagneticWrapper>
+                ))}
               </div>
 
-              <p className="text-xs text-violet-500 mt-3 text-center">
-                💡 Pool dividends are automatically distributed when staff
-                tuition fees are collected (50/30/20 split)
-              </p>
-            </div>
-
-            {/* Warning for Negative Profit */}
-            {ownerNetRevenue < 0 && (
-              <div className="mb-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-red-900">
-                    ⚠️ Warning: Monthly Loss Detected
-                  </h4>
-                  <p className="text-sm text-red-700 mt-1">
-                    Your expenses exceed revenue. Consider reviewing costs.
-                  </p>
+              {/* Warning for Loss */}
+              {ownerNetRevenue < 0 && (
+                <div className="p-6 rounded-2xl bg-red-50/80 border border-red-200 flex items-start gap-4 backdrop-blur-sm">
+                  <AlertCircle className="h-6 w-6 text-red-600 mt-1 shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-red-900 text-lg">⚠️ Monthly Deficit Detected</h4>
+                    <p className="text-red-700 text-sm mt-1">Operational expenses have exceeded total revenue for this period. Immediate review recommended.</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Teacher Payroll Table (Owner Only) */}
-            <TeacherPayrollTable
-              teachers={teacherPayroll}
-              filter={teacherFilter}
-              onFilterChange={setTeacherFilter}
-              onPay={handlePayTeacher}
-              isPaying={processPaymentMutation.isPending}
-            />
-          </>
-        )}
+              {/* Teacher Payroll */}
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+                <TeacherPayrollTable
+                  teachers={teacherPayroll}
+                  filter={teacherFilter}
+                  onFilterChange={setTeacherFilter}
+                  onPay={handlePayTeacher}
+                  isPaying={processPaymentMutation.isPending}
+                />
+              </motion.div>
 
-        {/* Payment Receipt Modal */}
-        <PaymentReceipt
-          isOpen={isReceiptOpen}
-          onClose={() => setIsReceiptOpen(false)}
-          voucherData={voucherData}
-        />
+            </motion.div>
+          )}
+
+          {/* Payment Receipt Modal */}
+          <PaymentReceipt
+            isOpen={isReceiptOpen}
+            onClose={() => setIsReceiptOpen(false)}
+            voucherData={voucherData}
+          />
+        </motion.div>
       </DashboardLayout>
     </TooltipProvider>
   );

@@ -1,3 +1,10 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/700.css";
+@import "@fontsource/playfair-display/900.css";
 @import "@fontsource/plus-jakarta-sans/400.css";
 @import "@fontsource/plus-jakarta-sans/500.css";
 @import "@fontsource/plus-jakarta-sans/600.css";
@@ -251,6 +258,40 @@
 
   .animate-border-glow {
     animation: border-glow 2s ease-in-out infinite;
+  }
+
+  /* Liquid Mesh Animation */
+  .liquid-mesh {
+    background: linear-gradient(
+      -45deg,
+      #0f172a,
+      #1e293b,
+      #1a365d,
+      #0f172a
+    );
+    background-size: 400% 400%;
+    animation: liquidMesh 15s ease infinite;
+  }
+
+  @keyframes liquidMesh {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Glassmorphism Ethereal */
+  .glass-ethereal {
+    @apply backdrop-blur-2xl bg-white/5 border border-white/20;
+  }
+
+  .glass-ethereal-dark {
+    @apply backdrop-blur-2xl bg-black/40 border border-white/10;
   }
 
   /* Hide scrollbar for horizontal scroll carousel */
