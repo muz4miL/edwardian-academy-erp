@@ -1,16 +1,41 @@
 const express = require('express');
 const router = express.Router();
 const Timetable = require('../models/Timetable');
+const { protect } = require('../middleware/authMiddleware');
 
 // @route   GET /api/timetable
-// @desc    Get all timetable entries
-// @access  Public
-router.get('/', async (req, res) => {
+// @desc    Get all timetable entries (Role-Based Filtering)
+// @access  Protected
+router.get('/', protect, async (req, res) => {
     try {
         const { classId, teacherId, day, status } = req.query;
+        const user = req.user;
 
         let query = {};
 
+        // 1. Role-Based Overrides
+        if (user.role === 'STUDENT') {
+            // Students only see their own class timetable
+            if (user.studentProfile?.classRef) {
+                query.classId = user.studentProfile.classRef;
+            } else {
+                // If no classRef found in user object, they get nothing (security)
+                return res.json({ success: true, count: 0, data: [] });
+            }
+        } else if (user.role === 'TEACHER') {
+            // Teachers only see their own sessions
+            query.teacherId = user.teacherProfile?._id || user._id;
+        } else if (user.role === 'PARTNER') {
+            // Partners see their sessions + general view if needed, 
+            // but usually specific teaching sessions.
+            // For now, allow them to filter but default to their own if no classId provided
+            if (!classId) {
+                query.teacherId = user.teacherProfile?._id || user._id;
+            }
+        }
+        // OWNER sees everything by default
+
+        // 2. Applied Filters (Query Params)
         if (classId) query.classId = classId;
         if (teacherId) query.teacherId = teacherId;
         if (day) query.day = day;

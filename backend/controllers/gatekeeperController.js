@@ -1,5 +1,6 @@
 const Student = require("../models/Student");
 const Class = require("../models/Class");
+const Timetable = require("../models/Timetable");
 
 /**
  * Gatekeeper Controller - Smart Gate Scanner Module
@@ -43,6 +44,14 @@ const parseTimeToMinutes = (timeStr) => {
 const getCurrentDayAbbrev = () => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return days[new Date().getDay()];
+};
+
+/**
+ * Helper: Get current day full name (Monday, Tuesday, etc.) for Timetable model
+ */
+const getCurrentDayFull = (pktTime) => {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[pktTime.getDay()];
 };
 
 /**
@@ -135,6 +144,49 @@ exports.scanBarcode = async (req, res) => {
     );
 
     // ========================================
+    // STEP 1B: QUERY TIMETABLE FOR CURRENT SESSION
+    // ========================================
+    // Get Pakistan time (UTC+5)
+    const now = new Date();
+    const pakistanTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
+    );
+    const currentDayFull = getCurrentDayFull(pakistanTime);
+    const currentMinutes =
+      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+    const currentTimeStr = formatMinutesToTime(currentMinutes);
+
+    // Query Timetable for current session (if student has classRef)
+    let currentSession = null;
+    if (student.classRef) {
+      const timetableEntries = await Timetable.find({
+        classId: student.classRef._id || student.classRef,
+        day: currentDayFull,
+        status: "active",
+      }).populate("teacherId", "name").lean();
+
+      // Find if any entry matches current time
+      for (const entry of timetableEntries) {
+        const startMins = parseTimeToMinutes(entry.startTime);
+        const endMins = parseTimeToMinutes(entry.endTime);
+        if (startMins !== null && endMins !== null) {
+          if (currentMinutes >= startMins && currentMinutes <= endMins) {
+            currentSession = {
+              subject: entry.subject,
+              teacher: entry.teacherId?.name || "TBD",
+              room: entry.room || "TBD",
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    console.log(`📅 Current Session: ${currentSession ? currentSession.subject : "None"}`);
+
+    // ========================================
     // STEP 2: CHECK STUDENT STATUS (Expelled/Suspended)
     // ========================================
     if (
@@ -194,15 +246,7 @@ exports.scanBarcode = async (req, res) => {
     // STEP 4: CHECK CLASS SCHEDULE (Day & Time)
     // ========================================
     const classDoc = student.classRef;
-
-    // Get Pakistan time (UTC+5)
-    const now = new Date();
-    const pakistanTime = new Date(
-      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
-    );
     const currentDay = getCurrentDayAbbrev();
-    const currentMinutes =
-      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
 
     console.log(`\n📅 SCHEDULE CHECK:`);
     console.log(`   Pakistan Time: ${pakistanTime.toLocaleString("en-PK")}`);
@@ -332,6 +376,32 @@ exports.scanBarcode = async (req, res) => {
 
     console.log(`✅ VERIFIED: ${student.studentName} (${verificationStatus})`);
 
+    // ========================================
+    // STEP 5B: DETERMINE STATUS COLOR (GREEN/RED/ORANGE)
+    // ========================================
+    // GREEN: Balance <= 0 AND currentSession exists
+    // RED: Balance > 0 (show pending amount)
+    // ORANGE: Balance <= 0 but no currentSession (wrong time/not scheduled)
+    const hasPaid = balance <= 0;
+    const hasCurrentSession = !!currentSession;
+
+    let statusColor = "GREEN";
+    let colorStatusMessage = "Access Granted";
+
+    if (!hasPaid) {
+      statusColor = "RED";
+      colorStatusMessage = `Fee Pending: PKR ${balance.toLocaleString()}`;
+    } else if (hasPaid && !hasCurrentSession) {
+      statusColor = "ORANGE";
+      colorStatusMessage = "No Class Scheduled Now";
+    }
+
+    // ========================================
+    // STEP 5C: UPDATE LAST SCANNED TIMESTAMP
+    // ========================================
+    await Student.findByIdAndUpdate(student._id, { lastScannedAt: now });
+    console.log(`🕒 Updated lastScannedAt for ${student.studentName}`);
+
     // Build enriched class schedule with teacher info
     let enrolledClasses = [];
     if (classDoc) {
@@ -353,6 +423,25 @@ exports.scanBarcode = async (req, res) => {
       success: true,
       status: verificationStatus,
       message: statusMessage,
+      // New structured scanResult for System Bridge
+      scanResult: {
+        statusColor, // 'GREEN' | 'RED' | 'ORANGE'
+        statusMessage: colorStatusMessage,
+        student: {
+          id: student.studentId,
+          name: student.studentName,
+          photoUrl: student.imageUrl || student.photo || `/api/students/${student._id}/placeholder-avatar`,
+          className: student.class,
+        },
+        financial: {
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          balance,
+          status: balance <= 0 ? "PAID" : "PENDING",
+        },
+        session: currentSession,
+      },
+      // Legacy format for backward compatibility
       student: {
         _id: student._id,
         studentId: student.studentId,
@@ -361,7 +450,7 @@ exports.scanBarcode = async (req, res) => {
         fatherName: student.fatherName,
         class: student.class,
         group: student.group,
-        photo: student.photo,
+        photo: student.imageUrl || student.photo,
         feeStatus: student.feeStatus,
         totalFee: student.totalFee,
         paidAmount: student.paidAmount,

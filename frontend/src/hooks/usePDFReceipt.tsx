@@ -48,6 +48,29 @@ function generateBarcodeDataUrl(value: string): string {
 }
 
 /**
+ * Load logo image and convert to Base64 Data URL
+ * This is needed because react-pdf cannot load images from public paths directly
+ */
+async function loadLogoAsDataUrl(): Promise<string> {
+  try {
+    const response = await fetch("/logo.png");
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error("Error loading logo:", error);
+    return "";
+  }
+}
+
+// Cache the logo data URL to avoid repeated fetches
+let cachedLogoDataUrl: string | null = null;
+
+/**
  * usePDFReceipt - Universal hook for generating PDF receipts
  *
  * Replaces the react-to-print implementation with @react-pdf/renderer.
@@ -130,6 +153,11 @@ export function usePDFReceipt() {
           console.warn("Barcode generation failed, proceeding without barcode");
         }
 
+        // Load logo as data URL if not cached
+        if (!cachedLogoDataUrl) {
+          cachedLogoDataUrl = await loadLogoAsDataUrl();
+        }
+
         console.log(`🔢 Barcode generated for: ${barcodeValue}`);
 
         // Create PDF document
@@ -138,6 +166,7 @@ export function usePDFReceipt() {
             student={data.student}
             receiptConfig={data.receiptConfig}
             barcodeDataUrl={barcodeDataUrl}
+            logoDataUrl={cachedLogoDataUrl}
           />
         );
 

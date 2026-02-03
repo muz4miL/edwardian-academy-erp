@@ -7,6 +7,9 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 
+// Academy Logo - using public path
+const LOGO_URL = "/logo.png";
+
 // Using built-in Helvetica font (no registration needed)
 
 // ==================== STYLES ====================
@@ -54,6 +57,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logo: {
+    width: 52,
+    height: 52,
+    objectFit: "contain",
+  },
+  logoFallback: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -382,6 +390,7 @@ interface ReceiptPDFProps {
   student: StudentPDFData;
   receiptConfig: ReceiptPDFConfig;
   barcodeDataUrl: string;
+  logoDataUrl?: string; // Optional logo data URL for PDF
 }
 
 // ==================== HELPERS ====================
@@ -408,11 +417,19 @@ const formatPhone = (phone: string | undefined): string => {
   return phone;
 };
 
+// Format class name - replace hyphens with spaces and clean up
+const formatClassName = (className: string | undefined): string => {
+  if (!className) return "-";
+  // Replace hyphens with spaces, collapse multiple spaces
+  return className.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+};
+
 // ==================== COMPONENT ====================
 export const ReceiptPDF = ({
   student,
   receiptConfig,
   barcodeDataUrl,
+  logoDataUrl, // Optional logo data URL
 }: ReceiptPDFProps) => {
   const balance = Math.max(
     0,
@@ -434,9 +451,11 @@ export const ReceiptPDF = ({
           <View style={styles.header}>
             {/* Left: Logo & Academy Name */}
             <View style={styles.headerLeft}>
-              <View style={styles.logo}>
-                <Text style={styles.logoText}>EA</Text>
-              </View>
+              {logoDataUrl ? (
+                <Image src={logoDataUrl} style={styles.logo} />
+              ) : (
+                <Image src="/logo.png" style={styles.logo} />
+              )}
               <View style={styles.academyInfo}>
                 <Text style={styles.academyName}>THE EDWARDIAN'S ACADEMY</Text>
                 <Text style={styles.contactText}>
@@ -498,7 +517,7 @@ export const ReceiptPDF = ({
                 <View style={styles.detailRow}>
                   <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Class:</Text>
-                    <Text style={styles.detailValue}>{student.class}</Text>
+                    <Text style={styles.detailValue}>{formatClassName(student.class)}</Text>
                   </View>
                   <View style={[styles.detailItem, { marginLeft: 16 }]}>
                     <Text style={styles.detailLabel}>Group:</Text>

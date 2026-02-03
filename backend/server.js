@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
+const path = require("path");
 
 dotenv.config();
 
@@ -38,6 +39,9 @@ app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
 
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Serve static files from uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Debug Middleware
 app.use((req, res, next) => {

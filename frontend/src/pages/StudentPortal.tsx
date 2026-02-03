@@ -72,6 +72,18 @@ interface StudentProfile {
   classRef?: any;
 }
 
+interface TimetableEntry {
+  entryId: string;
+  subject: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  room?: string;
+  teacherId?: {
+    name: string;
+  };
+}
+
 interface VideoItem {
   _id: string;
   title: string;
@@ -230,22 +242,62 @@ export function StudentPortal() {
   const videos: VideoItem[] = videosData?.data || [];
   const videosBySubject = videosData?.bySubject || {};
 
-  // Fetch student schedule/timetable
+  // Fetch student schedule/timetable (Role-Based)
   const { data: scheduleData } = useQuery({
-    queryKey: ["student-schedule", token],
+    queryKey: ["student-timetable", token],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE_URL}/api/student-portal/schedule`, {
+      const res = await fetch(`${API_BASE_URL}/api/timetable`, {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Failed to fetch schedule");
+      if (!res.ok) throw new Error("Failed to fetch timetable");
       return res.json();
     },
     enabled: isLoggedIn && !!token,
   });
 
-  const schedule = scheduleData?.data?.schedule || [];
-  const nextClass = scheduleData?.data?.nextClass;
+  const timetable: TimetableEntry[] = scheduleData?.data || [];
+
+  // Helper to find current/next session
+  const getCurrentSession = () => {
+    const now = new Date();
+    const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    const currentDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][pakistanTime.getDay()];
+    const currentMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+
+    const parseTime = (t: string) => {
+      const match = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!match) return 0;
+      let h = parseInt(match[1]);
+      if (match[3].toUpperCase() === "PM" && h !== 12) h += 12;
+      if (match[3].toUpperCase() === "AM" && h === 12) h = 0;
+      return h * 60 + parseInt(match[2]);
+    };
+
+    const todayClasses = timetable.filter(e => e.day === currentDay);
+    
+    let current = null;
+    let next = null;
+
+    for (const entry of todayClasses) {
+      const start = parseTime(entry.startTime);
+      const end = parseTime(entry.endTime);
+
+      if (currentMinutes >= start && currentMinutes <= end) {
+        current = entry;
+        break;
+      }
+      if (start > currentMinutes) {
+        if (!next || start < parseTime(next.startTime)) {
+          next = entry;
+        }
+      }
+    }
+
+    return { current, next };
+  };
+
+  const { current: currentSession, next: nextSession } = getCurrentSession();
 
   // Fetch exams for student's class
   const { data: examsData } = useQuery({
@@ -344,6 +396,32 @@ export function StudentPortal() {
       }
     }
     return video.url;
+  };
+
+  // --- UI HELPERS ---
+  const MagneticWrapper = ({ children }: { children: React.ReactNode }) => {
+    const x = useMotionValue(0);
+    const y = useMotionValue(0);
+    const mouseX = useSpring(x, { stiffness: 150, damping: 15 });
+    const mouseY = useSpring(y, { stiffness: 150, damping: 15 });
+
+    function onMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+      const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
+      const offsetX = event.clientX - left - width / 2;
+      const offsetY = event.clientY - top - height / 2;
+      x.set(offsetX / 8);
+      y.set(offsetY / 8);
+    }
+    function onMouseLeave() {
+      x.set(0);
+      y.set(0);
+    }
+
+    return (
+      <motion.div onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ x: mouseX, y: mouseY }} className="h-full w-full">
+        {children}
+      </motion.div>
+    );
   };
 
   // LOGIN SCREEN
@@ -501,9 +579,21 @@ export function StudentPortal() {
             <div className="bg-brand-gold h-2 opacity-80" />
             <div className="p-10 md:p-12">
               <div className="text-center space-y-8">
-                <div className="mx-auto w-24 h-24 rounded-[2rem] bg-brand-primary/50 border border-brand-gold/30 flex items-center justify-center relative group">
-                  <div className="absolute inset-0 rounded-[2rem] bg-brand-gold/10 animate-ping group-hover:animate-none transition-all" />
-                  <Hourglass className="h-10 w-10 text-brand-gold animate-pulse" />
+                <div className="mx-auto w-32 h-32 rounded-[2.5rem] bg-brand-primary/50 border border-brand-gold/30 flex items-center justify-center relative group overflow-hidden shadow-2xl">
+                  {profile.photo ? (
+                    <img 
+                      src={profile.photo} 
+                      alt={profile.name} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                  ) : (
+                    <img 
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.studentId}`} 
+                      alt={profile.name} 
+                      className="w-full h-full object-cover opacity-80"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-brand-gold/10 animate-pulse group-hover:animate-none transition-all pointer-events-none" />
                 </div>
 
                 <div className="space-y-4">
@@ -618,10 +708,16 @@ export function StudentPortal() {
                   variant="ghost"
                   className="flex items-center gap-3 hover:bg-white/5 h-14 px-4 rounded-2xl border border-transparent hover:border-white/10 transition-all"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-brand-gold flex items-center justify-center shadow-lg shadow-brand-gold/20">
-                    <span className="text-brand-primary text-base font-black">
-                      {profile?.name?.charAt(0) || "S"}
-                    </span>
+                  <div className="w-10 h-10 rounded-xl bg-brand-gold overflow-hidden flex items-center justify-center shadow-lg shadow-brand-gold/20">
+                    {profile?.photo ? (
+                      <img src={profile.photo} alt={profile.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <img 
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.studentId}`} 
+                        alt={profile?.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    )}
                   </div>
                   <div className="hidden md:block text-left">
                     <p className="text-sm font-bold text-white leading-none">
@@ -717,28 +813,35 @@ export function StudentPortal() {
                   </div>
                 </div>
 
-                {/* Next Class Card - Dynamic from Schedule API */}
+                {/* Session Card - Dynamic from Schedule API */}
                 <div className="mt-10 bg-brand-gold/10 border border-brand-gold/20 rounded-[2rem] p-8 transition-all hover:bg-brand-gold/15 group">
                   <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div className="w-16 h-16 rounded-2xl bg-brand-gold flex items-center justify-center shadow-xl shadow-brand-gold/20">
-                      <Clock className="h-8 w-8 text-brand-primary" />
+                    <div className={cn(
+                      "w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl",
+                      currentSession ? "bg-emerald-500 shadow-emerald-500/20" : "bg-brand-gold shadow-brand-gold/20"
+                    )}>
+                      {currentSession ? <Play className="h-8 w-8 text-white animate-pulse" /> : <Clock className="h-8 w-8 text-brand-primary" />}
                     </div>
                     <div className="flex-1 text-center md:text-left">
                       <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.3em] mb-1">
-                        Up Next in Your Schedule
+                        {currentSession ? "Live Now: Ongoing Session" : "Up Next in Your Schedule"}
                       </p>
-                      {nextClass ? (
+                      {currentSession || nextSession ? (
                         <div>
                           <p className="text-2xl font-serif font-bold text-white">
-                            {nextClass.dayFull}
-                            {nextClass.isToday && (
-                              <span className="ml-3 px-3 py-1 bg-brand-gold text-brand-primary rounded-full text-[10px] font-black uppercase tracking-widest">
-                                Today
+                            {(currentSession || nextSession)?.subject}
+                            {currentSession && (
+                              <span className="ml-3 px-3 py-1 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest">
+                                Active
                               </span>
                             )}
                           </p>
                           <p className="text-slate-400 font-medium mt-1">
-                            {nextClass.startTime} — {nextClass.endTime} <span className="mx-2 opacity-30">|</span> {nextClass.roomNumber}
+                            {(currentSession || nextSession)?.startTime} — {(currentSession || nextSession)?.endTime} 
+                            <span className="mx-2 opacity-30">|</span> 
+                            {(currentSession || nextSession)?.room || "TBA"} 
+                            <span className="mx-2 opacity-30">|</span>
+                            {(currentSession || nextSession)?.teacherId?.name || "Academic Expert"}
                           </p>
                         </div>
                       ) : (
@@ -747,7 +850,10 @@ export function StudentPortal() {
                         </p>
                       )}
                     </div>
-                    <Button className="bg-brand-gold hover:bg-brand-gold/90 text-brand-primary font-black uppercase tracking-widest h-14 px-8 rounded-2xl shadow-lg shadow-brand-gold/20">
+                    <Button 
+                      onClick={() => document.getElementById('timetable-section')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="bg-brand-gold hover:bg-brand-gold/90 text-brand-primary font-black uppercase tracking-widest h-14 px-8 rounded-2xl shadow-lg shadow-brand-gold/20"
+                    >
                       View Timetable
                     </Button>
                   </div>
@@ -1023,7 +1129,7 @@ export function StudentPortal() {
           </div>
 
           {/* Weekly Timetable - Full Width */}
-          <div className="md:col-span-12 mt-4">
+          <div id="timetable-section" className="md:col-span-12 mt-4">
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-3xl font-serif font-black text-white flex items-center gap-4">
                 <div className="p-3 rounded-2xl bg-brand-gold/10 border border-brand-gold/20">
@@ -1037,20 +1143,20 @@ export function StudentPortal() {
             <Card className="glass-ethereal border-white/10 rounded-[3rem] overflow-hidden">
               <CardContent className="p-8">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
+                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
                     (day) => {
-                      const daySchedule = schedule.find(
-                        (s: any) => s.day === day,
+                      const daySchedule = timetable.filter(
+                        (s) => s.day === day,
                       );
-                      const isScheduled = !!daySchedule;
+                      const isScheduled = daySchedule.length > 0;
                       const today = [
-                        "Sun",
-                        "Mon",
-                        "Tue",
-                        "Wed",
-                        "Thu",
-                        "Fri",
-                        "Sat",
+                        "Sunday",
+                        "Monday",
+                        "Tuesday",
+                        "Wednesday",
+                        "Thursday",
+                        "Friday",
+                        "Saturday",
                       ][new Date().getDay()];
                       const isToday = day === today;
 
@@ -1072,7 +1178,7 @@ export function StudentPortal() {
                               isScheduled ? "text-brand-gold" : "text-slate-500",
                             )}
                           >
-                            {day}
+                            {day.substring(0, 3)}
                             {isToday && (
                               <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />
                             )}
@@ -1080,35 +1186,25 @@ export function StudentPortal() {
 
                           {isScheduled ? (
                             <div className="space-y-4">
-                              <div>
-                                <p className="text-lg font-serif font-bold text-white leading-none">
-                                  {daySchedule.startTime}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">
-                                  Start Time
-                                </p>
-                              </div>
-                              
-                              <div className="pt-4 border-t border-brand-gold/10">
-                                <p className="text-sm font-bold text-brand-gold/80 flex items-center gap-2">
-                                  <Clock className="h-3 w-3" />
-                                  Room {daySchedule.roomNumber}
-                                </p>
-                                {daySchedule.subjects?.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mt-3">
-                                    {daySchedule.subjects
-                                      .slice(0, 2)
-                                      .map((subj: string) => (
-                                        <span
-                                          key={subj}
-                                          className="text-[9px] font-black uppercase tracking-widest px-2 py-1 bg-brand-gold/20 text-brand-gold rounded-lg"
-                                        >
-                                          {subj}
-                                        </span>
-                                      ))}
+                              {daySchedule.map((entry, idx) => (
+                                <div key={idx} className={cn(
+                                  "pt-3",
+                                  idx !== 0 && "border-t border-white/5"
+                                )}>
+                                  <p className="text-lg font-serif font-bold text-white leading-none">
+                                    {entry.startTime}
+                                  </p>
+                                  <p className="text-[10px] text-brand-gold/80 font-bold uppercase tracking-widest mt-1">
+                                    {entry.subject}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-2 opacity-60">
+                                    <Clock className="h-2.5 w-2.5 text-slate-400" />
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                                      Room {entry.room || "TBA"}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
+                                </div>
+                              ))}
                             </div>
                           ) : (
                             <div className="flex flex-col items-center justify-center h-24 opacity-20 group-hover:opacity-40 transition-opacity">
@@ -1150,32 +1246,34 @@ export function StudentPortal() {
                 onClick={() => setActiveSubject(null)}
                 className="cursor-pointer"
               >
-                <Card
-                  className={cn(
-                    "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden group",
-                    activeSubject === null
-                      ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
-                      : "border-white/10 hover:border-white/20",
-                  )}
-                >
-                  <CardContent className="p-8">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="w-14 h-14 rounded-2xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center group-hover:bg-brand-gold transition-colors duration-500">
-                        <span className="text-3xl group-hover:scale-110 transition-transform">📚</span>
+                <MagneticWrapper>
+                  <Card
+                    className={cn(
+                      "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden group h-full",
+                      activeSubject === null
+                        ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
+                        : "border-white/10 hover:border-white/20",
+                    )}
+                  >
+                    <CardContent className="p-8">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="w-14 h-14 rounded-2xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center group-hover:bg-brand-gold transition-colors duration-500 shadow-lg">
+                          <span className="text-3xl group-hover:scale-110 transition-transform">📚</span>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
+                        >
+                          {videos.length} Lectures
+                        </Badge>
                       </div>
-                      <Badge
-                        variant="secondary"
-                        className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
-                      >
-                        {videos.length} Lectures
-                      </Badge>
-                    </div>
-                    <h4 className="font-serif font-bold text-2xl text-white mb-2 group-hover:text-brand-gold transition-colors">
-                      Full Library
-                    </h4>
-                    <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Complete Academic Content</p>
-                  </CardContent>
-                </Card>
+                      <h4 className="font-serif font-bold text-2xl text-white mb-2 group-hover:text-brand-gold transition-colors">
+                        Full Library
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Complete Academic Content</p>
+                    </CardContent>
+                  </Card>
+                </MagneticWrapper>
               </motion.div>
 
               {/* Subject Cards */}
@@ -1193,40 +1291,45 @@ export function StudentPortal() {
                     onClick={() => setActiveSubject(subject.name)}
                     className="cursor-pointer group"
                   >
-                    <Card
-                      className={cn(
-                        "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden",
-                        activeSubject === subject.name
-                          ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
-                          : "border-white/10 hover:border-white/20",
-                        colors.glow,
-                      )}
-                    >
-                      <CardContent className="p-8 relative overflow-hidden">
-                        <div className="flex items-center justify-between mb-6 relative z-10">
-                          <div className="w-14 h-14 rounded-2xl bg-white/5 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:bg-brand-gold transition-colors duration-500">
-                            <span className="text-3xl group-hover:scale-110 transition-transform">{colors.icon}</span>
+                    <MagneticWrapper>
+                      <Card
+                        className={cn(
+                          "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden h-full",
+                          activeSubject === subject.name
+                            ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
+                            : "border-white/10 hover:border-white/20",
+                          colors.glow,
+                        )}
+                      >
+                        <CardContent className="p-8 relative overflow-hidden">
+                          <div className="flex items-center justify-between mb-6 relative z-10">
+                            <div className="w-14 h-14 rounded-2xl bg-white/5 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:bg-brand-gold transition-colors duration-500 shadow-lg">
+                              <span className="text-3xl group-hover:scale-110 transition-transform">{colors.icon}</span>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
+                            >
+                              {videosBySubject[subject.name]?.length || 0} Lectures
+                            </Badge>
                           </div>
-                          <Badge
-                            variant="secondary"
-                            className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
-                          >
-                            {videosBySubject[subject.name]?.length || 0} Lectures
-                          </Badge>
-                        </div>
-                        <h4 className="font-serif font-bold text-2xl text-white mb-2 relative z-10 group-hover:text-brand-gold transition-colors">
-                          {subject.name}
-                        </h4>
-                        <p className="text-xs text-brand-gold font-black uppercase tracking-widest relative z-10">
-                          Tuition Fee Paid
-                        </p>
+                          <h4 className="font-serif font-bold text-2xl text-white mb-2 relative z-10 group-hover:text-brand-gold transition-colors">
+                            {subject.name}
+                          </h4>
+                          <div className="flex items-center gap-2 relative z-10">
+                            <ShieldCheck className="h-3 w-3 text-emerald-400" />
+                            <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">
+                              Course Verified
+                            </p>
+                          </div>
 
-                        {/* Watermark Icon */}
-                        <div className="absolute -bottom-6 -right-6 opacity-[0.05] group-hover:opacity-10 transition-opacity pointer-events-none">
-                          <span className="text-9xl">{colors.icon}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
+                          {/* Watermark Icon */}
+                          <div className="absolute -bottom-6 -right-6 opacity-[0.05] group-hover:opacity-10 transition-opacity duration-700 pointer-events-none">
+                            <span className="text-9xl">{colors.icon}</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </MagneticWrapper>
                   </motion.div>
                 );
               })}
@@ -1254,12 +1357,12 @@ export function StudentPortal() {
             </div>
 
             {videosLoading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="animate-pulse">
-                    <div className="aspect-video bg-stone-800/50 rounded-xl mb-4" />
-                    <div className="h-4 bg-stone-800/50 rounded mb-2" />
-                    <div className="h-3 bg-stone-800/50 rounded w-2/3" />
+                  <div key={i} className="animate-pulse bg-white/5 border border-white/10 rounded-[2rem] p-6">
+                    <div className="aspect-video bg-white/10 rounded-2xl mb-6" />
+                    <div className="h-6 bg-white/10 rounded-lg mb-4 w-3/4" />
+                    <div className="h-4 bg-white/10 rounded-lg w-1/2" />
                   </div>
                 ))}
               </div>
@@ -1268,56 +1371,57 @@ export function StudentPortal() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-stone-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-12 text-center"
+                className="glass-ethereal border border-white/10 rounded-[3rem] p-16 text-center shadow-2xl"
               >
                 <div className="max-w-md mx-auto">
-                  <div className="mb-6">
-                    <div className="w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-amber-500/20 to-yellow-500/20 flex items-center justify-center border border-amber-500/20">
-                      <Timer className="h-16 w-16 text-amber-400" />
+                  <div className="mb-10">
+                    <div className="w-32 h-32 mx-auto rounded-[2.5rem] bg-brand-gold/10 flex items-center justify-center border border-brand-gold/20 relative">
+                      <div className="absolute inset-0 rounded-[2.5rem] bg-brand-gold/5 animate-ping" />
+                      <Timer className="h-16 w-16 text-brand-gold" />
                     </div>
                   </div>
-                  <h3 className="text-3xl font-bold text-white mb-2">
-                    You're All Caught Up! 🎉
+                  <h3 className="text-4xl font-serif font-black text-white mb-4">
+                    Excellence takes <span className="text-brand-gold">Time.</span>
                   </h3>
-                  <p className="text-stone-400 mb-6">
-                    No new lectures available for{" "}
-                    {activeSubject || "your subjects"} right now.
+                  <p className="text-slate-400 text-lg mb-10 leading-relaxed">
+                    You've mastered all current lectures. New elite content for{" "}
+                    <span className="text-brand-gold font-bold">{activeSubject || "your subjects"}</span> is being prepared.
                   </p>
 
                   {/* Next Session Countdown */}
-                  <div className="bg-gradient-to-br from-amber-500/10 to-yellow-500/5 border border-amber-500/20 rounded-xl p-6 inline-block">
-                    <p className="text-xs font-semibold text-amber-400 uppercase tracking-widest mb-2">
-                      Next Live Session
+                  <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 inline-block shadow-inner">
+                    <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.3em] mb-4">
+                      Academic Milestone
                     </p>
-                    <p className="text-2xl font-bold text-white mb-1">
-                      {profile?.session?.name || "Coming Soon"}
+                    <p className="text-2xl font-serif font-bold text-white mb-2">
+                      {profile?.session?.name || "Premium Session"}
                     </p>
+                    <p className="text-xs text-slate-500 font-medium italic mb-6">Status: Curating Premium Content</p>
                     <Button
-                      variant="ghost"
-                      className="mt-3 text-amber-400 hover:text-indigo-300 hover:bg-amber-500/10"
+                      variant="outline"
+                      className="border-brand-gold/30 hover:bg-brand-gold/10 text-brand-gold font-black uppercase tracking-widest px-8 rounded-xl h-12"
                     >
-                      Prepare Now
+                      View Syllabus
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               </motion.div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                 {videos.map((video, index) => (
                   <motion.div
                     key={video._id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    whileHover={{ y: -8, scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={{ y: -10 }}
                     onClick={() => handlePlayVideo(video)}
-                    className="cursor-pointer"
+                    className="cursor-pointer group"
                   >
-                    <Card className="overflow-hidden bg-stone-900/40 backdrop-blur-xl border border-white/10 hover:border-amber-500/50 transition-all duration-500 hover:shadow-2xl hover:shadow-amber-500/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]">
+                    <Card className="overflow-hidden glass-ethereal border border-white/10 group-hover:border-brand-gold/40 transition-all duration-500 rounded-[2.5rem] shadow-2xl h-full flex flex-col">
                       {/* Thumbnail */}
-                      <div className="relative aspect-video bg-stone-900 overflow-hidden group">
+                      <div className="relative aspect-video bg-brand-primary overflow-hidden">
                         {video.thumbnail ? (
                           <img
                             src={video.thumbnail}
@@ -1332,48 +1436,48 @@ export function StudentPortal() {
 
                         {/* Duration Badge */}
                         {video.formattedDuration && (
-                          <span className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md text-[10px] font-bold text-white px-2 py-1 rounded border border-white/10">
+                          <span className="absolute bottom-4 right-4 bg-brand-primary/90 backdrop-blur-md text-[10px] font-black text-white px-3 py-1.5 rounded-lg border border-white/10 tracking-widest">
                             {video.formattedDuration}
                           </span>
                         )}
 
                         {/* Play Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-16 h-16 rounded-full bg-amber-600 flex items-center justify-center shadow-2xl shadow-amber-500/50">
-                              <Play
-                                className="h-6 w-6 text-white transtone-x-0.5"
-                                fill="currentColor"
-                              />
-                            </div>
+                        <div className="absolute inset-0 bg-brand-primary/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-center justify-center">
+                          <div className="w-16 h-16 rounded-full bg-brand-gold flex items-center justify-center shadow-2xl shadow-brand-gold/40 transform scale-75 group-hover:scale-100 transition-transform duration-500">
+                            <Play className="h-6 w-6 text-brand-primary fill-current" />
                           </div>
                         </div>
 
                         {/* Subject Tag */}
-                        <div className="absolute top-2 left-2">
-                          <span className="px-2 py-1 rounded bg-amber-500 text-white text-[10px] font-bold uppercase tracking-widest shadow-lg">
+                        <div className="absolute top-4 left-4">
+                          <span className="px-3 py-1.5 rounded-lg bg-brand-gold text-brand-primary text-[10px] font-black uppercase tracking-widest shadow-xl">
                             {video.subjectName}
                           </span>
                         </div>
                       </div>
 
                       {/* Content */}
-                      <CardContent className="p-4">
-                        <h4 className="font-bold text-sm text-white mb-2 line-clamp-2 leading-snug">
-                          {video.title}
-                        </h4>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-stone-400">
-                            <Eye className="h-3.5 w-3.5" />
-                            <span className="text-xs font-mono">
-                              {video.viewCount}
-                            </span>
+                      <CardContent className="p-6 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-serif font-bold text-lg text-white mb-4 line-clamp-2 leading-tight group-hover:text-brand-gold transition-colors">
+                            {video.title}
+                          </h4>
+                          <div className="flex items-center justify-between mt-auto">
+                            <div className="flex items-center gap-2 text-slate-500">
+                              <Eye className="h-4 w-4" />
+                              <span className="text-[10px] font-black uppercase tracking-widest">
+                                {video.viewCount} Views
+                              </span>
+                            </div>
+                            {video.teacherName && (
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+                                <User className="h-3 w-3 text-brand-gold" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {video.teacherName.split(" ")[0]}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          {video.teacherName && (
-                            <span className="text-xs text-stone-400 truncate">
-                              {video.teacherName}
-                            </span>
-                          )}
                         </div>
                       </CardContent>
                     </Card>
