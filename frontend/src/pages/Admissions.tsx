@@ -125,6 +125,14 @@ const Admissions = () => {
   // TASK 4: Custom Fee Toggle (Lump Sum mode)
   const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
 
+  // WAQAR PROTOCOL V2: Session-Based Pricing
+  const [sessionPrice, setSessionPrice] = useState<number | null>(null);
+  const [isSessionPriceMode, setIsSessionPriceMode] = useState(false);
+  const [sessionPriceLoading, setSessionPriceLoading] = useState(false);
+
+  // Discount/Scholarship Calculation
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+
   // Modal states
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
@@ -236,6 +244,57 @@ const Admissions = () => {
     }
   }, [sessions]);
 
+  // WAQAR PROTOCOL V2: Fetch session price when session changes
+  useEffect(() => {
+    const fetchSessionPrice = async () => {
+      // Reset if no session selected
+      if (!selectedSessionId) {
+        setSessionPrice(null);
+        setIsSessionPriceMode(false);
+        setTotalFee("");
+        setDiscountAmount(0);
+        return;
+      }
+
+      setSessionPriceLoading(true);
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/config/session-price/${selectedSessionId}`,
+          { credentials: "include" }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data?.found && result.data?.price > 0) {
+            console.log("📊 Session price found:", result.data.price);
+            const price = result.data.price;
+            setSessionPrice(price);
+            setIsSessionPriceMode(true);
+            setTotalFee(String(price));
+            setDiscountAmount(0); // Reset discount when session changes
+          } else {
+            console.log("📊 No session price configured");
+            setSessionPrice(null);
+            setIsSessionPriceMode(false);
+            setTotalFee("");
+          }
+        } else {
+          console.error("Failed to fetch session price - response not ok");
+          setSessionPrice(null);
+          setIsSessionPriceMode(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch session price:", error);
+        setSessionPrice(null);
+        setIsSessionPriceMode(false);
+      } finally {
+        setSessionPriceLoading(false);
+      }
+    };
+
+    fetchSessionPrice();
+  }, [selectedSessionId]); // Only re-fetch when session changes
+
   // TASK 2: Dynamic fee sync for Quick Add when class changes
   useEffect(() => {
     if (quickClassId) {
@@ -307,13 +366,42 @@ const Admissions = () => {
       .reduce((sum, s) => sum + (s.fee || 0), 0);
   };
 
-  // Auto-update fee when subjects change (unless in custom mode)
+  // Auto-update fee when subjects change (unless in custom mode OR session price mode)
   useEffect(() => {
-    if (!isCustomFeeMode && selectedClassId && selectedSubjects.length > 0) {
+    // Skip if custom fee mode is enabled
+    if (isCustomFeeMode) return;
+
+    // Skip if session price mode is active (session pricing takes precedence)
+    if (isSessionPriceMode && sessionPrice && sessionPrice > 0) {
+      console.log("📊 Using session-based pricing:", sessionPrice);
+      return;
+    }
+
+    // Fall back to subject-based pricing
+    if (selectedClassId && selectedSubjects.length > 0) {
       const calculatedFee = calculateSubjectBasedFee();
       setTotalFee(String(calculatedFee));
     }
-  }, [selectedSubjects, selectedClassId, isCustomFeeMode, globalSubjectFees]);
+  }, [selectedSubjects, selectedClassId, isCustomFeeMode, globalSubjectFees, isSessionPriceMode, sessionPrice]);
+
+  // WAQAR PROTOCOL V2: Calculate Discount when Custom Fee is used
+  useEffect(() => {
+    if (isCustomFeeMode && sessionPrice && sessionPrice > 0) {
+      const customFee = Number(totalFee) || 0;
+      const discount = Math.max(0, sessionPrice - customFee);
+      setDiscountAmount(discount);
+    } else {
+      setDiscountAmount(0);
+    }
+  }, [totalFee, isCustomFeeMode, sessionPrice]);
+
+  // Reset to session rate when custom mode is disabled
+  useEffect(() => {
+    if (!isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0) {
+      setTotalFee(String(sessionPrice));
+      setDiscountAmount(0);
+    }
+  }, [isCustomFeeMode, isSessionPriceMode, sessionPrice]);
 
   // Reset class selection when group changes (cascading behavior)
   useEffect(() => {
@@ -459,19 +547,13 @@ const Admissions = () => {
 
     setFeeValidationError("");
 
-    // Calculate discount if custom fee mode is active
-    let discountAmount = 0;
-    if (isCustomFeeMode && selectedSubjects.length > 0) {
-      // Calculate standard total from subjects
-      const standardTotal = classSubjects
-        .filter((s) => selectedSubjects.includes(s.name))
-        .reduce((sum, s) => sum + (s.fee || 0), 0);
-
+    // Calculate discount if custom fee mode is active (Session-Based Pricing)
+    let calculatedDiscount = 0;
+    if (isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0) {
       const customTotal = Number(totalFee);
-      discountAmount = Math.max(0, standardTotal - customTotal);
-
+      calculatedDiscount = Math.max(0, sessionPrice - customTotal);
       console.log(
-        `🎓 Discount Calculation: Standard ${standardTotal} - Custom ${customTotal} = ${discountAmount}`,
+        `🎓 Session Discount Calculation: Session Rate ${sessionPrice} - Custom ${customTotal} = ${calculatedDiscount}`
       );
     }
 
@@ -508,7 +590,8 @@ const Admissions = () => {
       admissionDate: new Date(admissionDate),
       totalFee: Number(totalFee),
       paidAmount: Number(paidAmount) || 0,
-      discountAmount, // Include discount in payload
+      discountAmount: calculatedDiscount, // Session-based discount
+      sessionRate: isSessionPriceMode && sessionPrice ? sessionPrice : undefined, // Original session rate
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
       photo: photo || undefined,
@@ -762,19 +845,18 @@ const Admissions = () => {
                 </Select>
               </div>
 
-              {/* TASK 3: Subjects with Individual Fees from Database */}
+              {/* TASK 3: Subjects Selection (No Individual Prices - Session-Based Pricing) */}
               {selectedClassId && classSubjects.length > 0 && (
                 <div className="sm:col-span-2 space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Select Subjects</Label>
-                    {selectedSubjects.length > 0 && !isCustomFeeMode && (
-                      <span className="text-sm font-semibold text-green-600 flex items-center gap-1">
-                        <Calculator className="h-3.5 w-3.5" />
-                        Total: {calculatedFee.toLocaleString()} PKR
+                    {selectedSubjects.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
                       </span>
                     )}
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:grid-cols-3">
                     {classSubjects.map((subject) => {
                       const isSelected = selectedSubjects.includes(
                         subject.name,
@@ -783,42 +865,29 @@ const Admissions = () => {
                       return (
                         <div
                           key={subject.name}
-                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
-                            isSelected
-                              ? "border-sky-500 bg-sky-50"
-                              : "border-border hover:border-sky-300"
-                          }`}
+                          className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${isSelected
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-border hover:border-sky-300"
+                            }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() =>
-                                handleSubjectToggle(subject.name)
-                              }
-                            />
-                            <span
-                              className={`font-medium ${isSelected ? "text-sky-700" : "text-foreground"}`}
-                            >
-                              {subject.name}
-                            </span>
-                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() =>
+                              handleSubjectToggle(subject.name)
+                            }
+                          />
                           <span
-                            className={`text-sm font-semibold ${
-                              isSelected
-                                ? "text-green-600"
-                                : "text-muted-foreground"
-                            }`}
+                            className={`font-medium text-sm ${isSelected ? "text-sky-700" : "text-foreground"}`}
                           >
-                            {subject.fee.toLocaleString()} PKR
+                            {subject.name}
                           </span>
                         </div>
                       );
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Fee is calculated based on selected subjects. Select all
-                    subjects the student will study.
+                    Select subjects the student will study. Fee is based on session rate.
                   </p>
                 </div>
               )}
@@ -875,22 +944,34 @@ const Admissions = () => {
                 />
               </div>
 
-              {/* TASK 3 & 4: Custom Fee Toggle with Amber Warning */}
-              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/50">
-                <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Custom Fee (Lump Sum)</p>
-                    <p className="text-xs text-muted-foreground">
-                      Override calculated fee
-                    </p>
+              {/* WAQAR PROTOCOL V2: Custom Fee / Scholarship Toggle */}
+              {isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${isCustomFeeMode
+                  ? "border-amber-400 bg-amber-50"
+                  : "border-border bg-secondary/50"
+                  }`}>
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-medium">Apply Discount / Scholarship</p>
+                      <p className="text-xs text-muted-foreground">
+                        Session Rate: PKR {sessionPrice.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {isCustomFeeMode && discountAmount > 0 && (
+                      <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                        -{discountAmount.toLocaleString()} PKR
+                      </span>
+                    )}
+                    <Switch
+                      checked={isCustomFeeMode}
+                      onCheckedChange={setIsCustomFeeMode}
+                    />
                   </div>
                 </div>
-                <Switch
-                  checked={isCustomFeeMode}
-                  onCheckedChange={setIsCustomFeeMode}
-                />
-              </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -899,6 +980,16 @@ const Admissions = () => {
                     <span className="text-xs text-amber-600 flex items-center gap-1 font-medium">
                       <AlertCircle className="h-3 w-3" />
                       Manual Override Active
+                    </span>
+                  ) : isSessionPriceMode && sessionPrice && sessionPrice > 0 ? (
+                    <span className="text-xs text-emerald-600 flex items-center gap-1 font-medium animate-in fade-in duration-300">
+                      <Package className="h-3 w-3" />
+                      Session Rate: PKR {sessionPrice.toLocaleString()}
+                    </span>
+                  ) : sessionPriceLoading ? (
+                    <span className="text-xs text-slate-400 flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Checking session price...
                     </span>
                   ) : selectedSubjects.length > 0 ? (
                     <span className="text-xs text-sky-600 flex items-center gap-1">
@@ -914,16 +1005,22 @@ const Admissions = () => {
                     placeholder="0"
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
-                    readOnly={!isCustomFeeMode && selectedSubjects.length > 0}
-                    className={`${
-                      isCustomFeeMode
-                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                    readOnly={!isCustomFeeMode && (selectedSubjects.length > 0 || isSessionPriceMode)}
+                    className={`${isCustomFeeMode
+                      ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
+                      : isSessionPriceMode && sessionPrice && sessionPrice > 0
+                        ? "border-emerald-400 bg-emerald-50 cursor-not-allowed font-bold text-emerald-700"
                         : !isCustomFeeMode && selectedSubjects.length > 0
                           ? "border-sky-300 bg-sky-50 cursor-not-allowed"
                           : ""
-                    }`}
+                      }`}
                   />
-                  {!isCustomFeeMode && selectedSubjects.length > 0 && (
+                  {!isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <Package className="h-4 w-4 text-emerald-500" />
+                    </div>
+                  )}
+                  {!isCustomFeeMode && !isSessionPriceMode && selectedSubjects.length > 0 && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
                       <Lock className="h-4 w-4 text-sky-500" />
                     </div>
@@ -934,33 +1031,63 @@ const Admissions = () => {
                     </div>
                   )}
                 </div>
-                {/* Fee Breakdown */}
-                {selectedSubjects.length > 0 && (
-                  <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-100">
-                    <p className="text-xs font-medium text-muted-foreground mb-1">
-                      Fee Breakdown:
-                    </p>
-                    <div className="space-y-0.5">
-                      {classSubjects
-                        .filter((s) => selectedSubjects.includes(s.name))
-                        .map((s) => (
-                          <div
-                            key={s.name}
-                            className="flex justify-between text-xs"
-                          >
-                            <span className="text-slate-600">{s.name}</span>
-                            <span className="font-medium text-slate-700">
-                              {s.fee.toLocaleString()} PKR
-                            </span>
-                          </div>
-                        ))}
-                      <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-200 mt-1">
-                        <span className="text-foreground">Total</span>
-                        <span className="text-green-600">
-                          {calculatedFee.toLocaleString()} PKR
+                {/* Session Rate Summary with Discount */}
+                {isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
+                  <div className={`mt-2 p-3 rounded-lg border ${isCustomFeeMode && discountAmount > 0
+                      ? "bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200"
+                      : "bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200"
+                    }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className={`h-4 w-4 ${isCustomFeeMode && discountAmount > 0 ? "text-amber-600" : "text-emerald-600"}`} />
+                      <p className={`text-sm font-semibold ${isCustomFeeMode && discountAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
+                        {isCustomFeeMode && discountAmount > 0 ? "Scholarship / Discount Applied" : "Session-Based Pricing"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-600">Session Rate</span>
+                        <span className={`font-medium ${isCustomFeeMode && discountAmount > 0 ? "line-through text-slate-400" : "text-slate-700"}`}>
+                          PKR {sessionPrice.toLocaleString()}
                         </span>
                       </div>
+
+                      {isCustomFeeMode && discountAmount > 0 && (
+                        <>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-green-600 font-medium">Discount</span>
+                            <span className="font-bold text-green-600">
+                              -PKR {discountAmount.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-1.5 border-t border-amber-200">
+                            <span className="text-sm font-semibold text-amber-800">Final Fee</span>
+                            <span className="text-lg font-bold text-amber-700">
+                              PKR {Number(totalFee).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {!isCustomFeeMode && (
+                        <div className="flex justify-between items-center pt-1.5 border-t border-emerald-200">
+                          <span className="text-xs font-medium text-emerald-600">Total Fee</span>
+                          <span className="text-lg font-bold text-emerald-700">
+                            PKR {sessionPrice.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
+                  </div>
+                )}
+
+                {/* No Session Price Warning */}
+                {!isSessionPriceMode && selectedSessionId && !sessionPriceLoading && (
+                  <div className="mt-2 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                    <p className="text-xs text-yellow-700">
+                      <strong>Note:</strong> No session rate configured for this session.
+                      Please configure session pricing in Settings → Configuration.
+                    </p>
                   </div>
                 )}
               </div>

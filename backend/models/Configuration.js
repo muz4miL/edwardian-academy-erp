@@ -87,6 +87,30 @@ const configurationSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // ========================================
+    // SESSION-BASED PRICING (Waqar Protocol v2)
+    // ========================================
+    // Replaces subject-based pricing with a single session price
+    // Each session (e.g., "MDCAT 2026") has a fixed PKR rate
+    sessionPrices: [
+      {
+        sessionId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Session",
+          required: true,
+        },
+        sessionName: {
+          type: String,
+          trim: true,
+        },
+        price: {
+          type: Number,
+          default: 0,
+          min: [0, "Session price cannot be negative"],
+        },
+      },
+    ],
   },
   { timestamps: true },
 );

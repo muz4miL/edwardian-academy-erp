@@ -56,7 +56,8 @@ const COLORS = {
   slate: "#F8FAFC",
   gold: "#D97706",
   glass: "bg-white/70 backdrop-blur-xl border border-white/20 shadow-xl",
-  glassInput: "bg-white/40 border-b border-slate-300 focus:border-[#D97706] focus:border-b-2 rounded-none transition-all",
+  glassInput:
+    "bg-white/40 border-b border-slate-300 focus:border-[#D97706] focus:border-b-2 rounded-none transition-all",
 };
 
 // API Base URL
@@ -419,7 +420,8 @@ const Finance = () => {
     const mouseY = useSpring(y, { stiffness: 150, damping: 15 });
 
     function onMouseMove(event: React.MouseEvent<HTMLDivElement>) {
-      const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
+      const { left, top, width, height } =
+        event.currentTarget.getBoundingClientRect();
       const offsetX = event.clientX - left - width / 2;
       const offsetY = event.clientY - top - height / 2;
       x.set(offsetX / 8);
@@ -431,7 +433,12 @@ const Finance = () => {
     }
 
     return (
-      <motion.div onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ x: mouseX, y: mouseY }} className="h-full w-full">
+      <motion.div
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        style={{ x: mouseX, y: mouseY }}
+        className="h-full w-full"
+      >
         {children}
       </motion.div>
     );
@@ -455,7 +462,12 @@ const Finance = () => {
           <p className="text-lg font-medium text-[#0F172A]">
             Failed to load finance data
           </p>
-          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["finance"] })} className="bg-[#D97706] hover:bg-[#B45309]">
+          <Button
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: ["finance"] })
+            }
+            className="bg-[#D97706] hover:bg-[#B45309]"
+          >
             Retry
           </Button>
         </div>
@@ -472,21 +484,30 @@ const Finance = () => {
           animate="show"
           className="min-h-screen bg-[#F8FAFC] p-4 md:p-6 space-y-8 font-sans selection:bg-[#D97706] selection:text-white"
         >
-          
           {/* ============================================ */}
           {/* SECTION: PREMIUM INPUT BAR */}
           {/* ============================================ */}
-          <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
-            <div className={`${COLORS.glass} rounded-[2.5rem] p-2 md:p-3 flex flex-col md:flex-row items-center gap-4 shadow-2xl shadow-[#0F172A]/5 relative overflow-hidden`}>
+          <motion.div
+            variants={itemVariants}
+            className="w-full max-w-7xl mx-auto"
+          >
+            <div
+              className={`${COLORS.glass} rounded-[2.5rem] p-2 md:p-3 flex flex-col md:flex-row items-center gap-4 shadow-2xl shadow-[#0F172A]/5 relative overflow-hidden`}
+            >
               {/* Decorative Gold Glow */}
               <div className="absolute inset-0 bg-gradient-to-r from-[#D97706]/5 to-transparent pointer-events-none" />
-              
+
               <div className="hidden md:flex items-center justify-center w-12 h-12 rounded-full bg-[#0F172A] text-[#D97706] shrink-0 z-10 shadow-lg">
                 <Plus className="h-6 w-6" />
               </div>
 
-              <form onSubmit={(e) => { e.preventDefault(); handleAddExpense(); }} className="flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-3 z-10">
-                
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAddExpense();
+                }}
+                className="flex-1 w-full grid grid-cols-1 md:grid-cols-12 gap-3 z-10"
+              >
                 {/* Title */}
                 <div className="md:col-span-4 relative group">
                   <Input
@@ -499,7 +520,7 @@ const Finance = () => {
 
                 {/* Vendor */}
                 <div className="md:col-span-3 relative">
-                   <Input
+                  <Input
                     placeholder="Vendor"
                     value={vendorName}
                     onChange={(e) => setVendorName(e.target.value)}
@@ -509,7 +530,10 @@ const Finance = () => {
 
                 {/* Category */}
                 <div className="md:col-span-2">
-                  <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                  <Select
+                    value={expenseCategory}
+                    onValueChange={setExpenseCategory}
+                  >
                     <SelectTrigger className="h-12 bg-transparent border-b border-slate-300 focus:border-[#D97706] rounded-none text-[#0F172A] font-medium">
                       <SelectValue placeholder="Category" />
                     </SelectTrigger>
@@ -533,19 +557,25 @@ const Finance = () => {
                     onChange={(e) => setExpenseAmount(e.target.value)}
                     className={`${COLORS.glassInput} bg-transparent text-[#D97706] font-bold text-lg text-right placeholder:text-slate-400 h-12`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">PKR</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">
+                    PKR
+                  </span>
                 </div>
 
                 {/* Hidden Date Input (Defaulted to today) */}
                 <input type="hidden" value={dueDate} readOnly />
 
                 <div className="md:col-span-12 flex justify-end">
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     disabled={createExpenseMutation.isPending}
                     className="bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-full px-8 h-12 font-bold tracking-wide transition-all hover:scale-105 shadow-lg shadow-[#0F172A]/20 flex items-center gap-2"
                   >
-                    {createExpenseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {createExpenseMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
                     Add Expense
                   </Button>
                 </div>
@@ -559,12 +589,19 @@ const Finance = () => {
           {/* ============================================ */}
           {/* SECTION: LIVE LEDGER */}
           {/* ============================================ */}
-          <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
+          <motion.div
+            variants={itemVariants}
+            className="w-full max-w-7xl mx-auto"
+          >
             <div className={`${COLORS.glass} rounded-[2rem] p-6 md:p-8 mb-8`}>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                 <div>
-                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-[#0F172A]">Finance History</h2>
-                  <p className="text-slate-500 text-sm font-medium">Real-time transaction ledger</p>
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-[#0F172A]">
+                    Finance History
+                  </h2>
+                  <p className="text-slate-500 text-sm font-medium">
+                    Real-time transaction ledger
+                  </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   {isOwner && (
@@ -578,7 +615,10 @@ const Finance = () => {
                       />
                     </div>
                   )}
-                  <Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}>
+                  <Select
+                    value={historyTypeFilter}
+                    onValueChange={setHistoryTypeFilter}
+                  >
                     <SelectTrigger className="w-full sm:w-40 bg-white/40 border-slate-200 rounded-full">
                       <SelectValue placeholder="Filter" />
                     </SelectTrigger>
@@ -599,55 +639,100 @@ const Finance = () => {
                 </div>
               ) : !historyData || historyData.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                  <motion.div 
+                  <motion.div
                     animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
-                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                    transition={{
+                      duration: 4,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
                     className="w-24 h-24 rounded-full bg-gradient-to-b from-white to-slate-200 shadow-inner mb-6 relative"
                   >
-                     <div className="absolute inset-0 rounded-full border border-white/50 blur-sm" />
+                    <div className="absolute inset-0 rounded-full border border-white/50 blur-sm" />
                   </motion.div>
-                  <h3 className="font-serif text-xl text-slate-600">Ledger is Empty</h3>
-                  <p className="text-sm">Transactions will appear here in real-time.</p>
+                  <h3 className="font-serif text-xl text-slate-600">
+                    Ledger is Empty
+                  </h3>
+                  <p className="text-sm">
+                    Transactions will appear here in real-time.
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded-2xl border border-slate-100">
                   <Table>
                     <TableHeader className="bg-slate-50/80 backdrop-blur-sm">
                       <TableRow className="hover:bg-slate-50 border-b border-slate-200">
-                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Date</TableHead>
-                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Type</TableHead>
-                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Description</TableHead>
-                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">Amount</TableHead>
-                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">Status</TableHead>
-                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">Action</TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Date
+                        </TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Type
+                        </TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Description
+                        </TableHead>
+                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Amount
+                        </TableHead>
+                        <TableHead className="font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-right font-bold text-slate-600 uppercase text-xs tracking-wider">
+                          Action
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {historyData
                         .filter((item) => {
-                          if (historyTypeFilter !== "all" && item.type !== historyTypeFilter) return false;
+                          if (
+                            historyTypeFilter !== "all" &&
+                            item.type !== historyTypeFilter
+                          )
+                            return false;
                           if (isOwner && historySearch) {
                             const searchLower = historySearch.toLowerCase();
-                            return (item.collectedBy?.toLowerCase() || "").includes(searchLower) ||
-                                   (item.paidBy?.toLowerCase() || "").includes(searchLower);
+                            return (
+                              (item.collectedBy?.toLowerCase() || "").includes(
+                                searchLower,
+                              ) ||
+                              (item.paidBy?.toLowerCase() || "").includes(
+                                searchLower,
+                              )
+                            );
                           }
                           return true;
                         })
                         .slice(0, 50)
                         .map((item) => {
-                          const isPositive = ["INCOME", "PARTNER_WITHDRAWAL", "DIVIDEND"].includes(item.type);
-                          const amountColorClass = isPositive ? "text-emerald-600 font-bold" : "text-red-500 font-bold";
-                          const formattedDate = new Date(item.date).toLocaleDateString("en-PK", {
-                            day: "2-digit", month: "short", year: "numeric",
+                          const isPositive = [
+                            "INCOME",
+                            "PARTNER_WITHDRAWAL",
+                            "DIVIDEND",
+                          ].includes(item.type);
+                          const amountColorClass = isPositive
+                            ? "text-emerald-600 font-bold"
+                            : "text-red-500 font-bold";
+                          const formattedDate = new Date(
+                            item.date,
+                          ).toLocaleDateString("en-PK", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
                           });
 
                           const getTypeBadgeClass = (type: string) => {
                             switch (type) {
-                              case "INCOME": return "bg-emerald-100 text-emerald-700 border-emerald-200";
-                              case "EXPENSE": return "bg-red-100 text-red-700 border-red-200";
-                              case "DIVIDEND": return "bg-violet-100 text-violet-700 border-violet-200";
-                              case "DEBT": return "bg-amber-100 text-amber-700 border-amber-200";
-                              default: return "bg-slate-100 text-slate-700 border-slate-200";
+                              case "INCOME":
+                                return "bg-emerald-100 text-emerald-700 border-emerald-200";
+                              case "EXPENSE":
+                                return "bg-red-100 text-red-700 border-red-200";
+                              case "DIVIDEND":
+                                return "bg-violet-100 text-violet-700 border-violet-200";
+                              case "DEBT":
+                                return "bg-amber-100 text-amber-700 border-amber-200";
+                              default:
+                                return "bg-slate-100 text-slate-700 border-slate-200";
                             }
                           };
 
@@ -658,39 +743,61 @@ const Finance = () => {
                               animate={{ opacity: 1, x: 0 }}
                               className="hover:bg-white/50 transition-colors border-b border-slate-50 last:border-0 group"
                             >
-                              <TableCell className="whitespace-nowrap text-slate-600 font-medium py-4">{formattedDate}</TableCell>
+                              <TableCell className="whitespace-nowrap text-slate-600 font-medium py-4">
+                                {formattedDate}
+                              </TableCell>
                               <TableCell>
-                                <Badge className={`text-xs border-0 font-medium ${getTypeBadgeClass(item.type)}`}>
+                                <Badge
+                                  className={`text-xs border-0 font-medium ${getTypeBadgeClass(item.type)}`}
+                                >
                                   {item.type}
                                 </Badge>
                               </TableCell>
                               <TableCell className="max-w-xs text-slate-800 py-4">
-                                <div className="font-semibold">{item.description}</div>
+                                <div className="font-semibold">
+                                  {item.description}
+                                </div>
                                 {item.collectedBy && isOwner && (
-                                  <div className="text-xs text-slate-400 mt-1">by {item.collectedBy}</div>
+                                  <div className="text-xs text-slate-400 mt-1">
+                                    by {item.collectedBy}
+                                  </div>
                                 )}
                               </TableCell>
-                              <TableCell className={`text-right py-4 ${amountColorClass}`}>
-                                {isPositive ? "+" : "-"}PKR {item.amount.toLocaleString()}
+                              <TableCell
+                                className={`text-right py-4 ${amountColorClass}`}
+                              >
+                                {isPositive ? "+" : "-"}PKR{" "}
+                                {item.amount.toLocaleString()}
                               </TableCell>
                               <TableCell className="py-4">
-                                <Badge variant="outline" className="text-xs capitalize font-medium border-slate-200 text-slate-600">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs capitalize font-medium border-slate-200 text-slate-600"
+                                >
                                   {item.status}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right py-4">
                                 {isOwner && (
-                                  <button
+                                  <Button
                                     onClick={() => {
-                                      if (window.confirm(`Delete this transaction?\n\n${item.description}\n-PKR ${item.amount.toLocaleString()}`)) {
-                                        deleteTransactionMutation.mutate(item._id);
+                                      if (
+                                        window.confirm(
+                                          `Delete this transaction?\n\n${item.description}\n-PKR ${item.amount.toLocaleString()}`,
+                                        )
+                                      ) {
+                                        deleteTransactionMutation.mutate(
+                                          item._id,
+                                        );
                                       }
                                     }}
-                                    disabled={deleteTransactionMutation.isPending}
+                                    disabled={
+                                      deleteTransactionMutation.isPending
+                                    }
                                     className="text-slate-400 hover:text-red-500 transition-colors p-2 rounded-full hover:bg-red-50"
                                   >
                                     <Trash2 className="h-4 w-4" />
-                                  </button>
+                                  </Button>
                                 )}
                               </TableCell>
                             </motion.tr>
@@ -707,17 +814,22 @@ const Finance = () => {
           {/* SECTION: PENDING BILLS */}
           {/* ============================================ */}
           {pendingExpenses.length > 0 && (
-            <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto">
+            <motion.div
+              variants={itemVariants}
+              className="w-full max-w-7xl mx-auto"
+            >
               <div className={`${COLORS.glass} rounded-[2rem] p-8 mb-8`}>
-                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-serif text-2xl font-bold text-[#0F172A]">Pending Liabilities</h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-serif text-2xl font-bold text-[#0F172A]">
+                    Pending Liabilities
+                  </h2>
                   <span className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold uppercase tracking-wider border border-amber-200">
                     Total Due: PKR {pendingTotal.toLocaleString()}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pendingExpenses.map((expense) => (
-                    <motion.div 
+                    <motion.div
                       key={expense._id}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -729,25 +841,45 @@ const Finance = () => {
                     >
                       <div>
                         <div className="flex justify-between items-start mb-3">
-                          <h4 className="font-bold text-[#0F172A]">{expense.title}</h4>
+                          <h4 className="font-bold text-[#0F172A]">
+                            {expense.title}
+                          </h4>
                           {getStatusBadge(expense.status)}
                         </div>
                         <div className="space-y-2 text-sm text-slate-600 mb-4">
                           <div className="flex items-center gap-2">
-                            <Building2 className="h-3 w-3" /> {expense.vendorName}
+                            <Building2 className="h-3 w-3" />{" "}
+                            {expense.vendorName}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Calendar className="h-3 w-3" /> Due: {new Date(expense.dueDate).toLocaleDateString()}
+                            <Calendar className="h-3 w-3" /> Due:{" "}
+                            {new Date(expense.dueDate).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center justify-between pt-4 border-t border-black/5 mt-2">
-                        <span className="text-lg font-serif font-bold text-[#0F172A]">PKR {expense.amount.toLocaleString()}</span>
+                        <span className="text-lg font-serif font-bold text-[#0F172A]">
+                          PKR {expense.amount.toLocaleString()}
+                        </span>
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => markAsPaidMutation.mutate(expense._id)} disabled={markAsPaidMutation.isPending} className="bg-[#0F172A] hover:bg-[#1E293B] h-8 rounded-full text-xs">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              markAsPaidMutation.mutate(expense._id)
+                            }
+                            disabled={markAsPaidMutation.isPending}
+                            className="bg-[#0F172A] hover:bg-[#1E293B] h-8 rounded-full text-xs"
+                          >
                             Pay
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full" onClick={() => deleteExpenseMutation.mutate(expense._id)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full"
+                            onClick={() =>
+                              deleteExpenseMutation.mutate(expense._id)
+                            }
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -763,26 +895,57 @@ const Finance = () => {
           {/* SECTION: OWNER ANALYTICS (Refined) */}
           {/* ============================================ */}
           {showAnalytics && financeData && (
-            <motion.div variants={itemVariants} className="w-full max-w-7xl mx-auto space-y-8">
-              
+            <motion.div
+              variants={itemVariants}
+              className="w-full max-w-7xl mx-auto space-y-8"
+            >
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-10 w-1 bg-[#D97706] rounded-full" />
                 <div>
-                  <h3 className="font-serif text-3xl font-bold text-[#0F172A]">Owner Analytics</h3>
-                  <p className="text-sm text-slate-500 uppercase tracking-widest font-medium">Confidential Data</p>
+                  <h3 className="font-serif text-3xl font-bold text-[#0F172A]">
+                    Owner Analytics
+                  </h3>
+                  <p className="text-sm text-slate-500 uppercase tracking-widest font-medium">
+                    Confidential Data
+                  </p>
                 </div>
               </div>
 
               {/* KPI ORBS */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                  { title: "Total Collected", value: `PKR ${(totalIncome / 1000).toFixed(0)}K`, sub: `${collectionRate}% rate`, icon: TrendingUp, color: "text-emerald-600" },
-                  { title: "Teacher Liabilities", value: `PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`, sub: `${teacherPayroll.length} teachers`, icon: GraduationCap, color: "text-amber-600" },
-                  { title: "Total Expenses", value: `PKR ${(totalExpenses / 1000).toFixed(0)}K`, sub: "Operational", icon: TrendingDown, color: "text-red-500" },
-                  { title: "Net Position", value: `PKR ${(ownerNetRevenue / 1000).toFixed(0)}K`, sub: "Take-home", icon: Wallet, color: ownerNetRevenue > 0 ? "text-[#0F172A]" : "text-red-600" },
+                  {
+                    title: "Total Collected",
+                    value: `PKR ${(totalIncome / 1000).toFixed(0)}K`,
+                    sub: `${collectionRate}% rate`,
+                    icon: TrendingUp,
+                    color: "text-emerald-600",
+                  },
+                  {
+                    title: "Teacher Liabilities",
+                    value: `PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`,
+                    sub: `${teacherPayroll.length} teachers`,
+                    icon: GraduationCap,
+                    color: "text-amber-600",
+                  },
+                  {
+                    title: "Total Expenses",
+                    value: `PKR ${(totalExpenses / 1000).toFixed(0)}K`,
+                    sub: "Operational",
+                    icon: TrendingDown,
+                    color: "text-red-500",
+                  },
+                  {
+                    title: "Net Position",
+                    value: `PKR ${(ownerNetRevenue / 1000).toFixed(0)}K`,
+                    sub: "Take-home",
+                    icon: Wallet,
+                    color:
+                      ownerNetRevenue > 0 ? "text-[#0F172A]" : "text-red-600",
+                  },
                 ].map((kpi, i) => (
                   <MagneticWrapper key={i}>
-                    <motion.div 
+                    <motion.div
                       whileHover={{ y: -5 }}
                       className={`${COLORS.glass} rounded-3xl p-6 h-full flex flex-col justify-between group hover:border-[#D97706]/50 transition-colors cursor-default`}
                     >
@@ -791,16 +954,28 @@ const Finance = () => {
                           <kpi.icon className="h-5 w-5" />
                         </div>
                         {kpi.title === "Net Position" && (
-                           <InfoTooltip>
-                              <TooltipTrigger><HelpCircle className="h-4 w-4 text-slate-400 hover:text-[#D97706]" /></TooltipTrigger>
-                              <TooltipContent>Chemistry + Pool - Expenses</TooltipContent>
-                           </InfoTooltip>
+                          <InfoTooltip>
+                            <TooltipTrigger>
+                              <HelpCircle className="h-4 w-4 text-slate-400 hover:text-[#D97706]" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Chemistry + Pool - Expenses
+                            </TooltipContent>
+                          </InfoTooltip>
                         )}
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-500 mb-1">{kpi.title}</p>
-                        <h3 className={`text-2xl font-serif font-bold ${kpi.color}`}>{kpi.value}</h3>
-                        <p className="text-xs text-slate-400 mt-2 font-medium uppercase tracking-wide">{kpi.sub}</p>
+                        <p className="text-sm font-medium text-slate-500 mb-1">
+                          {kpi.title}
+                        </p>
+                        <h3
+                          className={`text-2xl font-serif font-bold ${kpi.color}`}
+                        >
+                          {kpi.value}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-2 font-medium uppercase tracking-wide">
+                          {kpi.sub}
+                        </p>
                       </div>
                     </motion.div>
                   </MagneticWrapper>
@@ -812,14 +987,23 @@ const Finance = () => {
                 <div className="p-6 rounded-2xl bg-red-50/80 border border-red-200 flex items-start gap-4 backdrop-blur-sm">
                   <AlertCircle className="h-6 w-6 text-red-600 mt-1 shrink-0" />
                   <div>
-                    <h4 className="font-bold text-red-900 text-lg">⚠️ Monthly Deficit Detected</h4>
-                    <p className="text-red-700 text-sm mt-1">Operational expenses have exceeded total revenue for this period. Immediate review recommended.</p>
+                    <h4 className="font-bold text-red-900 text-lg">
+                      ⚠️ Monthly Deficit Detected
+                    </h4>
+                    <p className="text-red-700 text-sm mt-1">
+                      Operational expenses have exceeded total revenue for this
+                      period. Immediate review recommended.
+                    </p>
                   </div>
                 </div>
               )}
 
               {/* Teacher Payroll */}
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 }}
+              >
                 <TeacherPayrollTable
                   teachers={teacherPayroll}
                   filter={teacherFilter}
@@ -828,7 +1012,6 @@ const Finance = () => {
                   isPaying={processPaymentMutation.isPending}
                 />
               </motion.div>
-
             </motion.div>
           )}
 

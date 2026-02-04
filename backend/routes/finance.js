@@ -16,6 +16,11 @@ const {
   processTeacherPayout,
   resetSystem,
   deleteTransaction,
+  // WAQAR PROTOCOL V2: Manual Payroll
+  processManualPayout,
+  updateManualBalance,
+  getTeacherPayrollData,
+  getPayoutHistory,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -126,6 +131,49 @@ router.post(
   protect,
   restrictTo("OWNER"),
   processTeacherPayout,
+);
+
+// ========================================
+// WAQAR PROTOCOL V2: MANUAL PAYROLL ROUTES
+// ========================================
+
+// @route   POST /api/finance/manual-payout
+// @desc    Process manual payout to user/teacher (creates EXPENSE transaction)
+// @access  Protected (OWNER only)
+router.post(
+  "/manual-payout",
+  protect,
+  restrictTo("OWNER"),
+  processManualPayout,
+);
+
+// @route   POST /api/finance/update-manual-balance
+// @desc    Set/adjust a user's manual balance (what is owed to them)
+// @access  Protected (OWNER only)
+router.post(
+  "/update-manual-balance",
+  protect,
+  restrictTo("OWNER"),
+  updateManualBalance,
+);
+
+// @route   GET /api/finance/teacher-payroll
+// @desc    Get payroll data for all teachers (balances, history)
+// @access  Protected (OWNER only)
+router.get(
+  "/teacher-payroll",
+  protect,
+  restrictTo("OWNER"),
+  getTeacherPayrollData,
+);
+
+// @route   GET /api/finance/payout-history/:userId
+// @desc    Get payout history for a specific user
+// @access  Protected (OWNER or self)
+router.get(
+  "/payout-history/:userId",
+  protect,
+  getPayoutHistory,
 );
 
 // @route   POST /api/finance/mark-expense-paid

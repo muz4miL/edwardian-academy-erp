@@ -41,6 +41,7 @@ import {
   GraduationCap,
   Receipt,
   Lock,
+  Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
@@ -107,6 +108,15 @@ const Configuration = () => {
   // --- Card 7: ETEA/MDCAT Config ---
   const [eteaCommission, setEteaCommission] = useState(3000);
   const [englishFixedSalary, setEnglishFixedSalary] = useState(80000);
+
+  // --- Card 9: Session Rate Master (Waqar Protocol v2) ---
+  const [sessionPrices, setSessionPrices] = useState<
+    Array<{ sessionId: string; sessionName: string; price: number }>
+  >([]);
+  const [sessions, setSessions] = useState<
+    Array<{ _id: string; sessionName: string; status: string }>
+  >([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -194,6 +204,11 @@ const Configuration = () => {
             setEteaCommission(data.eteaConfig.perStudentCommission ?? 3000);
             setEnglishFixedSalary(data.eteaConfig.englishFixedSalary ?? 80000);
           }
+
+          // Card 9: Session Rate Master (Waqar Protocol v2)
+          if (data.sessionPrices) {
+            setSessionPrices(data.sessionPrices);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch settings:", error);
@@ -262,6 +277,32 @@ const Configuration = () => {
     }
   }, [teacherShare, academyShare]);
 
+  // --- Fetch Sessions for Session Rate Master ---
+  useEffect(() => {
+    const fetchSessions = async () => {
+      if (!user || user.role !== "OWNER") return;
+
+      setSessionsLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setSessions(result.data);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch sessions:", error);
+      } finally {
+        setSessionsLoading(false);
+      }
+    };
+
+    fetchSessions();
+  }, [user]);
+
   // --- Instant Save Helper ---
   const saveConfigToBackend = async (
     subjects: Array<{ name: string; fee: number }>,
@@ -295,6 +336,8 @@ const Configuration = () => {
         academyAddress,
         academyPhone,
         defaultSubjectFees: subjects,
+        // Waqar Protocol v2: Session-Based Pricing
+        sessionPrices,
       };
 
       const response = await fetch(`${API_BASE_URL}/api/config`, {
@@ -315,6 +358,22 @@ const Configuration = () => {
       console.error("❌ Instant Save: Failed", error);
       throw error;
     }
+  };
+
+  // --- Update Session Price Helper (Waqar Protocol v2) ---
+  const updateSessionPrice = (sessionId: string, sessionName: string, price: number) => {
+    setSessionPrices((prev) => {
+      const existingIndex = prev.findIndex((sp) => sp.sessionId === sessionId);
+      if (existingIndex >= 0) {
+        // Update existing
+        const updated = [...prev];
+        updated[existingIndex] = { sessionId, sessionName, price };
+        return updated;
+      } else {
+        // Add new
+        return [...prev, { sessionId, sessionName, price }];
+      }
+    });
   };
 
   // --- Save Settings Handler ---
@@ -396,6 +455,8 @@ const Configuration = () => {
         academyAddress,
         academyPhone,
         defaultSubjectFees,
+        // Waqar Protocol v2: Session-Based Pricing
+        sessionPrices,
       };
 
       const response = await fetch(`${API_BASE_URL}/api/config`, {
@@ -1331,6 +1392,108 @@ const Configuration = () => {
                       </div>
                     ))}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* ========== CARD 9: Session Rate Master (Waqar Protocol v2) ========== */}
+              <Card className="shadow-md lg:col-span-2">
+                <CardHeader className="pb-4 border-b">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-orange-100">
+                      <Calendar className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        Session Rate Master
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                          v2
+                        </span>
+                      </CardTitle>
+                      <CardDescription>
+                        Set fixed fees per session (replaces subject-based pricing)
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-4">
+                  {sessionsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+                    </div>
+                  ) : sessions.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p>No sessions found.</p>
+                      <p className="text-sm">Create sessions first to set prices.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mb-4">
+                        <p className="text-sm text-amber-800">
+                          <strong>💡 Session Pricing:</strong> Instead of summing individual subject fees,
+                          set a single fixed price for each session. This price will be used during admissions.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {sessions.map((session) => {
+                          const currentPrice = sessionPrices.find(
+                            (sp) => sp.sessionId === session._id
+                          )?.price || 0;
+
+                          return (
+                            <div
+                              key={session._id}
+                              className={cn(
+                                "flex items-center justify-between p-4 rounded-lg border",
+                                session.status === "active"
+                                  ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-200"
+                                  : "bg-gray-50 border-gray-200"
+                              )}
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold text-sm">{session.sessionName}</p>
+                                  {session.status === "active" && (
+                                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                                      Active
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Session ID: {session._id.slice(-6)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="relative w-32">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium">
+                                    PKR
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    value={currentPrice || ""}
+                                    onChange={(e) => {
+                                      const newPrice = Number(e.target.value) || 0;
+                                      updateSessionPrice(session._id, session.sessionName, newPrice);
+                                    }}
+                                    placeholder="0"
+                                    className="h-10 pl-10 pr-2 text-right font-bold text-amber-700"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                        <p className="text-xs text-blue-700">
+                          <strong>Note:</strong> Click "Save All Changes" below to save session prices.
+                          These prices will automatically apply when admitting students to the corresponding session.
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>

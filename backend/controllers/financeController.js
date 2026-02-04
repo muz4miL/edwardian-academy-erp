@@ -176,11 +176,11 @@ exports.getDashboardStats = async (req, res) => {
       const chemistryFilter =
         userRole === "PARTNER"
           ? {
-              collectedBy: collectedByMatch,
-              category: "Chemistry",
-              status: "VERIFIED",
-              type: "INCOME",
-            }
+            collectedBy: collectedByMatch,
+            category: "Chemistry",
+            status: "VERIFIED",
+            type: "INCOME",
+          }
           : { category: "Chemistry", status: "VERIFIED", type: "INCOME" };
 
       const chemistryResult = await Transaction.aggregate([
@@ -1619,10 +1619,10 @@ exports.distributePool = async (req, res) => {
     const config = await Configuration.findOne();
     const distributionRatio = config?.poolDistribution ||
       config?.expenseSplit || {
-        waqar: 40,
-        zahid: 30,
-        saud: 30,
-      };
+      waqar: 40,
+      zahid: 30,
+      saud: 30,
+    };
 
     console.log(`📊 Pool Distribution Ratio:`, distributionRatio);
 
@@ -2334,6 +2334,323 @@ exports.processTeacherPayout = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to process teacher payout",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// WAQAR PROTOCOL V2: MANUAL TEACHER PAYROLL SYSTEM
+// =================================================
+
+/**
+ * Process Manual Payout to User/Teacher
+ * - Creates an EXPENSE transaction in the main Ledger
+ * - Updates the User's payoutHistory
+ * - Subtracts amount from their manualBalance
+ * 
+ * @route   POST /api/finance/manual-payout
+ * @access  Protected (OWNER only)
+ */
+exports.processManualPayout = async (req, res) => {
+  try {
+    const { userId, amount, type, note } = req.body;
+
+    // Security: Only OWNER can process payouts
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can process payouts.",
+      });
+    }
+
+    // Validate inputs
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID and valid amount are required.",
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const currentBalance = user.manualBalance || 0;
+    const payoutType = type || "Salary";
+
+    console.log(`\n=== MANUAL PAYOUT ===`);
+    console.log(`👤 Recipient: ${user.fullName || user.username}`);
+    console.log(`💰 Manual Balance: PKR ${currentBalance.toLocaleString()}`);
+    console.log(`💵 Payout Amount: PKR ${amount.toLocaleString()}`);
+    console.log(`📋 Type: ${payoutType}`);
+
+    // Create payout record in user's history
+    const payoutRecord = {
+      date: new Date(),
+      amount: amount,
+      type: payoutType,
+      note: note || "",
+      processedBy: req.user._id,
+    };
+
+    user.payoutHistory = user.payoutHistory || [];
+    user.payoutHistory.push(payoutRecord);
+
+    // Subtract from manual balance (can go negative for advances)
+    user.manualBalance = Math.max(0, currentBalance - amount);
+    await user.save();
+
+    console.log(`✅ New Balance: PKR ${user.manualBalance.toLocaleString()}`);
+
+    // Create an EXPENSE transaction in the main ledger
+    const transaction = await Transaction.create({
+      type: "EXPENSE",
+      category: "Salaries",
+      stream: "MANUAL_PAYOUT",
+      amount: amount,
+      description: `${payoutType} payout to ${user.fullName || user.username}${note ? ": " + note : ""}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      splitDetails: {
+        userId: user._id,
+        userName: user.fullName || user.username,
+        payoutType: payoutType,
+        isPaid: true,
+      },
+      date: new Date(),
+    });
+
+    console.log(`📝 Transaction Created: ${transaction._id}`);
+
+    // Notify the recipient
+    await Notification.create({
+      recipient: user._id,
+      message: `💰 You received a ${payoutType.toLowerCase()} payment of PKR ${amount.toLocaleString()}!${note ? " Note: " + note : ""}`,
+      type: "FINANCE",
+      relatedId: transaction._id.toString(),
+    });
+
+    // Calculate totals
+    const totalPaid = user.payoutHistory.reduce((sum, p) => sum + p.amount, 0);
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ ${payoutType} of PKR ${amount.toLocaleString()} to ${user.fullName || user.username} processed successfully!`,
+      data: {
+        paidAmount: amount,
+        payoutType: payoutType,
+        previousBalance: currentBalance,
+        newBalance: user.manualBalance,
+        totalPaid: totalPaid,
+        transactionId: transaction._id,
+        voucherId: transaction._id, // For payment voucher printing
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in processManualPayout:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process payout",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update Manual Balance (Waqar sets/adjusts what is owed)
+ * 
+ * @route   POST /api/finance/update-manual-balance
+ * @access  Protected (OWNER only)
+ */
+exports.updateManualBalance = async (req, res) => {
+  try {
+    const { userId, amount, note } = req.body;
+
+    // Security: Only OWNER can update balances
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can update manual balances.",
+      });
+    }
+
+    // Validate inputs
+    if (!userId || amount === undefined || amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID and valid amount (>= 0) are required.",
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const previousBalance = user.manualBalance || 0;
+    user.manualBalance = amount;
+    await user.save();
+
+    console.log(`\n=== MANUAL BALANCE UPDATE ===`);
+    console.log(`👤 User: ${user.fullName || user.username}`);
+    console.log(`💰 Previous: PKR ${previousBalance.toLocaleString()}`);
+    console.log(`💵 New: PKR ${amount.toLocaleString()}`);
+    console.log(`📝 Note: ${note || "N/A"}`);
+
+    // Notify the user about balance update
+    if (amount !== previousBalance) {
+      await Notification.create({
+        recipient: user._id,
+        message: `📊 Your balance has been ${amount > previousBalance ? "increased" : "adjusted"} to PKR ${amount.toLocaleString()}.${note ? " Note: " + note : ""}`,
+        type: "FINANCE",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Balance updated to PKR ${amount.toLocaleString()} for ${user.fullName || user.username}`,
+      data: {
+        userId: user._id,
+        userName: user.fullName || user.username,
+        previousBalance,
+        newBalance: amount,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in updateManualBalance:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update balance",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get Teacher Payroll Data (for Finance UI)
+ * 
+ * @route   GET /api/finance/teacher-payroll
+ * @access  Protected (OWNER only)
+ */
+exports.getTeacherPayrollData = async (req, res) => {
+  try {
+    // Security: Only OWNER can view payroll data
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can view payroll data.",
+      });
+    }
+
+    // Get all teachers (users with TEACHER role)
+    const teachers = await User.find({ role: "TEACHER", isActive: true })
+      .select("fullName username manualBalance payoutHistory profileImage phone")
+      .sort({ fullName: 1 })
+      .lean();
+
+    // Format the data
+    const payrollData = teachers.map((teacher) => {
+      const totalPaid = (teacher.payoutHistory || []).reduce(
+        (sum, p) => sum + (p.amount || 0),
+        0
+      );
+      const lastPayout = teacher.payoutHistory?.length > 0
+        ? teacher.payoutHistory[teacher.payoutHistory.length - 1]
+        : null;
+
+      return {
+        _id: teacher._id,
+        name: teacher.fullName || teacher.username,
+        profileImage: teacher.profileImage,
+        phone: teacher.phone,
+        manualBalance: teacher.manualBalance || 0,
+        totalPaid: totalPaid,
+        payoutCount: (teacher.payoutHistory || []).length,
+        lastPayout: lastPayout
+          ? {
+            date: lastPayout.date,
+            amount: lastPayout.amount,
+            type: lastPayout.type,
+          }
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: payrollData.length,
+      data: payrollData,
+    });
+  } catch (error) {
+    console.error("❌ Error in getTeacherPayrollData:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get payroll data",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get Payout History for a specific User
+ * 
+ * @route   GET /api/finance/payout-history/:userId
+ * @access  Protected (OWNER or self)
+ */
+exports.getPayoutHistory = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Security: OWNER can view any, others can only view their own
+    if (req.user.role !== "OWNER" && req.user._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. You can only view your own payout history.",
+      });
+    }
+
+    const user = await User.findById(userId)
+      .select("fullName username manualBalance payoutHistory")
+      .populate("payoutHistory.processedBy", "fullName username")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const totalPaid = (user.payoutHistory || []).reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        userId: user._id,
+        name: user.fullName || user.username,
+        manualBalance: user.manualBalance || 0,
+        totalPaid: totalPaid,
+        history: (user.payoutHistory || []).reverse(), // Most recent first
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getPayoutHistory:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get payout history",
       error: error.message,
     });
   }

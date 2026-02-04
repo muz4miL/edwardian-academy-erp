@@ -2,7 +2,7 @@ const Configuration = require("../models/Configuration");
 
 exports.getConfig = async (req, res) => {
   // Allow OWNER, OPERATOR, PARTNER, and TEACHER to access configuration
-  const allowedRoles = ["OWNER", "OPERATOR", "PARTNER", "TEACHER"];
+  const allowedRoles = ["OWNER", "OPERATOR", "PARTNER", "TEACHER", "STAFF"];
   if (!allowedRoles.includes(req.user.role)) {
     return res.status(403).json({
       success: false,
@@ -19,8 +19,8 @@ exports.getConfig = async (req, res) => {
     console.log("Fetched config:", {
       _id: config._id,
       defaultSubjectFeesCount: config.defaultSubjectFees?.length || 0,
-      defaultSubjectFees: config.defaultSubjectFees,
-      allConfigKeys: Object.keys(config.toObject?.() || config),
+      sessionPricesCount: config.sessionPrices?.length || 0,
+      sessionPrices: config.sessionPrices,
     });
     console.log("==================================");
 
@@ -35,7 +35,7 @@ exports.updateConfig = async (req, res) => {
   if (req.user.role !== "OWNER")
     return res.status(403).json({ success: false });
 
-  const { expenseSplit, defaultSubjectFees, tuitionPoolSplit, eteaPoolSplit } =
+  const { expenseSplit, defaultSubjectFees, tuitionPoolSplit, eteaPoolSplit, sessionPrices } =
     req.body;
 
   if (
@@ -51,7 +51,7 @@ exports.updateConfig = async (req, res) => {
   if (
     tuitionPoolSplit &&
     tuitionPoolSplit.waqar + tuitionPoolSplit.zahid + tuitionPoolSplit.saud !==
-      100
+    100
   ) {
     return res
       .status(400)
@@ -76,6 +76,10 @@ exports.updateConfig = async (req, res) => {
       count: defaultSubjectFees?.length || 0,
       subjects: defaultSubjectFees,
     });
+    console.log("Session prices received:", {
+      count: sessionPrices?.length || 0,
+      sessions: sessionPrices,
+    });
 
     const config = await Configuration.findOneAndUpdate({}, req.body, {
       new: true,
@@ -84,15 +88,77 @@ exports.updateConfig = async (req, res) => {
 
     // ✅ DEBUG: Log saved data
     console.log("✅ Config saved successfully:");
-    console.log("Saved config subject fees:", {
-      count: config.defaultSubjectFees?.length || 0,
-      subjects: config.defaultSubjectFees,
+    console.log("Saved config:", {
+      subjectFeesCount: config.defaultSubjectFees?.length || 0,
+      sessionPricesCount: config.sessionPrices?.length || 0,
     });
     console.log("========================");
 
     res.status(200).json({ success: true, data: config });
   } catch (err) {
     console.error("❌ Error updating config:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ========================================
+// SESSION PRICE LOOKUP (Waqar Protocol v2)
+// ========================================
+// Returns the fee for a specific session
+exports.getSessionPrice = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        message: "Session ID is required",
+      });
+    }
+
+    const config = await Configuration.findOne();
+    if (!config) {
+      return res.status(404).json({
+        success: false,
+        message: "Configuration not found",
+      });
+    }
+
+    // Find the session price
+    const sessionPrice = config.sessionPrices?.find(
+      (sp) => sp.sessionId?.toString() === sessionId
+    );
+
+    if (!sessionPrice) {
+      console.log(`📊 No session price found for sessionId: ${sessionId}`);
+      return res.status(200).json({
+        success: true,
+        data: {
+          sessionId,
+          price: 0,
+          found: false,
+          message: "No price configured for this session",
+        },
+      });
+    }
+
+    console.log(`✅ Session price found:`, {
+      sessionId,
+      sessionName: sessionPrice.sessionName,
+      price: sessionPrice.price,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId,
+        sessionName: sessionPrice.sessionName,
+        price: sessionPrice.price,
+        found: true,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Error fetching session price:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

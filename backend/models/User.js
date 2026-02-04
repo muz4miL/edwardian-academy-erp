@@ -110,6 +110,42 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Teacher",
     },
+    // ========================================
+    // Manual Payroll System (Waqar Protocol v2)
+    // ========================================
+    // Amount owed to the teacher (set manually by admin)
+    manualBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // History of all payouts made to this user
+    payoutHistory: [
+      {
+        date: {
+          type: Date,
+          default: Date.now,
+        },
+        amount: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        type: {
+          type: String,
+          enum: ["Salary", "Advance", "Bonus", "Adjustment"],
+          default: "Salary",
+        },
+        note: {
+          type: String,
+          trim: true,
+        },
+        processedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
