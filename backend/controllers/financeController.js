@@ -784,9 +784,12 @@ exports.createSharedExpense = async (req, res) => {
         relatedId: expense._id.toString(),
       });
 
-      // Update partner's debtToOwner
+      // Update partner's debtToOwner and expenseDebt
       await User.findByIdAndUpdate(share.partner, {
-        $inc: { debtToOwner: share.amount },
+        $inc: { 
+          debtToOwner: share.amount,
+          expenseDebt: share.amount 
+        },
       });
       console.log(
         `📊 Added PKR ${share.amount} to ${share.partnerName}'s debt`,
@@ -2862,3 +2865,394 @@ exports.deleteTransaction = async (req, res) => {
     });
   }
 };
+
+// ========================================
+// PARTNER RETENTION CLOSING SYSTEM
+// ========================================
+
+// @desc    Partner Daily Closing with Manual Handover
+// @route   POST /api/finance/daily-closing
+// @access  Partners Only
+exports.dailyClosing = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { handoverAmount, notes } = req.body;
+
+    // 1. Find partner/user
+    const partner = await User.findById(userId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 2. Calculate total collection from today's FLOATING transactions
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const floatingTransactions = await Transaction.find({
+      collectedBy: userId,
+      status: "FLOATING",
+      type: "INCOME",
+      createdAt: { $gte: today, $lt: tomorrow },
+    });
+
+    const totalCollection = floatingTransactions.reduce(
+      (sum, t) => sum + t.amount,
+      0
+    );
+
+    if (totalCollection === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No collections to close today",
+      });
+    }
+
+    // 3. Calculate partner's share (simplified: assume 10% for now, adjust as needed)
+    // TODO: Implement proper share calculation based on revenue split logic
+    const partnerSharePercentage = partner.role === "PARTNER" ? 10 : 0;
+    const partnerShare = Math.round((totalCollection * partnerSharePercentage) / 100);
+
+    // 4. Validate handover amount
+    const handover = Number(handoverAmount);
+    if (isNaN(handover) || handover < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid handover amount",
+      });
+    }
+
+    if (handover > totalCollection) {
+      return res.status(400).json({
+        success: false,
+        message: "Handover amount cannot exceed total collection",
+      });
+    }
+
+    // 5. Create daily closing record with PENDING_VERIFICATION status
+    const dailyClosing = await DailyClosing.create({
+      partnerId: userId,
+      date: new Date(),
+      totalAmount: totalCollection,
+      partnerShare: partnerShare,
+      handoverAmount: handover,
+      status: "PENDING_VERIFICATION",
+      notes: notes || `Daily closing - Handing ${handover} to owner`,
+    });
+
+    // 6. Update partner's totalCash
+    partner.totalCash = totalCollection;
+    await partner.save();
+
+    // 7. Create notification for owner
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        message: `${partner.fullName} closed day: PKR ${totalCollection.toLocaleString()}. Handing you PKR ${handover.toLocaleString()}.`,
+        type: "FINANCE",
+        relatedId: dailyClosing._id.toString(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Day closed successfully. Awaiting verification from owner.`,
+      data: {
+        closingId: dailyClosing._id,
+        totalCollection,
+        partnerShare,
+        handoverAmount: handover,
+        status: "PENDING_VERIFICATION",
+      },
+    });
+  } catch (error) {
+    console.error("Daily Closing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Owner Verifies Partner's Daily Closing
+// @route   POST /api/finance/verify-closing
+// @access  Owner Only
+exports.verifyClosing = async (req, res) => {
+  try {
+    const { closingId } = req.body;
+    const ownerId = req.user._id;
+
+    // 1. Find the closing record
+    const closing = await DailyClosing.findById(closingId).populate('partnerId');
+    if (!closing) {
+      return res.status(404).json({
+        success: false,
+        message: "Closing record not found",
+      });
+    }
+
+    if (closing.status !== "PENDING_VERIFICATION") {
+      return res.status(400).json({
+        success: false,
+        message: "This closing has already been processed",
+      });
+    }
+
+    // 2. Find owner and partner
+    const owner = await User.findById(ownerId);
+    const partner = await User.findById(closing.partnerId);
+
+    if (!owner || !partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 3. Update owner's totalCash with handover amount
+    owner.totalCash = (owner.totalCash || 0) + closing.handoverAmount;
+    await owner.save();
+
+    // 4. Clear partner's totalCash (they've handed it over)
+    partner.totalCash = 0;
+    await partner.save();
+
+    // 5. Update all FLOATING transactions to VERIFIED
+    const today = new Date(closing.date);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    await Transaction.updateMany(
+      {
+        collectedBy: closing.partnerId,
+        status: "FLOATING",
+        type: "INCOME",
+        createdAt: { $gte: today, $lt: tomorrow },
+      },
+      {
+        $set: {
+          status: "VERIFIED",
+          closingId: closing._id,
+        },
+      }
+    );
+
+    // 6. Update closing record
+    closing.status = "VERIFIED";
+    closing.verifiedBy = ownerId;
+    closing.verifiedAt = new Date();
+    await closing.save();
+
+    // 7. Notify partner
+    await Notification.create({
+      recipient: closing.partnerId,
+      message: `Your daily closing of PKR ${closing.handoverAmount.toLocaleString()} has been verified by ${owner.fullName}.`,
+      type: "FINANCE",
+      relatedId: closing._id.toString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Closing verified. PKR ${closing.handoverAmount.toLocaleString()} added to your account.`,
+      data: {
+        closingId: closing._id,
+        handoverAmount: closing.handoverAmount,
+        partnerRetained: closing.totalAmount - closing.handoverAmount,
+        ownerNewBalance: owner.totalCash,
+      },
+    });
+  } catch (error) {
+    console.error("Verify Closing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Clear Partner's Expense Debt
+// @route   POST /api/finance/clear-debt
+// @access  Owner Only
+exports.clearDebt = async (req, res) => {
+  try {
+    const { partnerId, amount } = req.body;
+    const ownerId = req.user._id;
+
+    // 1. Validate inputs
+    if (!partnerId || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner ID and amount are required",
+      });
+    }
+
+    const debtAmount = Number(amount);
+    if (isNaN(debtAmount) || debtAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    // 2. Find partner and owner
+    const partner = await User.findById(partnerId);
+    const owner = await User.findById(ownerId);
+
+    if (!partner || !owner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 3. Check if partner has enough debt
+    if ((partner.expenseDebt || 0) < debtAmount) {
+      return res.status(400).json({
+        success: false,
+        message: `Partner only owes PKR ${partner.expenseDebt || 0}`,
+      });
+    }
+
+    // 4. Clear the debt
+    partner.expenseDebt = (partner.expenseDebt || 0) - debtAmount;
+    await partner.save();
+
+    // 5. Add to owner's totalCash
+    owner.totalCash = (owner.totalCash || 0) + debtAmount;
+    await owner.save();
+
+    // 6. Create transaction record
+    await Transaction.create({
+      type: "INCOME",
+      category: "Debt Payment",
+      amount: debtAmount,
+      description: `Expense debt payment from ${partner.fullName}`,
+      collectedBy: ownerId,
+      status: "VERIFIED",
+      metadata: {
+        partnerId: partner._id,
+        partnerName: partner.fullName,
+        debtCleared: debtAmount,
+        remainingDebt: partner.expenseDebt,
+      },
+    });
+
+    // 7. Notify partner
+    await Notification.create({
+      recipient: partnerId,
+      message: `Your expense debt payment of PKR ${debtAmount.toLocaleString()} has been recorded. Remaining debt: PKR ${partner.expenseDebt.toLocaleString()}`,
+      type: "FINANCE",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Debt cleared: PKR ${debtAmount.toLocaleString()}`,
+      data: {
+        amountCleared: debtAmount,
+        remainingDebt: partner.expenseDebt,
+        partnerName: partner.fullName,
+      },
+    });
+  } catch (error) {
+    console.error("Clear Debt Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Get Pending Closings for Owner Verification
+// @route   GET /api/finance/pending-closings
+// @access  Owner Only
+exports.getPendingClosings = async (req, res) => {
+  try {
+    const pendingClosings = await DailyClosing.find({
+      status: "PENDING_VERIFICATION",
+    })
+      .populate("partnerId", "fullName username")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: pendingClosings.length,
+      data: pendingClosings,
+    });
+  } catch (error) {
+    console.error("Get Pending Closings Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Get Partner Finance Dashboard Stats
+// @route   GET /api/finance/partner-dashboard
+// @access  Partners Only
+exports.getPartnerDashboard = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const partner = await User.findById(userId);
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Calculate today's collections
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayTransactions = await Transaction.find({
+      collectedBy: userId,
+      status: "FLOATING",
+      type: "INCOME",
+      createdAt: { $gte: today, $lt: tomorrow },
+    });
+
+    const totalCashInDrawer = todayTransactions.reduce(
+      (sum, t) => sum + t.amount,
+      0
+    );
+
+    // Calculate partner share (simplified: 10%)
+    const partnerSharePercentage = partner.role === "PARTNER" ? 10 : 0;
+    const calculatedShare = Math.round((totalCashInDrawer * partnerSharePercentage) / 100);
+
+    // Get pending closings
+    const pendingClosings = await DailyClosing.find({
+      partnerId: userId,
+      status: "PENDING_VERIFICATION",
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalCashInDrawer,
+        calculatedShare,
+        suggestedHandover: totalCashInDrawer - calculatedShare,
+        expenseDebt: partner.expenseDebt || 0,
+        pendingClosings,
+        walletBalance: partner.walletBalance,
+      },
+    });
+  } catch (error) {
+    console.error("Partner Dashboard Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+

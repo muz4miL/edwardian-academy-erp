@@ -27,7 +27,8 @@ const Login = () => {
             // Redirect to dashboard on success
             navigate('/');
         } catch (err: any) {
-            setError(err.message || 'Invalid credentials. Please try again.');
+            console.error('Login error:', err);
+            setError(err.message || 'Failed to connect to server. Please check if backend is running.');
         } finally {
             setIsSubmitting(false);
         }

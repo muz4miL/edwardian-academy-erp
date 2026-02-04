@@ -25,10 +25,10 @@ connectDB();
 
 const app = express();
 
-// Middleware
+// Middleware - Allow all origins for Codespaces compatibility
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: true, // Allow all origins
     credentials: true,
   }),
 );

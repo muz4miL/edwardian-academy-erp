@@ -1,5 +1,17 @@
-// API Base URL
-const API_BASE_URL = 'http://localhost:5000/api';
+// API Base URL - Auto-detect Codespaces or localhost
+const getApiBaseUrl = () => {
+  // Check if we're in GitHub Codespaces
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    // Extract codespace name from current URL and construct backend URL
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev/api`;
+  }
+  // Fallback to localhost for local development
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // ========================================
 // Authentication API Endpoints

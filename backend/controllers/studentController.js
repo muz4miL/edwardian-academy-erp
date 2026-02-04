@@ -5,6 +5,7 @@ const Teacher = require("../models/Teacher");
 const Class = require("../models/Class");
 const Configuration = require("../models/Configuration");
 const Notification = require("../models/Notification");
+const User = require("../models/User");
 
 // Minimal revenue helper inline to avoid import errors
 const calculateRevenueSplit = async ({ fee, teacherRole, config }) => {
@@ -88,10 +89,25 @@ exports.getStudent = async (req, res) => {
   }
 };
 
+// Helper: Calculate Fee Status based on strict logic
+const calculateFeeStatus = (paidAmount, totalFee) => {
+  if (paidAmount === 0) return "Pending";
+  if (paidAmount > 0 && paidAmount < totalFee) return "Partial";
+  if (paidAmount >= totalFee) return "Paid";
+  return "Pending"; // default fallback
+};
+
 // CREATE student
 exports.createStudent = async (req, res) => {
   try {
-    const student = await Student.create(req.body);
+    const studentData = { ...req.body };
+    
+    // Calculate fee status on admission
+    const paidAmount = studentData.paidAmount || 0;
+    const totalFee = studentData.totalFee || 0;
+    studentData.feeStatus = calculateFeeStatus(paidAmount, totalFee);
+    
+    const student = await Student.create(studentData);
     res.status(201).json({ success: true, data: student });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -181,10 +197,9 @@ exports.collectFee = async (req, res) => {
       notes,
     });
 
-    // Update student
+    // Update student with strict fee status calculation
     student.paidAmount = (student.paidAmount || 0) + Number(amount);
-    if (student.paidAmount >= student.totalFee) student.feeStatus = "paid";
-    else if (student.paidAmount > 0) student.feeStatus = "partial";
+    student.feeStatus = calculateFeeStatus(student.paidAmount, student.totalFee || 0);
     await student.save();
 
     // Update teacher balance
@@ -231,6 +246,20 @@ exports.collectFee = async (req, res) => {
         teacherName: teacher?.name,
       },
     });
+
+    // Update collector's totalCash for partner retention system
+    if (req.user?._id && !split.isPartner) {
+      // Only for non-partner teachers (FLOATING status)
+      try {
+        const collector = await User.findById(req.user._id);
+        if (collector && collector.role === "PARTNER") {
+          collector.totalCash = (collector.totalCash || 0) + Number(amount);
+          await collector.save();
+        }
+      } catch (e) {
+        console.log("TotalCash update skipped:", e.message);
+      }
+    }
 
     // Handle pool distribution if academy gets share
     if (split.poolRevenue > 0 && !split.isPartner) {

@@ -11,6 +11,11 @@ const {
   markExpenseAsPaid,
   confirmExpenseReceipt,
   getPendingExpenseConfirmations,
+  dailyClosing,
+  verifyClosing,
+  clearDebt,
+  getPendingClosings,
+  getPartnerDashboard,
 } = require("../controllers/financeController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -90,5 +95,34 @@ router.get(
   authorize("OWNER"),
   getPendingExpenseConfirmations,
 );
+
+// ========================================
+// PARTNER RETENTION CLOSING ROUTES
+// ========================================
+
+// @route   POST /api/finance/daily-closing
+// @desc    Partner closes day with manual handover amount
+// @access  Partners only
+router.post("/daily-closing", authorize("PARTNER"), dailyClosing);
+
+// @route   POST /api/finance/verify-closing
+// @desc    Owner verifies partner's daily closing
+// @access  Owner only
+router.post("/verify-closing", authorize("OWNER"), verifyClosing);
+
+// @route   POST /api/finance/clear-debt
+// @desc    Owner marks partner's expense debt as paid
+// @access  Owner only
+router.post("/clear-debt", authorize("OWNER"), clearDebt);
+
+// @route   GET /api/finance/pending-closings
+// @desc    Get all pending closings awaiting verification
+// @access  Owner only
+router.get("/pending-closings", authorize("OWNER"), getPendingClosings);
+
+// @route   GET /api/finance/partner-dashboard
+// @desc    Get partner's dashboard stats (cash drawer, share, debt)
+// @access  Partners only
+router.get("/partner-dashboard", authorize("PARTNER"), getPartnerDashboard);
 
 module.exports = router;

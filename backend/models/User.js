@@ -65,6 +65,18 @@ const userSchema = new mongoose.Schema(
       floating: { type: Number, default: 0 }, // Cash currently in pocket
       verified: { type: Number, default: 0 }, // Cash verified/banked
     },
+    // Partner Retention System - Total cash in drawer (collection of the day)
+    totalCash: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Expense Debt - Amount owed to owner for their share of expenses
+    expenseDebt: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     // Partner Debt Tracking - Amount owed TO the owner (Sir Waqar)
     // Used when owner pays expenses out-of-pocket and partners owe their share
     debtToOwner: {
