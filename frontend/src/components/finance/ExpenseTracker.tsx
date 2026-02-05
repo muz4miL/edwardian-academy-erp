@@ -75,8 +75,15 @@ interface ExpenseTrackerProps {
   isLoading: boolean;
 }
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev`;
+  }
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 export const ExpenseTracker = ({
   expenses,

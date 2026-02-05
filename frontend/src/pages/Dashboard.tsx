@@ -42,8 +42,16 @@ import {
   HelpCircle,
 } from "lucide-react";
 
-// API Base URL
-const API_BASE_URL = "http://localhost:5000/api";
+// API Base URL - Auto-detect Codespaces
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev/api`;
+  }
+  return 'http://localhost:5000/api';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 // ========================================
 // 👑 OWNER DASHBOARD COMPONENT

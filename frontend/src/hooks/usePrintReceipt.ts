@@ -2,7 +2,15 @@ import { useState, useRef, useCallback } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev`;
+  }
+  return import.meta.env.VITE_API_URL || 'http://localhost:5000';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 interface StudentData {
   _id: string;
