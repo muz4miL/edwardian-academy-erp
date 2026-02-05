@@ -91,6 +91,13 @@ const classSchema = new mongoose.Schema({
     trim: true,
   },
 
+  // Academic Session - Reference to the Session model
+  session: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Session",
+    required: true,
+  },
+
   // ========== SCHEDULE FIELDS ==========
 
   // Days of the week this class runs

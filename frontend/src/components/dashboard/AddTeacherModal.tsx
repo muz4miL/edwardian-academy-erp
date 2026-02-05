@@ -47,7 +47,7 @@ interface AddTeacherModalProps {
   defaultFixedSalary?: string;
 }
 
-type CompensationType = "percentage" | "fixed" | "hybrid";
+type CompensationType = "percentage" | "fixed";
 
 export const AddTeacherModal = ({
   open,
@@ -242,23 +242,6 @@ export const AddTeacherModal = ({
       compensation.academyShare = null;
       compensation.baseSalary = null;
       compensation.profitShare = null;
-    } else if (compType === "hybrid") {
-      const base = toNumberOrNull(baseSalary);
-      const profit = toNumberOrNull(bonusPercent);
-      if (base === null || profit === null) {
-        toast({
-          title: "⚠️ Missing Hybrid Details",
-          description:
-            "Please provide both base salary and profit share percentage.",
-          variant: "destructive",
-        });
-        return;
-      }
-      compensation.baseSalary = base;
-      compensation.profitShare = profit;
-      compensation.teacherShare = null;
-      compensation.academyShare = null;
-      compensation.fixedSalary = null;
     }
 
     const teacherData = {
@@ -492,26 +475,20 @@ export const AddTeacherModal = ({
                     onValueChange={(value) =>
                       setCompType(value as CompensationType)
                     }
-                    className="grid grid-cols-3 gap-3"
+                    className="grid grid-cols-2 gap-3"
                   >
                     {[
                       {
                         value: "percentage",
                         label: "Percentage",
                         icon: "%",
-                        desc: "Split revenue",
+                        desc: "70/30 Split",
                       },
                       {
                         value: "fixed",
-                        label: "Fixed",
+                        label: "Fixed Salary",
                         icon: "PKR",
-                        desc: "Monthly salary",
-                      },
-                      {
-                        value: "hybrid",
-                        label: "Hybrid",
-                        icon: "⚡",
-                        desc: "Base + Bonus",
+                        desc: "Monthly amount",
                       },
                     ].map((type) => (
                       <div key={type.value}>
@@ -628,43 +605,6 @@ export const AddTeacherModal = ({
                             onChange={(e) => setFixedSalary(e.target.value)}
                             className="pl-9 h-11 font-medium"
                           />
-                        </div>
-                      </div>
-                    )}
-
-                    {compType === "hybrid" && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium text-gray-500">
-                            Base Salary
-                          </Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                              type="number"
-                              placeholder="0"
-                              value={baseSalary}
-                              onChange={(e) => setBaseSalary(e.target.value)}
-                              className="pl-9 h-11 font-medium"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium text-gray-500">
-                            Bonus %
-                          </Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
-                              %
-                            </span>
-                            <Input
-                              type="number"
-                              placeholder="0"
-                              value={bonusPercent}
-                              onChange={(e) => setBonusPercent(e.target.value)}
-                              className="pl-9 h-11 font-medium"
-                            />
-                          </div>
                         </div>
                       </div>
                     )}
