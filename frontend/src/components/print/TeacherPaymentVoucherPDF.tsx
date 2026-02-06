@@ -7,350 +7,170 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 
-// ==================== ENHANCED STYLES ====================
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
-  // Page container - A5 Landscape for voucher
   page: {
-    width: "210mm",
-    height: "148mm",
-    padding: 16,
+    padding: 20,
     fontFamily: "Helvetica",
-    fontSize: 10,
-    backgroundColor: "#ffffff",
+    fontSize: 11,
+    backgroundColor: "#FFFFFF",
+    color: "#333333",
   },
 
-  // Enhanced golden border container with shadow effect
-  container: {
-    border: "4pt solid #DAA520",
-    borderRadius: 12,
-    padding: 0,
-    height: "100%",
-    position: "relative",
-    backgroundColor: "#FEFDF8",
+  // ==================== HEADER (COMPACT INLINE) ====================
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center", // Center the entire header row
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottom: "2pt solid #DAA520",
+  },
+
+  logoContainer: {
+    width: 50,
+    height: 50,
+    marginRight: 15, // Space between logo and text
+    backgroundColor: "#FFFBF0",
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: "#DAA520",
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
   },
 
-  // Inner decorative border
-  innerContainer: {
-    margin: 8,
-    border: "1pt solid #F4E4A6",
-    borderRadius: 8,
-    padding: 20,
-    height: "calc(100% - 16px)",
-    position: "relative",
-    backgroundColor: "transparent",
-  },
-
-  // Enhanced corner decorations with rounded corners
-  cornerTL: {
-    position: "absolute",
-    top: 2,
-    left: 2,
-    width: 32,
-    height: 32,
-    borderTop: "4pt solid #B8860B",
-    borderLeft: "4pt solid #B8860B",
-    borderTopLeftRadius: 8,
-  },
-  cornerTR: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    width: 32,
-    height: 32,
-    borderTop: "4pt solid #B8860B",
-    borderRight: "4pt solid #B8860B",
-    borderTopRightRadius: 8,
-  },
-  cornerBL: {
-    position: "absolute",
-    bottom: 2,
-    left: 2,
-    width: 32,
-    height: 32,
-    borderBottom: "4pt solid #B8860B",
-    borderLeft: "4pt solid #B8860B",
-    borderBottomLeftRadius: 8,
-  },
-  cornerBR: {
-    position: "absolute",
-    bottom: 2,
-    right: 2,
-    width: 32,
-    height: 32,
-    borderBottom: "4pt solid #B8860B",
-    borderRight: "4pt solid #B8860B",
-    borderBottomRightRadius: 8,
-  },
-
-  // Watermark background
-  watermark: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    transform: "translate(-50%, -50%) rotate(-45deg)",
-    fontSize: 48,
-    color: "#F4E4A6",
-    fontWeight: "bold",
-    letterSpacing: 8,
-    zIndex: -1,
-    opacity: 0.1,
-  },
-
-  // ==================== ENHANCED HEADER ====================
-  header: {
-    alignItems: "center",
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottom: "2pt solid #DAA520",
-  },
-  logoContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 30,
-    padding: 8,
-    marginBottom: 12,
-    border: "2pt solid #DAA520",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  logo: {
-    width: 56,
-    height: 56,
+  logoImage: {
+    width: 40,
+    height: 40,
     objectFit: "contain",
   },
-  academyName: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#8B4513",
-    letterSpacing: 2.5,
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  academySubtitle: {
-    fontSize: 10,
-    color: "#B8860B",
-    letterSpacing: 1.2,
-    marginBottom: 14,
-    textTransform: "uppercase",
-  },
-  voucherTitle: {
-    backgroundColor: "linear-gradient(135deg, #DAA520 0%, #B8860B 100%)",
-    color: "#FFFFFF",
-    paddingVertical: 8,
-    paddingHorizontal: 32,
-    borderRadius: 6,
-    fontSize: 14,
-    fontWeight: "bold",
-    letterSpacing: 3,
-    textTransform: "uppercase",
-    border: "1pt solid #B8860B",
+
+  headerText: {
+    alignItems: "flex-start",
   },
 
-  // Enhanced voucher number with background
-  voucherNumber: {
-    alignItems: "flex-end",
-    marginBottom: 18,
-  },
-  voucherBox: {
-    backgroundColor: "#F8F6F0",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 4,
-    border: "1pt solid #E6D68A",
-  },
-  voucherLabel: {
-    fontSize: 9,
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
     color: "#8B4513",
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-  },
-  voucherValue: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#654321",
-    fontFamily: "Courier",
+    textTransform: "uppercase",
     letterSpacing: 1,
   },
 
-  // ==================== ENHANCED BODY ====================
-  bodySection: {
-    backgroundColor: "#FEFCF5",
-    borderRadius: 8,
-    padding: 20,
-    marginBottom: 24,
-    border: "1pt solid #F4E4A6",
-    shadowColor: "#DAA520",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+  subtitle: {
+    fontSize: 9,
+    color: "#DAA520",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: 1,
   },
 
-  // Enhanced row styling
+  // ==================== VOUCHER BADGE ====================
+  voucherBadge: {
+    backgroundColor: "#DAA520",
+    color: "#FFFFFF",
+    textAlign: "center",
+    paddingVertical: 5,
+    marginBottom: 15,
+    textTransform: "uppercase",
+    fontWeight: "bold",
+    letterSpacing: 2,
+    fontSize: 11,
+    borderRadius: 2,
+  },
+
+  // ==================== INFO GRID ====================
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottom: "1pt dashed #E6D68A",
-  },
-  rowNoBorder: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    marginBottom: 8, // Reduced from 10 to save space
   },
 
-  // Enhanced info blocks
-  infoBlock: {
+  col: {
     flex: 1,
-    paddingRight: 16,
   },
-  infoBlockRight: {
+
+  colRight: {
     flex: 1,
     alignItems: "flex-end",
-    paddingLeft: 16,
-  },
-  infoLabel: {
-    fontSize: 9,
-    color: "#B8860B",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#654321",
-    lineHeight: 1.2,
-  },
-  infoSubValue: {
-    fontSize: 11,
-    color: "#8B7765",
-    marginTop: 3,
-    fontStyle: "italic",
-  },
-  dateValue: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#654321",
-  },
-
-  // Enhanced amount section with golden background
-  amountSection: {
-    alignItems: "center",
-    paddingVertical: 20,
-    marginBottom: 16,
-    borderBottom: "2pt solid #DAA520",
-    backgroundColor: "#FFF8DC",
-    borderRadius: 8,
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    border: "1pt solid #F4E4A6",
-  },
-  amountLabel: {
-    fontSize: 10,
-    color: "#B8860B",
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  amountValue: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "#228B22",
-    letterSpacing: 2,
-    textAlign: "center",
-    textShadow: "1px 1px 2px rgba(0,0,0,0.1)",
-  },
-
-  // Enhanced balance and description
-  balanceLabel: {
-    fontSize: 9,
-    color: "#B8860B",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  balanceValue: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  balancePositive: {
-    color: "#D2691E",
-  },
-  balanceZero: {
-    color: "#228B22",
-  },
-  descriptionValue: {
-    fontSize: 12,
-    color: "#654321",
-    fontStyle: "italic",
     textAlign: "right",
   },
 
-  // ==================== ENHANCED SIGNATURE ====================
-  signatureSection: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-    paddingTop: 20,
-    borderTop: "2pt solid #DAA520",
-  },
-  signatureBlock: {
-    width: "42%",
-    alignItems: "center",
-  },
-  signatureLine: {
-    width: "100%",
-    borderTop: "2pt solid #8B4513",
-    paddingTop: 8,
-    marginBottom: 4,
-  },
-  signatureLabel: {
-    fontSize: 10,
-    color: "#8B4513",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  signatureNote: {
+  label: {
     fontSize: 8,
     color: "#B8860B",
-    textAlign: "center",
-    marginTop: 2,
-    fontStyle: "italic",
+    textTransform: "uppercase",
+    marginBottom: 2,
+    fontWeight: "bold",
   },
 
-  // ==================== ENHANCED FOOTER ====================
-  footer: {
-    marginTop: "auto",
-    paddingTop: 16,
-    borderTop: "1pt dashed #E6D68A",
-    alignItems: "center",
-    backgroundColor: "#FEFDF8",
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  footerText: {
-    fontSize: 8,
-    color: "#A0895C",
-    textAlign: "center",
-    lineHeight: 1.3,
-  },
-  securityText: {
-    fontSize: 7,
-    color: "#B8860B",
-    textAlign: "center",
-    marginTop: 4,
+  value: {
+    fontSize: 12, // Reduced from 13 to save space
+    color: "#000000",
     fontWeight: "bold",
-    letterSpacing: 0.5,
+  },
+
+  // ==================== AMOUNT BOX ====================
+  amountContainer: {
+    backgroundColor: "#FFFBF0",
+    borderWidth: 1,
+    borderColor: "#F4E4A6",
+    padding: 12, // Reduced from 15
+    borderRadius: 4,
+    alignItems: "center",
+    marginVertical: 12, // Reduced from 15
+  },
+
+  amountLabel: {
+    fontSize: 9,
+    color: "#8B4513",
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+
+  amountValue: {
+    fontSize: 26, // Reduced from 28
+    fontWeight: "bold",
+    color: "#228B22",
+  },
+
+  // ==================== BOTTOM DETAILS ====================
+  detailsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8, // Reduced
+    paddingBottom: 8, // Reduced
+    borderBottom: "1pt dashed #DAA520",
+  },
+
+  balanceText: {
+    fontSize: 13, // Reduced from 14
+    fontWeight: "bold",
+    color: "#D32F2F",
+  },
+
+  // ==================== SIGNATURES ====================
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between", // Accountant on left, Receiver on right
+    marginTop: 12, // Reduced
+  },
+
+  signatureBlock: {
+    width: "40%",
+  },
+
+  signatureLine: {
+    borderTop: "1pt solid #8B4513",
+    paddingTop: 4,
+    marginTop: 20, // Reduced from 25
+    textAlign: "center",
+    fontSize: 9,
+    color: "#8B4513",
+    fontWeight: "bold",
+    textTransform: "uppercase",
   },
 });
 
@@ -370,7 +190,7 @@ interface TeacherPaymentVoucherPDFProps {
   logoDataUrl?: string;
 }
 
-// ==================== HELPER FUNCTIONS ====================
+// ==================== HELPERS ====================
 const formatCurrency = (amount: number): string => {
   return `PKR ${amount.toLocaleString("en-PK")}`;
 };
@@ -379,180 +199,101 @@ const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
   return date.toLocaleDateString("en-GB", {
     day: "2-digit",
-    month: "2-digit",
+    month: "short",
     year: "numeric",
   });
 };
 
-const capitalizeSubject = (subject: string): string => {
-  const subjectMap: Record<string, string> = {
-    biology: "Biology",
-    chemistry: "Chemistry",
-    physics: "Physics",
-    math: "Mathematics",
-    english: "English",
-  };
-  return (
-    subjectMap[subject] || subject.charAt(0).toUpperCase() + subject.slice(1)
-  );
-};
-
-// ==================== ENHANCED PDF COMPONENT ====================
+// ==================== COMPONENT ====================
 export const TeacherPaymentVoucherPDF = ({
   data,
   logoDataUrl,
 }: TeacherPaymentVoucherPDFProps) => {
   return (
     <Document>
-      <Page size={[595.28, 419.53]} style={styles.page}>
-        <View style={styles.container}>
-          {/* Enhanced corner decorations */}
-          <View style={styles.cornerTL} />
-          <View style={styles.cornerTR} />
-          <View style={styles.cornerBL} />
-          <View style={styles.cornerBR} />
-
-          {/* Background watermark */}
-          <Text style={styles.watermark}>EDWARDIAN ACADEMY</Text>
-
-          {/* Inner container with second border */}
-          <View style={styles.innerContainer}>
-            {/* Enhanced Header */}
-            <View style={styles.header}>
-              <View style={styles.logoContainer}>
-                {logoDataUrl ? (
-                  <Image src={logoDataUrl} style={styles.logo} />
-                ) : (
-                  <View
-                    style={{
-                      ...styles.logo,
-                      backgroundColor: "#F8F6F0",
-                      borderRadius: 28,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 24,
-                        color: "#DAA520",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      📚
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.academyName}>EDWARDIAN ACADEMY</Text>
-              <Text style={styles.academySubtitle}>
-                Excellence in Education Leadership
+      <Page size="A5" orientation="landscape" style={styles.page}>
+        {/* --- HEADER (INLINE, CENTERED) --- */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            {logoDataUrl ? (
+              <Image src={logoDataUrl} style={styles.logoImage} />
+            ) : (
+              <Text
+                style={{ fontSize: 20, fontWeight: "bold", color: "#DAA520" }}
+              >
+                EA
               </Text>
-              <Text style={styles.voucherTitle}>PAYMENT VOUCHER</Text>
-            </View>
+            )}
+          </View>
 
-            {/* Enhanced voucher number */}
-            <View style={styles.voucherNumber}>
-              <View style={styles.voucherBox}>
-                <Text style={styles.voucherLabel}>
-                  Voucher No:{" "}
-                  <Text style={styles.voucherValue}>{data.voucherId}</Text>
-                </Text>
-              </View>
-            </View>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Edwardian Academy</Text>
+            <Text style={styles.subtitle}>Excellence in Education</Text>
+          </View>
+        </View>
 
-            {/* Enhanced body section */}
-            <View style={styles.bodySection}>
-              {/* Paid To Row */}
-              <View style={styles.row}>
-                <View style={styles.infoBlock}>
-                  <Text style={styles.infoLabel}>💼 Paid To</Text>
-                  <Text style={styles.infoValue}>{data.teacherName}</Text>
-                  <Text style={styles.infoSubValue}>
-                    {capitalizeSubject(data.subject)} Teacher
-                  </Text>
-                </View>
-                <View style={styles.infoBlockRight}>
-                  <Text style={styles.infoLabel}>📅 Date</Text>
-                  <Text style={styles.dateValue}>
-                    {formatDate(data.paymentDate)}
-                  </Text>
-                </View>
-              </View>
+        {/* --- BADGE --- */}
+        <Text style={styles.voucherBadge}>Payment Voucher</Text>
 
-              {/* Enhanced amount section with golden background */}
-              <View style={styles.amountSection}>
-                <Text style={styles.amountLabel}>💰 Amount Paid</Text>
-                <Text style={styles.amountValue}>
-                  {formatCurrency(data.amountPaid)}
-                </Text>
-              </View>
+        {/* --- TOP ROW: PAYEE & DATE --- */}
+        <View style={styles.row}>
+          <View style={styles.col}>
+            <Text style={styles.label}>Paid To</Text>
+            <Text style={styles.value}>{data.teacherName}</Text>
+            <Text style={{ fontSize: 9, color: "#666" }}>
+              ({data.subject} Teacher)
+            </Text>
+          </View>
+          <View style={styles.colRight}>
+            <Text style={styles.label}>Date</Text>
+            <Text style={styles.value}>{formatDate(data.paymentDate)}</Text>
+          </View>
+        </View>
 
-              {/* Balance & Description Row */}
-              <View style={styles.rowNoBorder}>
-                <View style={styles.infoBlock}>
-                  <Text style={styles.balanceLabel}>💳 Remaining Balance</Text>
-                  <Text
-                    style={[
-                      styles.balanceValue,
-                      data.remainingBalance > 0
-                        ? styles.balancePositive
-                        : styles.balanceZero,
-                    ]}
-                  >
-                    {formatCurrency(data.remainingBalance)}
-                  </Text>
-                </View>
-                {data.description && (
-                  <View style={styles.infoBlockRight}>
-                    <Text style={styles.infoLabel}>📝 Description</Text>
-                    <Text style={styles.descriptionValue}>
-                      {data.description}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Enhanced signature section */}
-            <View style={styles.signatureSection}>
-              <View style={styles.signatureBlock}>
-                <View style={styles.signatureLine}>
-                  <Text style={styles.signatureLabel}>
-                    Accountant Signature
-                  </Text>
-                </View>
-                <Text style={styles.signatureNote}>
-                  This is a computer-generated voucher.
-                </Text>
-              </View>
-              <View style={styles.signatureBlock}>
-                <View style={styles.signatureLine}>
-                  <Text style={styles.signatureLabel}>Receiver Signature</Text>
-                </View>
-                <Text style={styles.signatureNote}>
-                  Valid without signature for amounts under PKR 50,000.
-                </Text>
-              </View>
-            </View>
-
-            {/* Enhanced footer */}
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                🏫 Edwardian Academy - Teacher Payment Voucher System |
-                Generated on{" "}
-                {new Date().toLocaleDateString("en-GB", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-              <Text style={styles.securityText}>
-                SECURE DOCUMENT • ANTI-FRAUD MEASURES APPLIED
+        {/* --- MIDDLE ROW: VOUCHER # & DESC --- */}
+        <View style={styles.row}>
+          <View style={styles.col}>
+            <Text style={styles.label}>Voucher No.</Text>
+            <Text style={styles.value}>{data.voucherId}</Text>
+          </View>
+          {data.description && (
+            <View style={styles.colRight}>
+              <Text style={styles.label}>Description</Text>
+              <Text style={{ fontSize: 10, textAlign: "right", maxWidth: 200 }}>
+                {data.description}
               </Text>
             </View>
+          )}
+        </View>
+
+        {/* --- AMOUNT HIGHLIGHT --- */}
+        <View style={styles.amountContainer}>
+          <Text style={styles.amountLabel}>Amount Paid</Text>
+          <Text style={styles.amountValue}>
+            {formatCurrency(data.amountPaid)}
+          </Text>
+        </View>
+
+        {/* --- BALANCE --- */}
+        <View style={styles.detailsRow}>
+          <View>
+            <Text style={styles.label}>Remaining Balance</Text>
+            <Text style={styles.balanceText}>
+              {formatCurrency(data.remainingBalance)}
+            </Text>
+          </View>
+        </View>
+
+        {/* --- SIGNATURES --- */}
+        <View style={styles.footer}>
+          {/* Accountant on the Left */}
+          <View style={styles.signatureBlock}>
+            <Text style={styles.signatureLine}>Accountant</Text>
+          </View>
+
+          {/* Receiver at the End (Right) */}
+          <View style={styles.signatureBlock}>
+            <Text style={styles.signatureLine}>Receiver</Text>
           </View>
         </View>
       </Page>
