@@ -43,17 +43,25 @@ const extractYouTubeID = (url) => {
 // ========================================
 // @desc    Create a new lecture
 // @route   POST /api/lectures
-// @access  Teacher, Admin, Owner
+// @access  OWNER ONLY (Waqar)
 // ========================================
 exports.createLecture = async (req, res) => {
     try {
-        const { title, youtubeUrl, description, classRef, subject, isLocked, order } = req.body;
+        // STRICT PERMISSION: Only OWNER (Waqar) can upload lectures
+        if (req.user.role !== "OWNER") {
+            return res.status(403).json({
+                success: false,
+                message: "🚫 Access denied. Only Waqar can upload lectures. Teachers should send YouTube links to Waqar.",
+            });
+        }
+
+        const { title, youtubeUrl, description, classRef, subject, gradeLevel, isLocked, order } = req.body;
 
         // Validate required fields
-        if (!title || !youtubeUrl || !classRef || !subject) {
+        if (!title || !youtubeUrl || !classRef || !subject || !gradeLevel) {
             return res.status(400).json({
                 success: false,
-                message: "Please provide title, YouTube URL, class, and subject",
+                message: "Please provide title, YouTube URL, class, subject, and grade level",
             });
         }
 
@@ -84,13 +92,14 @@ exports.createLecture = async (req, res) => {
             classRef,
             teacherRef: req.user._id,
             subject,
+            gradeLevel,
             isLocked: isLocked || false,
             order: order || 0,
         });
 
         // Populate for response
         await lecture.populate([
-            { path: "classRef", select: "name grade" },
+            { path: "classRef", select: "classTitle className name grade section group gradeLevel" },
             { path: "teacherRef", select: "fullName" },
         ]);
 
@@ -127,7 +136,7 @@ exports.getAllLectures = async (req, res) => {
         }
 
         const lectures = await Lecture.find()
-            .populate("classRef", "name grade")
+            .populate("classRef", "classTitle className name grade section group gradeLevel")
             .populate("teacherRef", "fullName")
             .sort({ createdAt: -1 });
 
@@ -161,7 +170,7 @@ exports.getTeacherLectures = async (req, res) => {
         }
 
         const lectures = await Lecture.find(query)
-            .populate("classRef", "name grade")
+            .populate("classRef", "classTitle className name grade section group gradeLevel")
             .populate("teacherRef", "fullName")
             .sort({ createdAt: -1 });
 
@@ -194,7 +203,7 @@ exports.getClassLectures = async (req, res) => {
             classRef: classId,
             isLocked: false,
         })
-            .populate("classRef", "name grade")
+            .populate("classRef", "classTitle className name grade section group gradeLevel")
             .populate("teacherRef", "fullName")
             .sort({ order: 1, createdAt: -1 });
 
@@ -250,7 +259,7 @@ exports.getMyClassroomLectures = async (req, res) => {
             classRef: student.classRef._id,
             isLocked: false,
         })
-            .populate("classRef", "name grade")
+            .populate("classRef", "classTitle className name grade section group gradeLevel")
             .populate("teacherRef", "fullName")
             .sort({ subject: 1, order: 1, createdAt: -1 });
 
@@ -282,14 +291,97 @@ exports.getMyClassroomLectures = async (req, res) => {
 };
 
 // ========================================
+// @desc    Get lectures for logged-in student (Smart Filter)
+// @route   GET /api/lectures/student
+// @access  Student (filtered by grade and subjects)
+// ========================================
+exports.getStudentLectures = async (req, res) => {
+    try {
+        // Get student ID from authenticated user
+        const studentId = req.user.studentId;
+        if (!studentId) {
+            return res.status(400).json({
+                success: false,
+                message: "Student ID not found in user session",
+            });
+        }
+
+        // Find student with class reference
+        const student = await Student.findOne({ studentId }).populate("classRef");
+        if (!student) {
+            return res.status(404).json({
+                success: false,
+                message: "Student not found",
+            });
+        }
+
+        if (!student.classRef) {
+            return res.status(400).json({
+                success: false,
+                message: "Student is not enrolled in any class",
+            });
+        }
+
+        // Get student's subjects (exact name matching)
+        const studentSubjects = student.subjects.map(s => s.name);
+        
+        // Smart filter: Match by gradeLevel AND subject
+        const lectures = await Lecture.find({
+            gradeLevel: student.classRef.gradeLevel,  // Exact grade level match
+            subject: { $in: studentSubjects },        // Exact subject match from enrollment
+            isLocked: false,                          // Only unlocked lectures
+        })
+            .populate("classRef", "classTitle className name grade section group gradeLevel")
+            .populate("teacherRef", "fullName")
+            .sort({ subject: 1, createdAt: -1 });
+
+        // Group by subject for clean display
+        const groupedLectures = lectures.reduce((acc, lecture) => {
+            const subject = lecture.subject || "General";
+            if (!acc[subject]) {
+                acc[subject] = [];
+            }
+            acc[subject].push(lecture);
+            return acc;
+        }, {});
+
+        console.log(`📚 Student ${studentId} (${student.classRef.gradeLevel}) viewing ${lectures.length} lectures in subjects: ${studentSubjects.join(', ')}`);
+
+        res.status(200).json({
+            success: true,
+            count: lectures.length,
+            gradeLevel: student.classRef.gradeLevel,
+            enrolledSubjects: studentSubjects,
+            data: lectures,
+            grouped: groupedLectures,
+        });
+    } catch (error) {
+        console.error("❌ Error fetching student lectures:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch lectures",
+            error: error.message,
+        });
+    }
+};
+
+// ========================================
 // @desc    Update a lecture
 // @route   PUT /api/lectures/:id
-// @access  Teacher (own), Admin, Owner
+// @access  OWNER ONLY (Waqar)
 // ========================================
 exports.updateLecture = async (req, res) => {
     try {
+        // STRICT PERMISSION: Only OWNER (Waqar) can update lectures
+        if (req.user.role !== "OWNER") {
+            return res.status(403).json({
+                success: false,
+                message: "🚫 Access denied. Only Waqar can update lectures.",
+            });
+        }
+
         const { id } = req.params;
-        const { title, youtubeUrl, description, classRef, subject, isLocked, order } = req.body;
+        const { title, youtubeUrl, description, classRef, subject, gradeLevel, isLocked, order } = req.body;
 
         const lecture = await Lecture.findById(id);
         if (!lecture) {
@@ -299,23 +391,12 @@ exports.updateLecture = async (req, res) => {
             });
         }
 
-        // Check ownership (unless Admin/Owner)
-        if (
-            req.user.role !== "OWNER" &&
-            req.user.role !== "ADMIN" &&
-            lecture.teacherRef.toString() !== req.user._id.toString()
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized to update this lecture",
-            });
-        }
-
         // Update fields
         if (title) lecture.title = title;
         if (description !== undefined) lecture.description = description;
         if (classRef) lecture.classRef = classRef;
         if (subject) lecture.subject = subject;
+        if (gradeLevel) lecture.gradeLevel = gradeLevel;
         if (typeof isLocked === "boolean") lecture.isLocked = isLocked;
         if (order !== undefined) lecture.order = order;
 
@@ -334,7 +415,7 @@ exports.updateLecture = async (req, res) => {
 
         await lecture.save();
         await lecture.populate([
-            { path: "classRef", select: "name grade" },
+            { path: "classRef", select: "classTitle className name grade section group gradeLevel" },
             { path: "teacherRef", select: "fullName" },
         ]);
 
@@ -358,10 +439,18 @@ exports.updateLecture = async (req, res) => {
 // ========================================
 // @desc    Delete a lecture
 // @route   DELETE /api/lectures/:id
-// @access  Teacher (own), Admin, Owner
+// @access  OWNER ONLY (Waqar)
 // ========================================
 exports.deleteLecture = async (req, res) => {
     try {
+        // STRICT PERMISSION: Only OWNER (Waqar) can delete lectures
+        if (req.user.role !== "OWNER") {
+            return res.status(403).json({
+                success: false,
+                message: "🚫 Access denied. Only Waqar can delete lectures.",
+            });
+        }
+
         const { id } = req.params;
 
         const lecture = await Lecture.findById(id);
@@ -369,18 +458,6 @@ exports.deleteLecture = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "Lecture not found",
-            });
-        }
-
-        // Check ownership (unless Admin/Owner)
-        if (
-            req.user.role !== "OWNER" &&
-            req.user.role !== "ADMIN" &&
-            lecture.teacherRef.toString() !== req.user._id.toString()
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "Not authorized to delete this lecture",
             });
         }
 

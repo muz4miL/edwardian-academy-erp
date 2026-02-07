@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { VideoPlayerModal } from "@/components/VideoPlayerModal";
 import {
     Dialog,
     DialogContent,
@@ -67,14 +68,20 @@ interface Lecture {
     description: string;
     classRef: {
         _id: string;
-        name: string;
+        name?: string;
+        className?: string;
+        classTitle?: string;
         grade?: string;
+        section?: string;
+        group?: string;
+        gradeLevel?: string;
     };
     teacherRef: {
         _id: string;
         fullName: string;
     };
     subject: string;
+    gradeLevel: string;
     isLocked: boolean;
     viewCount: number;
     thumbnailUrl: string;
@@ -102,6 +109,17 @@ const SUBJECT_OPTIONS = [
     "Other",
 ];
 
+// Grade level options (matching Class model enum)
+const GRADE_LEVEL_OPTIONS = [
+    "9th Grade",
+    "10th Grade",
+    "11th Grade",
+    "12th Grade",
+    "MDCAT Prep",
+    "ECAT Prep",
+    "Tuition Classes",
+];
+
 export default function Lectures() {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -119,6 +137,7 @@ export default function Lectures() {
     const [formDescription, setFormDescription] = useState("");
     const [formClass, setFormClass] = useState("");
     const [formSubject, setFormSubject] = useState("");
+    const [formGradeLevel, setFormGradeLevel] = useState("");
     const [formIsLocked, setFormIsLocked] = useState(false);
 
     // Preview states
@@ -126,11 +145,22 @@ export default function Lectures() {
     const [previewValid, setPreviewValid] = useState<boolean | null>(null);
     const [validating, setValidating] = useState(false);
 
-    // Fetch lectures
+    // Fetch lectures based on user role
     const { data: lecturesData, isLoading } = useQuery({
-        queryKey: ["lectures", "my-lectures"],
+        queryKey: ["lectures", user?.role],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE_URL}/lectures/my-lectures`, {
+            let endpoint = "";
+            
+            // Role-based endpoint selection
+            if (user?.role === "OWNER") {
+                // OWNER: Get all lectures (God Mode)
+                endpoint = `${API_BASE_URL}/lectures`;
+            } else {
+                // TEACHER/STAFF/PARTNER: View all lectures (but can't edit)
+                endpoint = `${API_BASE_URL}/lectures/my-lectures`;
+            }
+            
+            const res = await fetch(endpoint, {
                 credentials: "include",
             });
             if (!res.ok) throw new Error("Failed to fetch lectures");
@@ -138,11 +168,11 @@ export default function Lectures() {
         },
     });
 
-    // Fetch classes for dropdown
+    // Fetch classes for dropdown - RAW DATA (No Filters!)
     const { data: classesData } = useQuery({
         queryKey: ["classes"],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE_URL}/classes?status=Active`, {
+            const res = await fetch(`${API_BASE_URL}/classes`, {
                 credentials: "include",
             });
             if (!res.ok) throw new Error("Failed to fetch classes");
@@ -163,7 +193,9 @@ export default function Lectures() {
     });
 
     const lectures: Lecture[] = lecturesData?.data || [];
-    const classes: ClassOption[] = classesData?.data || [];
+    const allRawClasses = classesData?.data || [];
+    console.log("🔥 DEBUG CLASSES:", allRawClasses); // Debug log
+    console.log("📊 Class count:", allRawClasses.length);
     const configSubjects: string[] = configData?.data?.defaultSubjectFees?.map((s: any) => s.name) || [];
 
     // Combine config subjects with fallbacks if config is empty
@@ -290,6 +322,7 @@ export default function Lectures() {
         setFormDescription("");
         setFormClass("");
         setFormSubject("");
+        setFormGradeLevel("");
         setFormIsLocked(false);
         setPreviewThumbnail(null);
         setPreviewValid(null);
@@ -297,7 +330,7 @@ export default function Lectures() {
     };
 
     const handleAddLecture = () => {
-        if (!formTitle || !formUrl || !formClass || !formSubject) {
+        if (!formTitle || !formUrl || !formClass || !formSubject || !formGradeLevel) {
             toast.error("Missing Fields", {
                 description: "Please fill in all required fields",
             });
@@ -316,12 +349,13 @@ export default function Lectures() {
             description: formDescription,
             classRef: formClass,
             subject: formSubject,
+            gradeLevel: formGradeLevel,
             isLocked: formIsLocked,
         });
     };
 
     const handleEditLecture = () => {
-        if (!selectedLecture || !formTitle || !formClass || !formSubject) {
+        if (!selectedLecture || !formTitle || !formClass || !formSubject || !formGradeLevel) {
             toast.error("Missing Fields", {
                 description: "Please fill in required fields",
             });
@@ -336,6 +370,7 @@ export default function Lectures() {
                 description: formDescription,
                 classRef: formClass,
                 subject: formSubject,
+                gradeLevel: formGradeLevel,
                 isLocked: formIsLocked,
             },
         });
@@ -348,6 +383,7 @@ export default function Lectures() {
         setFormDescription(lecture.description);
         setFormClass(lecture.classRef._id);
         setFormSubject(lecture.subject);
+        setFormGradeLevel(lecture.gradeLevel);
         setFormIsLocked(lecture.isLocked);
         setPreviewThumbnail(lecture.thumbnailUrl);
         setPreviewValid(true);
@@ -357,6 +393,17 @@ export default function Lectures() {
     const openPlayerModal = (lecture: Lecture) => {
         setSelectedLecture(lecture);
         setPlayerModalOpen(true);
+    };
+
+    const handleIncrementView = async (lectureId: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/lectures/${lectureId}/view`, {
+                method: "POST",
+                credentials: "include",
+            });
+        } catch (error) {
+            console.error("Failed to increment view count:", error);
+        }
     };
 
     // Group lectures by subject for display
@@ -379,20 +426,22 @@ export default function Lectures() {
                         </h1>
                         <p className="text-muted-foreground">
                             {user?.role === "OWNER"
-                                ? "All uploaded lectures (Admin View)"
-                                : "Manage your YouTube lecture library"}
+                                ? "🎥 All lectures (Waqar's Dashboard)"
+                                : "🎥 View all lectures (Contact Waqar for changes)"}
                         </p>
                     </div>
-                    <Button
-                        onClick={() => {
-                            resetForm();
-                            setAddModalOpen(true);
-                        }}
-                        className="gap-2"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Add Lecture
-                    </Button>
+                    {user?.role === "OWNER" && (
+                        <Button
+                            onClick={() => {
+                                resetForm();
+                                setAddModalOpen(true);
+                            }}
+                            className="gap-2"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Add Lecture
+                        </Button>
+                    )}
                 </div>
 
                 {/* Stats */}
@@ -402,7 +451,9 @@ export default function Lectures() {
                             <div className="flex items-center gap-4">
                                 <Video className="h-8 w-8 text-red-600" />
                                 <div>
-                                    <p className="text-sm text-muted-foreground">Total Lectures</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {user?.role === "TEACHER" ? "Available Lectures" : "Total Lectures"}
+                                    </p>
                                     <p className="text-2xl font-bold">{lectures.length}</p>
                                 </div>
                             </div>
@@ -518,14 +569,9 @@ export default function Lectures() {
                                                 <h3 className="font-semibold text-sm line-clamp-2 mb-2">
                                                     {lecture.title}
                                                 </h3>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-                                                    <Badge variant="outline" className="text-xs">
-                                                        {lecture.classRef?.name || "No Class"}
-                                                    </Badge>
-                                                    <span className="flex items-center gap-1">
-                                                        <Eye className="h-3 w-3" />
-                                                        {lecture.viewCount || 0}
-                                                    </span>
+                                                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3">
+                                                    <Eye className="h-3 w-3" />
+                                                    <span>{lecture.viewCount || 0} views</span>
                                                 </div>
 
                                                 {/* Actions */}
@@ -562,295 +608,341 @@ export default function Lectures() {
             </div>
 
             {/* Add Lecture Modal */}
-            <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Youtube className="h-5 w-5 text-red-600" />
-                            Add New Lecture
-                        </DialogTitle>
-                        <DialogDescription>
-                            Paste a YouTube link to add a video lecture
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-4">
-                        {/* YouTube URL with Preview */}
-                        <div className="space-y-2">
-                            <Label>YouTube URL *</Label>
-                            <div className="relative">
-                                <Input
-                                    placeholder="https://youtu.be/... or youtube.com/watch?v=..."
-                                    value={formUrl}
-                                    onChange={(e) => setFormUrl(e.target.value)}
-                                    className={
-                                        previewValid === false
-                                            ? "border-red-500"
-                                            : previewValid === true
-                                                ? "border-green-500"
-                                                : ""
-                                    }
-                                />
-                                {validating && (
-                                    <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin" />
-                                )}
-                            </div>
-                            {previewValid === false && (
-                                <p className="text-xs text-red-500">Invalid YouTube URL</p>
-                            )}
-                        </div>
-
-                        {/* Thumbnail Preview */}
-                        {previewThumbnail && (
-                            <div className="rounded-lg overflow-hidden border">
-                                <img
-                                    src={previewThumbnail}
-                                    alt="Video preview"
-                                    className="w-full aspect-video object-cover"
-                                />
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            <Label>Title *</Label>
-                            <Input
-                                placeholder="e.g., Physics Chapter 1 - Kinematics"
-                                value={formTitle}
-                                onChange={(e) => setFormTitle(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Class *</Label>
-                                <Select value={formClass} onValueChange={setFormClass}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select class" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {classes.map((cls) => (
-                                            <SelectItem key={cls._id} value={cls._id}>
-                                                {cls.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Subject *</Label>
-                                <Select value={formSubject} onValueChange={setFormSubject}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select subject" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {subjects.map((sub) => (
-                                            <SelectItem key={sub} value={sub}>
-                                                {sub}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Description (Optional)</Label>
-                            <Textarea
-                                placeholder="Brief description of the lecture content..."
-                                value={formDescription}
-                                onChange={(e) => setFormDescription(e.target.value)}
-                                rows={3}
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                id="isLocked"
-                                checked={formIsLocked}
-                                onChange={(e) => setFormIsLocked(e.target.checked)}
-                                className="rounded"
-                            />
-                            <Label htmlFor="isLocked" className="cursor-pointer">
-                                Lock this lecture (hidden from students)
-                            </Label>
-                        </div>
+<Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+  <DialogContent className="max-w-5xl w-[90vw] h-[90vh] overflow-hidden">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <Youtube className="h-5 w-5 text-red-600" />
+        Add New Lecture
+      </DialogTitle>
+      <DialogDescription>
+        Paste a YouTube link to add a video lecture
+      </DialogDescription>
+    </DialogHeader>
+    
+    <div className="flex h-[calc(100%-6rem)] overflow-hidden">
+      {/* Left side - Video preview */}
+      <div className="w-1/2 border-r border-gray-200 p-6 overflow-y-auto">
+        <div className="space-y-4">
+          {/* YouTube URL with Preview */}
+          <div className="space-y-2">
+            <Label>YouTube URL *</Label>
+            <div className="relative">
+              <Input
+                placeholder="https://youtu.be/... or youtube.com/watch?v=..."
+                value={formUrl}
+                onChange={(e) => setFormUrl(e.target.value)}
+                className={
+                  previewValid === false
+                    ? "border-red-500"
+                    : previewValid === true
+                    ? "border-green-500"
+                    : ""
+                }
+              />
+              {validating && (
+                <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin" />
+              )}
+            </div>
+            {previewValid === false && (
+              <p className="text-xs text-red-500">Invalid YouTube URL</p>
+            )}
+          </div>
+          
+          {/* Thumbnail Preview - FIXED SIZE */}
+          <div className="relative w-full h-[300px] bg-gray-100 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            {previewThumbnail ? (
+              <>
+                <img
+                  src={previewThumbnail}
+                  alt="Video Preview"
+                  className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-opacity"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+                {/* Center Play Icon Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="bg-black/50 p-3 rounded-full backdrop-blur-sm">
+                    <Play className="w-8 h-8 text-white fill-current" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Placeholder when no valid URL is entered */
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <Video className="w-12 h-12 mb-2 opacity-50" />
+                <p className="text-sm font-medium">Enter YouTube URL to see preview</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Right side - Form fields */}
+      <div className="w-1/2 p-6 overflow-y-auto">
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Label>Title *</Label>
+            <Input
+              placeholder="e.g., Physics Chapter 1 - Kinematics"
+              value={formTitle}
+              onChange={(e) => setFormTitle(e.target.value)}
+            />
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Class *</Label>
+              <Select value={formClass} onValueChange={setFormClass}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allRawClasses.length > 0 ? (
+                    allRawClasses.map((cls: any) => (
+                      <SelectItem key={cls._id} value={cls._id}>
+                        {cls.classTitle || cls.className || cls.name || `Class ${cls._id}`}
+                        {cls.section ? ` - ${cls.section}` : ""}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-sm text-gray-500">
+                      No classes found (Count: {allRawClasses.length})
                     </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Grade Level *</Label>
+              <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select grade level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GRADE_LEVEL_OPTIONS.map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Subject *</Label>
+              <Select value={formSubject} onValueChange={setFormSubject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((sub) => (
+                    <SelectItem key={sub} value={sub}>
+                      {sub}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Description (Optional)</Label>
+            <Textarea
+              placeholder="Brief description of the lecture content..."
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              rows={4}
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isLocked"
+              checked={formIsLocked}
+              onChange={(e) => setFormIsLocked(e.target.checked)}
+              className="rounded"
+            />
+            <Label htmlFor="isLocked" className="cursor-pointer">
+              Lock this lecture (hidden from students)
+            </Label>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <DialogFooter className="border-t pt-6 mt-4">
+      <Button variant="outline" onClick={() => setAddModalOpen(false)}>
+        Cancel
+      </Button>
+      <Button
+        onClick={handleAddLecture}
+        disabled={createMutation.isPending || !previewValid}
+        className="gap-2"
+      >
+        {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+        <Video className="h-4 w-4" />
+        Add Lecture
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleAddLecture}
-                            disabled={createMutation.isPending || !previewValid}
-                            className="gap-2"
-                        >
-                            {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                            <Video className="h-4 w-4" />
-                            Add Lecture
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Edit Lecture Modal */}
-            <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Pencil className="h-5 w-5" />
-                            Edit Lecture
-                        </DialogTitle>
-                        <DialogDescription>Update lecture details</DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-4">
-                        {previewThumbnail && (
-                            <div className="rounded-lg overflow-hidden border">
-                                <img
-                                    src={previewThumbnail}
-                                    alt="Video preview"
-                                    className="w-full aspect-video object-cover"
-                                />
-                            </div>
-                        )}
-
-                        <div className="space-y-2">
-                            <Label>YouTube URL</Label>
-                            <Input
-                                value={formUrl}
-                                onChange={(e) => setFormUrl(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Title *</Label>
-                            <Input
-                                value={formTitle}
-                                onChange={(e) => setFormTitle(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Class *</Label>
-                                <Select value={formClass} onValueChange={setFormClass}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {classes.map((cls) => (
-                                            <SelectItem key={cls._id} value={cls._id}>
-                                                {cls.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Subject *</Label>
-                                <Select value={formSubject} onValueChange={setFormSubject}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {subjects.map((sub) => (
-                                            <SelectItem key={sub} value={sub}>
-                                                {sub}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Description</Label>
-                            <Textarea
-                                value={formDescription}
-                                onChange={(e) => setFormDescription(e.target.value)}
-                                rows={3}
-                            />
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                id="editIsLocked"
-                                checked={formIsLocked}
-                                onChange={(e) => setFormIsLocked(e.target.checked)}
-                                className="rounded"
-                            />
-                            <Label htmlFor="editIsLocked" className="cursor-pointer">
-                                Lock this lecture
-                            </Label>
-                        </div>
+{/* Edit Lecture Modal */}
+<Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+  <DialogContent className="max-w-5xl w-[90vw] h-[90vh] overflow-hidden">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <Pencil className="h-5 w-5" />
+        Edit Lecture
+      </DialogTitle>
+      <DialogDescription>Update lecture details</DialogDescription>
+    </DialogHeader>
+    
+    <div className="flex h-[calc(100%-6rem)] overflow-hidden">
+      {/* Left side - Video preview */}
+      <div className="w-1/2 border-r border-gray-200 p-6 overflow-y-auto">
+        <div className="space-y-4">
+          {previewThumbnail && (
+            <div className="rounded-lg overflow-hidden border">
+              <img
+                src={previewThumbnail}
+                alt="Video preview"
+                className="w-full aspect-video object-cover"
+              />
+            </div>
+          )}
+          
+          <div className="space-y-2">
+            <Label>YouTube URL</Label>
+            <Input
+              value={formUrl}
+              onChange={(e) => setFormUrl(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+      
+      {/* Right side - Form fields */}
+      <div className="w-1/2 p-6 overflow-y-auto">
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Label>Title *</Label>
+            <Input
+              value={formTitle}
+              onChange={(e) => setFormTitle(e.target.value)}
+            />
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Class *</Label>
+              <Select value={formClass} onValueChange={setFormClass}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {allRawClasses.length > 0 ? (
+                    allRawClasses.map((cls: any) => (
+                      <SelectItem key={cls._id} value={cls._id}>
+                        {cls.classTitle || cls.className || cls.name || `Class ${cls._id}`}
+                        {cls.section ? ` - ${cls.section}` : ""}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-sm text-gray-500">
+                      No classes found (Count: {allRawClasses.length})
                     </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Grade Level *</Label>
+              <Select value={formGradeLevel} onValueChange={setFormGradeLevel}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GRADE_LEVEL_OPTIONS.map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Subject *</Label>
+              <Select value={formSubject} onValueChange={setFormSubject}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((sub) => (
+                    <SelectItem key={sub} value={sub}>
+                      {sub}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              rows={4}
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="editIsLocked"
+              checked={formIsLocked}
+              onChange={(e) => setFormIsLocked(e.target.checked)}
+              className="rounded"
+            />
+            <Label htmlFor="editIsLocked" className="cursor-pointer">
+              Lock this lecture
+            </Label>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <DialogFooter className="border-t pt-6 mt-4">
+      <Button variant="outline" onClick={() => setEditModalOpen(false)}>
+        Cancel
+      </Button>
+      <Button
+        onClick={handleEditLecture}
+        disabled={updateMutation.isPending}
+      >
+        {updateMutation.isPending && (
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        )}
+        Save Changes
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleEditLecture}
-                            disabled={updateMutation.isPending}
-                        >
-                            {updateMutation.isPending && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            Save Changes
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Video Player Modal */}
-            <Dialog open={playerModalOpen} onOpenChange={setPlayerModalOpen}>
-                <DialogContent className="max-w-4xl p-0 overflow-hidden">
-                    <div className="relative">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full"
-                            onClick={() => setPlayerModalOpen(false)}
-                        >
-                            <X className="h-5 w-5" />
-                        </Button>
-                        {selectedLecture && (
-                            <div className="aspect-video">
-                                <iframe
-                                    src={`https://www.youtube.com/embed/${selectedLecture.youtubeId}?rel=0&modestbranding=1&autoplay=1`}
-                                    title={selectedLecture.title}
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                    className="w-full h-full"
-                                />
-                            </div>
-                        )}
-                    </div>
-                    {selectedLecture && (
-                        <div className="p-4 border-t">
-                            <h3 className="font-semibold text-lg">{selectedLecture.title}</h3>
-                            <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                                <Badge>{selectedLecture.subject}</Badge>
-                                <span>•</span>
-                                <span>{selectedLecture.classRef?.name}</span>
-                                <span>•</span>
-                                <span className="flex items-center gap-1">
-                                    <Eye className="h-4 w-4" />
-                                    {selectedLecture.viewCount} views
-                                </span>
-                            </div>
-                            {selectedLecture.description && (
-                                <p className="mt-3 text-sm text-muted-foreground">
-                                    {selectedLecture.description}
-                                </p>
-                            )}
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
+            {/* Secure Video Player Modal */}
+            <VideoPlayerModal
+                lecture={selectedLecture}
+                isOpen={playerModalOpen}
+                onClose={() => setPlayerModalOpen(false)}
+                onIncrementView={handleIncrementView}
+            />
 
             {/* Delete Confirmation */}
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

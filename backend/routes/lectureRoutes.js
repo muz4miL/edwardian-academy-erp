@@ -12,6 +12,7 @@ const {
     getTeacherLectures,
     getClassLectures,
     getMyClassroomLectures,
+    getStudentLectures,
     updateLecture,
     deleteLecture,
     incrementViewCount,
@@ -29,6 +30,9 @@ router.get("/my-lectures", getTeacherLectures);
 
 // Student classroom route
 router.get("/my-classroom", getMyClassroomLectures);
+
+// Smart filtered student lectures (NEW)
+router.get("/student", getStudentLectures);
 
 // Class-specific lectures
 router.get("/class/:classId", getClassLectures);

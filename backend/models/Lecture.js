@@ -38,9 +38,43 @@ const lectureSchema = new mongoose.Schema(
             ref: "User",
             required: [true, "Teacher reference is required"],
         },
+        // Standardized grade level matching Class model exactly
+        gradeLevel: {
+            type: String,
+            required: [true, "Grade level is required"],
+            enum: {
+                values: [
+                    "9th Grade",
+                    "10th Grade",
+                    "11th Grade",
+                    "12th Grade",
+                    "MDCAT Prep",
+                    "ECAT Prep",
+                    "Tuition Classes",
+                ],
+                message: "{VALUE} is not a valid grade level",
+            },
+        },
+        // Standardized subject matching Admission module exactly
         subject: {
             type: String,
             required: [true, "Subject is required"],
+            enum: {
+                values: [
+                    "Physics",
+                    "Chemistry",
+                    "Mathematics",
+                    "Biology",
+                    "English",
+                    "Urdu",
+                    "Computer Science",
+                    "Islamiat",
+                    "Pakistan Studies",
+                    "General Science",
+                    "Other",
+                ],
+                message: "{VALUE} is not a valid subject",
+            },
             trim: true,
         },
         duration: {
@@ -68,6 +102,7 @@ const lectureSchema = new mongoose.Schema(
 // Index for efficient queries
 lectureSchema.index({ classRef: 1, subject: 1 });
 lectureSchema.index({ teacherRef: 1 });
+lectureSchema.index({ gradeLevel: 1, subject: 1 }); // For student filtering
 lectureSchema.index({ createdAt: -1 });
 
 // Virtual for thumbnail URL

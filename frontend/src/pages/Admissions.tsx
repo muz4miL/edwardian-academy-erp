@@ -536,7 +536,7 @@ const Admissions = () => {
     }
 
     // ZERO-FEE PREVENTION: Warn if no payment received (for active students)
-    if (paidAmountNum === 0 && studentStatus === "active") {
+    if (paidAmountNum === 0 ) {
       toast.error("No Fee Received", {
         description:
           "Active students must have an initial fee payment. Set status to 'inactive' if this is intentional.",

@@ -35,8 +35,12 @@ interface Lecture {
     youtubeId: string;
     description: string;
     classRef: {
-        _id: string;
-        name: string;
+        _id: string,
+        name?: string,
+        className?: string,
+        classTitle?: string,
+        grade?: string,
+        section?: string,
     };
     teacherRef: {
         fullName: string;
