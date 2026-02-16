@@ -22,6 +22,8 @@ interface StudentData {
   feeStatus: string;
   admissionDate?: string | Date;
   subjects?: Array<{ name: string; fee: number }>;
+  photo?: string;
+  imageUrl?: string;
 }
 
 interface ReceiptConfig {
@@ -145,22 +147,15 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           >
             {/* Logo & Name */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div
+              <img
+                src="/logo.png"
+                alt="Edwardian Academy"
                 style={{
-                  width: "50px",
-                  height: "50px",
-                  border: "2px solid #1a365d",
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "8px",
-                  fontWeight: "bold",
-                  color: "#1a365d",
+                  width: "55px",
+                  height: "55px",
+                  objectFit: "contain",
                 }}
-              >
-                EA
-              </div>
+              />
               <div>
                 <div
                   style={{
@@ -220,8 +215,23 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
               zIndex: 1,
             }}
           >
-            {/* Left Column - Student Details */}
+            {/* Left Column - Student Photo & Details */}
             <div style={{ flex: "1.5" }}>
+              {/* Student Photo (if available) */}
+              {(student.imageUrl || student.photo) && (
+                <div style={{ float: "right", marginLeft: "10px", marginBottom: "8px" }}>
+                  <img
+                    src={student.imageUrl || student.photo}
+                    alt={student.studentName}
+                    style={{
+                      width: "70px",
+                      height: "80px",
+                      objectFit: "cover",
+                      border: "1px solid #000",
+                    }}
+                  />
+                </div>
+              )}
               <table
                 style={{
                   width: "100%",
@@ -282,9 +292,16 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
                       Class:
                     </td>
                     <td
-                      style={{ padding: "4px 0", borderBottom: "1px solid #000" }}
+                      style={{ 
+                        padding: "4px 0", 
+                        borderBottom: "1px solid #000",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "150px",
+                      }}
                     >
-                      {student.class}
+                      {student.class?.replace(/-/g, " ")}
                     </td>
                   </tr>
                   <tr>

@@ -1,16 +1,51 @@
 const express = require('express');
 const router = express.Router();
 const Timetable = require('../models/Timetable');
+const Class = require('../models/Class');
+const { protect } = require('../middleware/authMiddleware');
+
+// Day name mapping (Class uses Mon, Timetable uses Monday)
+const dayNameMap = {
+    Mon: "Monday",
+    Tue: "Tuesday",
+    Wed: "Wednesday",
+    Thu: "Thursday",
+    Fri: "Friday",
+    Sat: "Saturday",
+    Sun: "Sunday",
+};
 
 // @route   GET /api/timetable
-// @desc    Get all timetable entries
-// @access  Public
-router.get('/', async (req, res) => {
+// @desc    Get all timetable entries (Role-Based Filtering)
+// @access  Protected
+router.get('/', protect, async (req, res) => {
     try {
         const { classId, teacherId, day, status } = req.query;
+        const user = req.user;
 
         let query = {};
 
+        // 1. Role-Based Overrides
+        if (user.role === 'STUDENT') {
+            // Students only see their own class timetable
+            if (user.studentProfile?.classRef) {
+                query.classId = user.studentProfile.classRef;
+            } else {
+                // If no classRef found in user object, they get nothing (security)
+                return res.json({ success: true, count: 0, data: [] });
+            }
+        } else if (user.role === 'TEACHER') {
+            // Teachers only see their own sessions
+            query.teacherId = user.teacherProfile?._id || user._id;
+        } else if (user.role === 'PARTNER') {
+            // Partners see their sessions + general view if needed
+            if (!classId) {
+                query.teacherId = user.teacherProfile?._id || user._id;
+            }
+        }
+        // OWNER sees everything by default
+
+        // 2. Applied Filters (Query Params)
         if (classId) query.classId = classId;
         if (teacherId) query.teacherId = teacherId;
         if (day) query.day = day;
@@ -38,8 +73,8 @@ router.get('/', async (req, res) => {
 
 // @route   GET /api/timetable/:id
 // @desc    Get single timetable entry
-// @access  Public
-router.get('/:id', async (req, res) => {
+// @access  Protected
+router.get('/:id', protect, async (req, res) => {
     try {
         const entry = await Timetable.findById(req.params.id)
             .populate('classId', 'className section')
@@ -65,10 +100,99 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// @route   POST /api/timetable/bulk-generate
+// @desc    Bulk generate timetable entries from ALL active classes
+// @access  Protected (OWNER/PARTNER only)
+router.post('/bulk-generate', protect, async (req, res) => {
+    try {
+        const user = req.user;
+
+        // Only OWNER and PARTNER can bulk generate
+        if (!['OWNER', 'PARTNER'].includes(user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only owners and partners can bulk generate timetables',
+            });
+        }
+
+        console.log('🔄 Bulk generating timetable entries from all active classes...');
+
+        // Get all active classes with assigned teachers
+        const activeClasses = await Class.find({
+            status: 'active',
+            assignedTeacher: { $exists: true, $ne: null },
+        });
+
+        if (!activeClasses.length) {
+            return res.json({
+                success: true,
+                message: 'No active classes with assigned teachers found',
+                data: { generated: 0, classes: 0 },
+            });
+        }
+
+        // Delete ALL existing timetable entries (clean slate)
+        const deleted = await Timetable.deleteMany({});
+        console.log(`🗑️ Cleared ${deleted.deletedCount} existing timetable entries`);
+
+        let totalEntries = 0;
+        let classesProcessed = 0;
+        const errors = [];
+
+        for (const classDoc of activeClasses) {
+            if (!classDoc.days || !classDoc.days.length) {
+                console.log(`⚠️ Skipping ${classDoc.classTitle} - no days specified`);
+                continue;
+            }
+
+            for (const shortDay of classDoc.days) {
+                const fullDay = dayNameMap[shortDay] || shortDay;
+
+                try {
+                    await Timetable.create({
+                        classId: classDoc._id,
+                        teacherId: classDoc.assignedTeacher,
+                        subject: classDoc.subjects?.[0]?.name || 'General',
+                        day: fullDay,
+                        startTime: classDoc.startTime,
+                        endTime: classDoc.endTime,
+                        room: classDoc.roomNumber || 'TBD',
+                        status: 'active',
+                    });
+                    totalEntries++;
+                } catch (err) {
+                    errors.push(`${classDoc.classTitle} (${fullDay}): ${err.message}`);
+                }
+            }
+            classesProcessed++;
+        }
+
+        console.log(`📅 Bulk generated ${totalEntries} timetable entries from ${classesProcessed} classes`);
+
+        res.json({
+            success: true,
+            message: `Bulk generated ${totalEntries} timetable entries from ${classesProcessed} classes`,
+            data: {
+                generated: totalEntries,
+                classes: classesProcessed,
+                cleared: deleted.deletedCount,
+                errors: errors.length > 0 ? errors : undefined,
+            },
+        });
+    } catch (error) {
+        console.error('❌ Error bulk generating timetable:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error bulk generating timetable',
+            error: error.message,
+        });
+    }
+});
+
 // @route   POST /api/timetable
 // @desc    Create a new timetable entry
-// @access  Public
-router.post('/', async (req, res) => {
+// @access  Protected
+router.post('/', protect, async (req, res) => {
     try {
         console.log('📥 Creating timetable entry:', JSON.stringify(req.body, null, 2));
 
@@ -102,8 +226,8 @@ router.post('/', async (req, res) => {
 
 // @route   PUT /api/timetable/:id
 // @desc    Update a timetable entry
-// @access  Public
-router.put('/:id', async (req, res) => {
+// @access  Protected
+router.put('/:id', protect, async (req, res) => {
     try {
         const entry = await Timetable.findById(req.params.id);
 
@@ -146,8 +270,8 @@ router.put('/:id', async (req, res) => {
 
 // @route   DELETE /api/timetable/:id
 // @desc    Delete a timetable entry
-// @access  Public
-router.delete('/:id', async (req, res) => {
+// @access  Protected
+router.delete('/:id', protect, async (req, res) => {
     try {
         const deletedEntry = await Timetable.findByIdAndDelete(req.params.id);
 

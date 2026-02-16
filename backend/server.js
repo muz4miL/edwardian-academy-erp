@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const mongoose = require("mongoose");
+const path = require("path");
 
 dotenv.config();
 
@@ -24,19 +25,23 @@ connectDB();
 
 const app = express();
 
-// Middleware
+// Middleware - Allow all origins for Codespaces compatibility
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: true, // Allow all origins
     credentials: true,
   }),
 );
 
 // CRITICAL ORDER
-app.use(express.json());
+// Increase payload limit to 50MB for large Base64 images
+app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
 
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Serve static files from uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Debug Middleware
 app.use((req, res, next) => {
@@ -68,6 +73,9 @@ const leadRoutes = require("./routes/leads");
 const gatekeeperRoutes = require("./routes/gatekeeper");
 const publicRoutes = require("./routes/public");
 const studentPortalRoutes = require("./routes/studentPortal");
+const lectureRoutes = require("./routes/lectureRoutes");
+const examRoutes = require("./routes/examRoutes");
+const notificationRoutes = require("./routes/notifications");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -87,6 +95,9 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/gatekeeper", gatekeeperRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/student-portal", studentPortalRoutes);
+app.use("/api/lectures", lectureRoutes);
+app.use("/api/exams", examRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -108,6 +119,7 @@ app.get("/", (req, res) => {
       gatekeeper: "/api/gatekeeper",
       public: "/api/public",
       studentPortal: "/api/student-portal",
+      lectures: "/api/lectures",
     },
   });
 });

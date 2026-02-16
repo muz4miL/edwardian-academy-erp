@@ -27,24 +27,24 @@ const Login = () => {
             // Redirect to dashboard on success
             navigate('/');
         } catch (err: any) {
-            setError(err.message || 'Invalid credentials. Please try again.');
+            console.error('Login error:', err);
+            setError(err.message || 'Failed to connect to server. Please check if backend is running.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-slate-900 to-black relative overflow-hidden">
+        <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-900/30 via-stone-950 to-stone-950 relative overflow-hidden">
             {/* Subtle Background Pattern Overlay */}
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djJoMnYtMmgtMnptMC00aDJ2Mmgtdi0yem0wIDhoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wLTEwaDF2NGgtMXYtNHptLTIgMGgxdjRoLTF2LTR6bTQgMGgxdjRoLTF2LTR6bTIgMGgxdjRoLTF2LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
 
             {/* Animated Glow Orbs */}
-            <div className="absolute -top-40 -left-40 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+            <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-            {/* Login Card */}
             {/* Royal Glass Card */}
-            <Card className="w-full max-w-md mx-4 bg-slate-900/40 backdrop-blur-xl border border-yellow-500/30 shadow-2xl shadow-yellow-900/20 relative z-10">
+            <Card className="w-full max-w-md mx-4 bg-stone-900/40 backdrop-blur-xl border border-amber-500/30 shadow-2xl shadow-amber-900/20 relative z-10">
                 <CardHeader className="space-y-4 text-center pt-8 pb-6">
                     {/* Logo with Drop Shadow */}
                     <div className="mx-auto">
@@ -91,7 +91,7 @@ const Login = () => {
                                 onChange={(e) => setUsername(e.target.value)}
                                 required
                                 disabled={isSubmitting}
-                                className="bg-blue-950/50 border-yellow-500/20 text-yellow-50 placeholder:text-yellow-100/30 focus:border-yellow-400 focus:ring-yellow-400/20 h-12"
+                                className="bg-stone-900/50 border-amber-500/20 text-amber-50 placeholder:text-amber-100/30 focus:border-amber-400 focus:ring-amber-400/20 h-12"
                             />
                         </div>
 
@@ -109,7 +109,7 @@ const Login = () => {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 disabled={isSubmitting}
-                                className="bg-blue-950/50 border-yellow-500/20 text-yellow-50 placeholder:text-yellow-100/30 focus:border-yellow-400 focus:ring-yellow-400/20 h-12"
+                                className="bg-stone-900/50 border-amber-500/20 text-amber-50 placeholder:text-amber-100/30 focus:border-amber-400 focus:ring-amber-400/20 h-12"
                             />
                         </div>
 

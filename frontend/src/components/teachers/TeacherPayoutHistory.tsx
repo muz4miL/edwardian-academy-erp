@@ -17,8 +17,15 @@ import {
 } from "@/components/ui/table";
 import { Receipt, CheckCircle, Clock, XCircle, Banknote } from "lucide-react";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev/api`;
+  }
+  return import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 interface PayoutRequest {
   _id: string;

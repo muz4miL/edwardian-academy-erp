@@ -12,9 +12,16 @@ const PERMISSION_VALUES = [
   "timetable",
   "sessions",
   "configuration",
-  "users", // User Management - OWNER only in practice
-  "website", // Website CMS - OWNER only
-  "payroll", // Payroll Management - OWNER only
+  "users",
+  "website",
+  "payroll",
+  "settlement",
+  // New modules
+  "gatekeeper",
+  "frontdesk",
+  "inquiries",
+  "reports",
+  "lectures",
 ];
 
 const userSchema = new mongoose.Schema(
@@ -44,7 +51,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["OWNER", "PARTNER", "STAFF"],
+      enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"],
       required: true,
     },
     // RBAC: Permissions array controls which sidebar tabs the user can see
@@ -57,6 +64,18 @@ const userSchema = new mongoose.Schema(
     walletBalance: {
       floating: { type: Number, default: 0 }, // Cash currently in pocket
       verified: { type: Number, default: 0 }, // Cash verified/banked
+    },
+    // Partner Retention System - Total cash in drawer (collection of the day)
+    totalCash: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Expense Debt - Amount owed to owner for their share of expenses
+    expenseDebt: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     // Partner Debt Tracking - Amount owed TO the owner (Sir Waqar)
     // Used when owner pays expenses out-of-pocket and partners owe their share
@@ -91,6 +110,54 @@ const userSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
     },
+    // ========================================
+    // Identity System Fields
+    // ========================================
+    profileImage: {
+      type: String,
+      trim: true,
+    },
+    // Link to Teacher document (for TEACHER role users)
+    teacherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Teacher",
+    },
+    // ========================================
+    // Manual Payroll System (Waqar Protocol v2)
+    // ========================================
+    // Amount owed to the teacher (set manually by admin)
+    manualBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // History of all payouts made to this user
+    payoutHistory: [
+      {
+        date: {
+          type: Date,
+          default: Date.now,
+        },
+        amount: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        type: {
+          type: String,
+          enum: ["Salary", "Advance", "Bonus", "Adjustment"],
+          default: "Salary",
+        },
+        note: {
+          type: String,
+          trim: true,
+        },
+        processedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -127,15 +194,15 @@ userSchema.methods.getPublicProfile = function () {
   const walletBalance =
     this.walletBalance && typeof this.walletBalance === "object"
       ? {
-          floating:
-            typeof this.walletBalance.floating === "number"
-              ? this.walletBalance.floating
-              : 0,
-          verified:
-            typeof this.walletBalance.verified === "number"
-              ? this.walletBalance.verified
-              : 0,
-        }
+        floating:
+          typeof this.walletBalance.floating === "number"
+            ? this.walletBalance.floating
+            : 0,
+        verified:
+          typeof this.walletBalance.verified === "number"
+            ? this.walletBalance.verified
+            : 0,
+      }
       : { floating: 0, verified: 0 };
 
   // OWNER gets all permissions automatically
@@ -152,7 +219,18 @@ userSchema.methods.getPublicProfile = function () {
       "sessions",
       "configuration",
       "users",
+      "website",
+      "payroll",
+      "settlement",
+      "gatekeeper",
+      "frontdesk",
+      "inquiries",
+      "reports",
+      "lectures",
     ];
+  } else if (this.role === "TEACHER") {
+    // Teachers get dashboard and lectures by default
+    permissions = ["dashboard", "lectures"];
   }
 
   return {
@@ -169,6 +247,7 @@ userSchema.methods.getPublicProfile = function () {
     email: this.email,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
+    profileImage: this.profileImage,
   };
 };
 

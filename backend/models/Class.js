@@ -52,6 +52,16 @@ const classSchema = new mongoose.Schema({
     },
   },
 
+  // Session Type - For ETEA/MDCAT special fee handling
+  sessionType: {
+    type: String,
+    enum: {
+      values: ["regular", "etea", "mdcat", "ecat", "test-prep"],
+      message: "{VALUE} is not a valid session type",
+    },
+    default: "regular",
+  },
+
   // Group - Academic stream/category (e.g., "Pre-Medical", "Pre-Engineering")
   group: {
     type: String,
@@ -79,6 +89,13 @@ const classSchema = new mongoose.Schema({
       message: "{VALUE} is not a valid shift",
     },
     trim: true,
+  },
+
+  // Academic Session - Reference to the Session model
+  session: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Session",
+    required: true,
   },
 
   // ========== SCHEDULE FIELDS ==========
@@ -157,6 +174,26 @@ const classSchema = new mongoose.Schema({
 
   // Subjects offered in this class with individual fees
   subjects: [subjectSchema],
+
+  // Subject-wise Teacher Mapping (NEW: For multi-teacher classes)
+  // Maps each subject to its specific teacher
+  subjectTeachers: [
+    {
+      subject: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      teacherId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Teacher",
+      },
+      teacherName: {
+        type: String,
+        trim: true,
+      },
+    },
+  ],
 
   // Base monthly fee for this class (fallback/default fee per subject)
   baseFee: {

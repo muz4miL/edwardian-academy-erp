@@ -1,29 +1,27 @@
 /**
- * Student Portal - LMS Module
+ * Student Portal - "Luxury Academic" Premium Edition
  *
- * Student-facing dashboard for viewing subjects, videos, and fee status.
+ * Prestigious Gold/Bronze Theme with Warm Glass Aesthetic
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { motion, useMotionValue, useSpring } from "framer-motion";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   GraduationCap,
   BookOpen,
@@ -38,7 +36,17 @@ import {
   Lock,
   Hourglass,
   RefreshCw,
+  Moon,
+  Sun,
+  ShieldCheck,
+  TrendingUp,
+  Calendar,
+  Sparkles,
+  Timer,
+  ArrowRight,
+  FileQuestion,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const API_BASE_URL =
@@ -61,6 +69,19 @@ interface StudentProfile {
   balance: number;
   studentStatus: string;
   session?: { name: string; startDate: string; endDate: string };
+  classRef?: any;
+}
+
+interface TimetableEntry {
+  entryId: string;
+  subject: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  room?: string;
+  teacherId?: {
+    name: string;
+  };
 }
 
 interface VideoItem {
@@ -77,14 +98,102 @@ interface VideoItem {
   formattedDuration?: string;
 }
 
-export default function StudentPortal() {
-  const navigate = useNavigate();
+// Subject color mapping with gradients
+const SUBJECT_COLORS: Record<
+  string,
+  { gradient: string; icon: string; glow: string; border?: string }
+> = {
+  Biology: {
+    gradient: "from-emerald-500/20 via-emerald-500/10 to-teal-500/5",
+    icon: "🧬",
+    glow: "shadow-emerald-500/20",
+    border: "group-hover:border-emerald-500/50",
+  },
+  Physics: {
+    gradient: "from-amber-500/10 via-amber-500/5 to-yellow-500/5",
+    icon: "⚛️",
+    glow: "shadow-amber-500/10",
+    border: "group-hover:border-amber-500/50",
+  },
+  Chemistry: {
+    gradient: "from-amber-500/10 via-amber-500/5 to-orange-500/5",
+    icon: "🧪",
+    glow: "shadow-amber-500/10",
+    border: "group-hover:border-amber-500/50",
+  },
+  Mathematics: {
+    gradient: "from-yellow-500/10 via-yellow-500/5 to-pink-500/5",
+    icon: "📐",
+    glow: "shadow-yellow-500/10",
+    border: "group-hover:border-yellow-500/50",
+  },
+  English: {
+    gradient: "from-cyan-500/10 via-cyan-500/5 to-blue-500/5",
+    icon: "📚",
+    glow: "shadow-cyan-500/10",
+    border: "group-hover:border-cyan-500/50",
+  },
+};
+
+// Motion Variants
+const waterfall = {
+  initial: { y: 40, opacity: 0 },
+  animate: {
+    y: 0,
+    opacity: 1,
+    transition: {
+      type: "spring" as const,
+      stiffness: 40,
+      damping: 15,
+      mass: 1,
+    },
+  },
+};
+
+const ripple = {
+  whileHover: { scale: 1.01, transition: { type: "spring" as const, stiffness: 400, damping: 10 } },
+  whileTap: { scale: 0.99 },
+};
+
+// Spotlight effect component - Warm Gold Glow
+const Spotlight = ({ mouseX, mouseY }: { mouseX: any; mouseY: any }) => {
+  return (
+    <motion.div
+      className="pointer-events-none absolute inset-0 z-0 transition duration-300"
+      style={{
+        background: `radial-gradient(600px circle at ${mouseX}px ${mouseY}px, rgba(180, 83, 9, 0.1), transparent 40%)`,
+      }}
+    />
+  );
+};
+
+export function StudentPortal() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [token, setToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
+
+  // Mouse position for spotlight effect
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothMouseX = useSpring(mouseX, { stiffness: 100, damping: 20 });
+  const smoothMouseY = useSpring(mouseY, { stiffness: 100, damping: 20 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    mouseX.set(e.clientX - rect.left);
+    mouseY.set(e.clientY - rect.top);
+  };
+
+  // Get greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
 
   // Login mutation
   const loginMutation = useMutation({
@@ -110,7 +219,7 @@ export default function StudentPortal() {
     },
   });
 
-  // Fetch videos (only when logged in)
+  // Fetch videos
   const { data: videosData, isLoading: videosLoading } = useQuery({
     queryKey: ["student-videos", activeSubject, token],
     queryFn: async () => {
@@ -133,6 +242,86 @@ export default function StudentPortal() {
   const videos: VideoItem[] = videosData?.data || [];
   const videosBySubject = videosData?.bySubject || {};
 
+  // Fetch student schedule/timetable (Role-Based)
+  const { data: scheduleData } = useQuery({
+    queryKey: ["student-timetable", token],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/timetable`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch timetable");
+      return res.json();
+    },
+    enabled: isLoggedIn && !!token,
+  });
+
+  const timetable: TimetableEntry[] = scheduleData?.data || [];
+
+  // Helper to find current/next session
+  const getCurrentSession = () => {
+    const now = new Date();
+    const pakistanTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }));
+    const currentDay = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][pakistanTime.getDay()];
+    const currentMinutes = pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+
+    const parseTime = (t: string) => {
+      const match = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (!match) return 0;
+      let h = parseInt(match[1]);
+      if (match[3].toUpperCase() === "PM" && h !== 12) h += 12;
+      if (match[3].toUpperCase() === "AM" && h === 12) h = 0;
+      return h * 60 + parseInt(match[2]);
+    };
+
+    const todayClasses = timetable.filter(e => e.day === currentDay);
+    
+    let current = null;
+    let next = null;
+
+    for (const entry of todayClasses) {
+      const start = parseTime(entry.startTime);
+      const end = parseTime(entry.endTime);
+
+      if (currentMinutes >= start && currentMinutes <= end) {
+        current = entry;
+        break;
+      }
+      if (start > currentMinutes) {
+        if (!next || start < parseTime(next.startTime)) {
+          next = entry;
+        }
+      }
+    }
+
+    return { current, next };
+  };
+
+  const { current: currentSession, next: nextSession } = getCurrentSession();
+
+  // Fetch exams for student's class
+  const { data: examsData } = useQuery({
+    queryKey: ["student-exams", profile?.classRef, token],
+    queryFn: async () => {
+      const classId = profile?.classRef?._id || profile?.classRef;
+      if (!classId) return { data: [] };
+
+      const res = await fetch(`${API_BASE_URL}/api/exams/class/${classId}`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch exams");
+      return res.json();
+    },
+    enabled: isLoggedIn && !!token && !!profile?.classRef,
+  });
+
+  const exams = examsData?.data || [];
+  const upcomingExams = exams.filter(
+    (e: any) => new Date() <= new Date(e.endTime),
+  );
+  const pastExams = exams.filter((e: any) => new Date() > new Date(e.endTime));
+
   // Record video view
   const viewMutation = useMutation({
     mutationFn: async (videoId: string) => {
@@ -144,7 +333,7 @@ export default function StudentPortal() {
     },
   });
 
-  // Handle login form submit
+  // Handle login
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginForm.username || !loginForm.password) {
@@ -162,9 +351,7 @@ export default function StudentPortal() {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
-    } catch {
-      // Ignore errors
-    }
+    } catch {}
     setIsLoggedIn(false);
     setToken(null);
     setProfile(null);
@@ -201,7 +388,6 @@ export default function StudentPortal() {
   // Get video embed URL
   const getEmbedUrl = (video: VideoItem) => {
     if (video.provider === "youtube") {
-      // Extract YouTube video ID
       const match = video.url.match(
         /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/,
       );
@@ -212,491 +398,1094 @@ export default function StudentPortal() {
     return video.url;
   };
 
+  // --- UI HELPERS ---
+  const MagneticWrapper = ({ children }: { children: React.ReactNode }) => {
+    const x = useMotionValue(0);
+    const y = useMotionValue(0);
+    const mouseX = useSpring(x, { stiffness: 150, damping: 15 });
+    const mouseY = useSpring(y, { stiffness: 150, damping: 15 });
+
+    function onMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+      const { left, top, width, height } = event.currentTarget.getBoundingClientRect();
+      const offsetX = event.clientX - left - width / 2;
+      const offsetY = event.clientY - top - height / 2;
+      x.set(offsetX / 8);
+      y.set(offsetY / 8);
+    }
+    function onMouseLeave() {
+      x.set(0);
+      y.set(0);
+    }
+
+    return (
+      <motion.div onMouseMove={onMouseMove} onMouseLeave={onMouseLeave} style={{ x: mouseX, y: mouseY }} className="h-full w-full">
+        {children}
+      </motion.div>
+    );
+  };
+
   // LOGIN SCREEN
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-slate-900 to-black relative overflow-hidden">
-        {/* Subtle Background Pattern Overlay */}
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djJoMnYtMmgtMnptMC00aDJ2Mmgtdi0yem0wIDhoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wLTEwaDF2NGgtMXYtNHptLTIgMGgxdjRoLTF2LTR6bTQgMGgxdjRoLTF2LTR6bTIgMGgxdjRoLTF2LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+      <div className="min-h-screen flex items-center justify-center bg-brand-primary liquid-mesh relative overflow-hidden font-sans">
+        <div className="absolute inset-0 bg-brand-primary/60 backdrop-blur-[2px]" />
+        
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-brand-gold/5 -skew-x-12 transform origin-top-right backdrop-blur-3xl" />
+        <motion.div 
+          animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 8, repeat: Infinity }}
+          className="absolute -bottom-40 -left-40 w-[600px] h-[600px] bg-brand-navy/30 rounded-full blur-3xl" 
+        />
 
-        {/* Animated Glow Orbs */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-
-        {/* Login Card */}
-        {/* Royal Glass Card */}
-        <Card className="w-full max-w-md mx-4 bg-slate-900/40 backdrop-blur-xl border border-yellow-500/30 shadow-2xl shadow-yellow-900/20 relative z-10">
-          <CardHeader className="space-y-4 text-center pt-8 pb-6">
-            {/* Logo with Drop Shadow */}
-            <div className="mx-auto">
-              <img
-                src="/logo.png"
-                alt="Edwardian Academy Logo"
-                className="h-24 w-24 object-contain mx-auto drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]"
-              />
-            </div>
-
-            {/* Metallic Gold Title - Serif */}
-            <h1 className="text-4xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-200">
-              Edwardian Academy Student Portal
-            </h1>
-
-            {/* Script Subtitle */}
-            <p className="text-lg italic font-serif text-yellow-100/60">
-              Access Your Learning Dashboard
-            </p>
-          </CardHeader>
-
-          <CardContent className="pb-8">
-            <form onSubmit={handleLogin} className="space-y-5">
-              {/* Username Field */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="username"
-                  className="text-yellow-100/80 flex items-center gap-2 font-medium"
+        <motion.div
+          {...waterfall}
+          className="w-full max-w-md mx-4 relative z-10"
+        >
+          <div className="glass-ethereal rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.4)] overflow-hidden border-white/10">
+            <div className="bg-brand-gold h-2 opacity-80" />
+            <div className="p-10 md:p-12">
+              <div className="text-center space-y-4 mb-10">
+                <motion.div 
+                  whileHover={{ rotate: 10, scale: 1.1 }}
+                  className="mx-auto w-20 h-20 rounded-[2rem] bg-brand-primary flex items-center justify-center shadow-2xl border border-white/10"
                 >
-                  <User className="w-4 h-4 text-yellow-400/70" />
-                  Student ID / Barcode ID
-                </Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter your ID"
-                  value={loginForm.username}
-                  onChange={(e) =>
-                    setLoginForm({ ...loginForm, username: e.target.value })
-                  }
-                  required
-                  disabled={loginMutation.isPending}
-                  className="bg-blue-950/50 border-yellow-500/20 text-yellow-50 placeholder:text-yellow-100/30 focus:border-yellow-400 focus:ring-yellow-400/20 h-12"
-                />
+                  <img src="/logo.png" alt="Logo" className="h-12 w-12 brightness-0 invert" />
+                </motion.div>
+                <div>
+                  <h1 className="text-4xl font-serif font-black text-white tracking-tight leading-tight">
+                    Welcome Back
+                  </h1>
+                  <p className="text-slate-400 font-medium mt-2">Sign in to your Student Portal</p>
+                </div>
               </div>
 
-              {/* Password Field */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="password"
-                  className="text-yellow-100/80 flex items-center gap-2 font-medium"
-                >
-                  <Lock className="w-4 h-4 text-yellow-400/70" />
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={loginForm.password}
-                  onChange={(e) =>
-                    setLoginForm({ ...loginForm, password: e.target.value })
-                  }
-                  required
-                  disabled={loginMutation.isPending}
-                  className="bg-blue-950/50 border-yellow-500/20 text-yellow-50 placeholder:text-yellow-100/30 focus:border-yellow-400 focus:ring-yellow-400/20 h-12"
-                />
+              <form onSubmit={handleLogin} className="space-y-6">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="username"
+                    className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2"
+                  >
+                    Student / Barcode ID
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="e.g. EA-2024-001"
+                      value={loginForm.username}
+                      onChange={(e) =>
+                        setLoginForm({ ...loginForm, username: e.target.value })
+                      }
+                      required
+                      disabled={loginMutation.isPending}
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-600 focus:bg-white/10 focus:ring-brand-gold h-14 pl-12 rounded-2xl transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="password"
+                    className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2"
+                  >
+                    Portal Password
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      value={loginForm.password}
+                      onChange={(e) =>
+                        setLoginForm({ ...loginForm, password: e.target.value })
+                      }
+                      required
+                      disabled={loginMutation.isPending}
+                      className="bg-white/5 border-white/10 text-white placeholder:text-slate-600 focus:bg-white/10 focus:ring-brand-gold h-14 pl-12 rounded-2xl transition-all font-bold"
+                    />
+                  </div>
+                </div>
+
+                <motion.div {...ripple}>
+                  <Button
+                    type="submit"
+                    disabled={loginMutation.isPending}
+                    className="w-full h-16 bg-brand-gold hover:bg-brand-gold/90 text-white text-lg font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-2xl shadow-brand-gold/20"
+                  >
+                    {loginMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Access Portal"
+                    )}
+                  </Button>
+                </motion.div>
+              </form>
+
+              <div className="text-center mt-10 border-t border-white/5 pt-8">
+                <p className="text-sm text-slate-500 font-medium">
+                  New student?{" "}
+                  <a
+                    href="/register"
+                    className="text-brand-gold font-bold hover:underline transition-all ml-1"
+                  >
+                    Register Online
+                  </a>
+                </p>
               </div>
-
-              {/* Solid Gold Button */}
-              <Button
-                type="submit"
-                disabled={loginMutation.isPending}
-                className="w-full h-12 bg-gradient-to-b from-yellow-400 via-yellow-500 to-yellow-600 hover:from-yellow-300 hover:via-yellow-400 hover:to-yellow-500 text-yellow-950 font-bold border-t border-yellow-300 shadow-lg shadow-yellow-600/30 transition-all duration-300"
-              >
-                {loginMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Authenticating...
-                  </>
-                ) : (
-                  <>
-                    <GraduationCap className="mr-2 h-5 w-5" />
-                    Access Portal
-                  </>
-                )}
-              </Button>
-            </form>
-
-            {/* Footer */}
-            <div className="mt-6 text-center">
-              <p className="text-xs text-yellow-100/40 italic mb-3">
-                Your Journey to Excellence Starts Here
-              </p>
-              <p className="text-sm text-yellow-100/60">
-                Don't have an account?{" "}
-                <a
-                  href="/register"
-                  className="text-yellow-400 hover:text-yellow-300 underline"
-                >
-                  Register here
-                </a>
-              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <p className="text-center text-[10px] text-slate-600 uppercase tracking-[0.4em] mt-8">
+            Institutional Access Only • Protected by Edwardian Security
+          </p>
+        </motion.div>
       </div>
     );
   }
 
-  // VERIFICATION PENDING SCREEN - "The Digital Waiting Room"
+  // LOADING STATE
+  if (isLoggedIn && !profile) {
+    return (
+      <div className="min-h-screen bg-[#030711] flex items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-amber-500" />
+      </div>
+    );
+  }
+
+  // VERIFICATION PENDING SCREEN
   if (isLoggedIn && profile && profile.studentStatus !== "Active") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900 via-slate-900 to-black relative overflow-hidden">
-        {/* Subtle Background Pattern Overlay */}
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDM0djJoMnYtMmgtMnptMC00aDJ2Mmgtdi0yem0wIDhoMnYyaC0ydi0yem0wIDRoMnYyaC0ydi0yem0wLTEwaDF2NGgtMXYtNHptLTIgMGgxdjRoLTF2LTR6bTQgMGgxdjRoLTF2LTR6bTIgMGgxdjRoLTF2LTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+      <div className="min-h-screen flex items-center justify-center bg-brand-primary liquid-mesh relative overflow-hidden font-sans">
+        <div className="absolute inset-0 bg-brand-primary/60 backdrop-blur-[2px]" />
+        
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-brand-gold/5 -skew-x-12 transform origin-top-right backdrop-blur-3xl" />
+        <motion.div 
+          animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.2, 0.1] }}
+          transition={{ duration: 8, repeat: Infinity }}
+          className="absolute -bottom-40 -left-40 w-[600px] h-[600px] bg-brand-navy/30 rounded-full blur-3xl" 
+        />
 
-        {/* Animated Glow Orbs */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-yellow-500/5 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-
-        {/* Verification Pending Card */}
-        <Card className="w-full max-w-2xl mx-4 bg-slate-900/40 backdrop-blur-xl border border-yellow-500/30 shadow-2xl shadow-yellow-900/20 relative z-10">
-          <CardHeader className="space-y-6 text-center pt-10 pb-8">
-            {/* Animated Hourglass Icon */}
-            <div className="mx-auto">
-              <div className="h-32 w-32 rounded-full bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-2 border-yellow-500/40 flex items-center justify-center mx-auto relative">
-                <Hourglass className="h-16 w-16 text-yellow-400 animate-pulse" />
-                <div className="absolute inset-0 rounded-full bg-yellow-400/10 animate-ping"></div>
-              </div>
-            </div>
-
-            {/* Title */}
-            <div className="space-y-3">
-              <h1 className="text-4xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-200">
-                Verification Pending
-              </h1>
-              <p className="text-xl italic font-serif text-yellow-100/60">
-                Your Journey Awaits Approval
-              </p>
-            </div>
-          </CardHeader>
-
-          <CardContent className="pb-10 px-8">
-            {/* Student Info */}
-            <div className="bg-blue-950/30 border border-yellow-500/20 rounded-xl p-6 mb-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-yellow-400/20 to-yellow-600/20 flex items-center justify-center border-2 border-yellow-500/30">
-                  <User className="h-8 w-8 text-yellow-400" />
+        <motion.div
+          {...waterfall}
+          className="w-full max-w-2xl mx-4 relative z-10"
+        >
+          <div className="glass-ethereal rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.4)] overflow-hidden border-white/10">
+            <div className="bg-brand-gold h-2 opacity-80" />
+            <div className="p-10 md:p-12">
+              <div className="text-center space-y-8">
+                <div className="mx-auto w-32 h-32 rounded-[2.5rem] bg-brand-primary/50 border border-brand-gold/30 flex items-center justify-center relative group overflow-hidden shadow-2xl">
+                  {profile.photo ? (
+                    <img 
+                      src={profile.photo} 
+                      alt={profile.name} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                  ) : (
+                    <img 
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.studentId}`} 
+                      alt={profile.name} 
+                      className="w-full h-full object-cover opacity-80"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-brand-gold/10 animate-pulse group-hover:animate-none transition-all pointer-events-none" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-yellow-100">
-                    {profile.studentName || profile.name}
-                  </h3>
-                  <p className="text-sm text-yellow-100/60">
-                    ID: {profile.barcodeId || profile.studentId}
+
+                <div className="space-y-4">
+                  <h1 className="text-4xl md:text-5xl font-serif font-black text-white tracking-tight leading-tight">
+                    Verification <span className="text-brand-gold">Pending</span>
+                  </h1>
+                  <p className="text-slate-400 text-lg font-medium max-w-md mx-auto">
+                    Your institutional access is being processed by the Office of Admissions.
                   </p>
                 </div>
-              </div>
 
-              {profile.class && (
-                <div className="flex items-center gap-2 text-sm text-yellow-100/70">
-                  <GraduationCap className="h-4 w-4" />
-                  <span>
-                    Applied for: {profile.class} - {profile.group}
-                  </span>
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md">
+                  <div className="flex flex-col md:flex-row items-center gap-6">
+                    <div className="w-20 h-20 rounded-2xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center">
+                      <User className="h-8 w-8 text-brand-gold" />
+                    </div>
+                    <div className="text-center md:text-left">
+                      <h3 className="text-2xl font-serif font-bold text-white">
+                        {profile.name}
+                      </h3>
+                      <p className="text-brand-gold/70 font-mono text-sm tracking-widest mt-1">
+                        ID: {profile.barcodeId || profile.studentId}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {/* Message */}
-            <div className="text-center space-y-4 mb-8">
-              <p className="text-lg text-yellow-100/80 leading-relaxed">
-                Your admission application is currently under review by our
-                administration team.
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <motion.div {...ripple}>
+                    <Button
+                      onClick={handleRefreshStatus}
+                      className="w-full h-16 bg-brand-gold hover:bg-brand-gold/90 text-white font-black uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-brand-gold/20"
+                    >
+                      <RefreshCw className="mr-3 h-5 w-5" />
+                      Check Status
+                    </Button>
+                  </motion.div>
+                  <motion.div {...ripple}>
+                    <Button
+                      onClick={handleLogout}
+                      variant="outline"
+                      className="w-full h-16 border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 font-black uppercase tracking-[0.2em] rounded-2xl transition-all"
+                    >
+                      <LogOut className="mr-3 h-5 w-5" />
+                      Sign Out
+                    </Button>
+                  </motion.div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p className="text-center text-[10px] text-slate-600 uppercase tracking-[0.4em] mt-8">
+            Admissions Department • Edwardian Academy Executive Office
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Calculate fee percentage
+  const feePercentage = profile
+    ? Math.round((profile.paidAmount / profile.totalFee) * 100)
+    : 0;
+
+  // MAIN DASHBOARD - LUXURY ACADEMIC AESTHETIC
+  return (
+    <div
+      className="min-h-screen bg-brand-primary text-white relative overflow-hidden font-sans selection:bg-brand-gold/30"
+      onMouseMove={handleMouseMove}
+    >
+      {/* Liquid Mesh Background */}
+      <div className="fixed inset-0 liquid-mesh opacity-40" />
+      <div className="fixed inset-0 bg-brand-primary/60 backdrop-blur-[2px]" />
+
+      {/* Spotlight Effect */}
+      <Spotlight mouseX={smoothMouseX} mouseY={smoothMouseY} />
+
+      {/* Glass Header with Gold Border */}
+      <header className="sticky top-0 z-50 glass-ethereal border-b border-white/10">
+        <div className="max-w-[1800px] mx-auto px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* Logo */}
+            <div className="p-2 rounded-xl bg-brand-primary border border-white/10 shadow-2xl">
+              <img
+                src="/logo.png"
+                alt="Edwardian Academy"
+                className="h-10 w-auto object-contain brightness-0 invert"
+              />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.3em]">
+                Student Portal
               </p>
-              <p className="text-yellow-100/60">
-                Please wait for administration approval. You will be notified
-                once your account is activated.
-              </p>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mt-4">
-                <Clock className="h-4 w-4 text-yellow-400" />
-                <span className="text-sm text-yellow-100/70">
-                  Status:{" "}
-                  <span className="font-semibold text-yellow-400">
-                    Pending Approval
-                  </span>
+              <p className="text-xs text-slate-400 font-serif italic">Institutional Access</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="hidden lg:flex items-center gap-8 mr-4">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Status</span>
+                <span className="text-sm font-bold text-brand-gold flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />
+                  Verified Student
                 </span>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Button
-                onClick={handleRefreshStatus}
-                className="flex-1 h-12 bg-gradient-to-b from-yellow-400 via-yellow-500 to-yellow-600 hover:from-yellow-300 hover:via-yellow-400 hover:to-yellow-500 text-yellow-950 font-bold border-t border-yellow-300 shadow-lg shadow-yellow-600/30 transition-all duration-300"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="flex items-center gap-3 hover:bg-white/5 h-14 px-4 rounded-2xl border border-transparent hover:border-white/10 transition-all"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-brand-gold overflow-hidden flex items-center justify-center shadow-lg shadow-brand-gold/20">
+                    {profile?.photo ? (
+                      <img src={profile.photo} alt={profile.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <img 
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.studentId}`} 
+                        alt={profile?.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="hidden md:block text-left">
+                    <p className="text-sm font-bold text-white leading-none">
+                      {profile?.name}
+                    </p>
+                    <p className="text-[10px] text-brand-gold/70 font-mono tracking-wider mt-1">
+                      {profile?.barcodeId || profile?.studentId}
+                    </p>
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-64 bg-brand-primary/95 backdrop-blur-2xl border-white/10 rounded-2xl p-2 shadow-2xl"
               >
-                <RefreshCw className="mr-2 h-5 w-5" />
-                Refresh Status
-              </Button>
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                className="flex-1 h-12 border-yellow-500/30 text-yellow-100 hover:bg-yellow-500/10 hover:text-yellow-50"
-              >
-                <LogOut className="mr-2 h-5 w-5" />
-                Logout
-              </Button>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-8 text-center">
-              <p className="text-xs text-yellow-100/40 italic">
-                For any queries, please contact the administration office
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // DASHBOARD SCREEN
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-              <GraduationCap className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-gray-900">Edwardian Academy</h1>
-              <p className="text-xs text-gray-500">Student Portal</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="font-medium text-gray-900">{profile?.name}</p>
-              <p className="text-xs text-gray-500">
-                {profile?.class} ({profile?.group})
-              </p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="h-4 w-4" />
-            </Button>
+                <DropdownMenuLabel className="text-slate-400 text-[10px] font-black uppercase tracking-widest px-3 py-2">
+                  Academy Account
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-white/5" />
+                <DropdownMenuItem className="text-slate-200 focus:bg-brand-gold/10 focus:text-brand-gold rounded-xl py-3 cursor-pointer">
+                  <User className="mr-3 h-4 w-4" />
+                  <span className="font-bold">Institutional Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-slate-200 focus:bg-brand-gold/10 focus:text-brand-gold rounded-xl py-3 cursor-pointer">
+                  <CreditCard className="mr-3 h-4 w-4" />
+                  <span className="font-bold">Fee Status: {profile?.feeStatus}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/5" />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-400 focus:bg-red-500/10 focus:text-red-400 rounded-xl py-3 cursor-pointer"
+                >
+                  <LogOut className="mr-3 h-4 w-4" />
+                  <span className="font-bold">Secure Logout</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Profile Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Student Info */}
-          <Card className="border-0 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                {profile?.photo ? (
-                  <img
-                    src={profile.photo}
-                    alt={profile.name}
-                    className="h-16 w-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <User className="h-8 w-8 text-indigo-600" />
-                  </div>
-                )}
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">
-                    {profile?.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    ID: {profile?.barcodeId || profile?.studentId}
-                  </p>
-                  <Badge variant="secondary" className="mt-1">
-                    {profile?.class} - {profile?.group}
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Fee Status */}
-          <Card
-            className={`border-0 shadow-sm ${
-              profile?.feeStatus === "paid"
-                ? "bg-emerald-50"
-                : profile?.feeStatus === "partial"
-                  ? "bg-amber-50"
-                  : "bg-red-50"
-            }`}
+      <main className="max-w-[1800px] mx-auto px-6 py-10 relative z-10">
+        {/* Bento Grid Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Hero Section - Span 8 */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="md:col-span-8"
           >
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div
-                  className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                    profile?.feeStatus === "paid"
-                      ? "bg-emerald-100"
-                      : profile?.feeStatus === "partial"
-                        ? "bg-amber-100"
-                        : "bg-red-100"
-                  }`}
-                >
-                  <CreditCard
-                    className={`h-8 w-8 ${
-                      profile?.feeStatus === "paid"
-                        ? "text-emerald-600"
-                        : profile?.feeStatus === "partial"
-                          ? "text-amber-600"
-                          : "text-red-600"
-                    }`}
-                  />
-                </div>
+            <Card className="h-full glass-ethereal border-white/10 shadow-[0_40px_100px_rgba(0,0,0,0.4)] relative overflow-hidden rounded-[3rem]">
+              <div className="absolute top-0 left-0 w-full h-1 bg-brand-gold opacity-50" />
+              <CardContent className="p-10 md:p-14 h-full flex flex-col justify-between relative z-10">
                 <div>
-                  <h3 className="font-bold text-lg text-gray-900">
-                    Fee Status
-                  </h3>
-                  <p
-                    className={`font-semibold ${
-                      profile?.feeStatus === "paid"
-                        ? "text-emerald-600"
-                        : profile?.feeStatus === "partial"
-                          ? "text-amber-600"
-                          : "text-red-600"
-                    }`}
-                  >
-                    {profile?.feeStatus?.toUpperCase()}
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 rounded-lg bg-brand-gold/10 border border-brand-gold/20">
+                      <Sparkles className="h-4 w-4 text-brand-gold" />
+                    </div>
+                    <span className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">
+                      {getGreeting()}
+                    </span>
+                  </div>
+                  <h2 className="text-5xl md:text-7xl font-serif font-black mb-6 tracking-tight leading-[1.1]">
+                    <span className="text-white">Welcome, </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-gold via-brand-gold/80 to-brand-gold shadow-sm">
+                      {profile?.name?.split(" ")[0] || "Scholar"}
+                    </span>
+                    <span className="text-brand-gold">.</span>
+                  </h2>
+                  <p className="text-xl text-slate-400 mb-12 max-w-2xl leading-relaxed">
+                    Your portal to excellence is ready. Continue your academic journey with the Edwardian Academy's elite curriculum.
                   </p>
-                  {(profile?.balance || 0) > 0 && (
-                    <p className="text-sm text-gray-600">
-                      Balance: PKR {profile?.balance.toLocaleString()}
-                    </p>
+
+                  {/* Quick Stats Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 transition-all hover:bg-white/10 group">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 group-hover:text-brand-gold transition-colors">
+                        Current Enrollment
+                      </p>
+                      <p className="text-2xl font-serif font-bold text-white">
+                        {profile?.class} <span className="text-brand-gold mx-2">•</span> {profile?.group}
+                      </p>
+                    </div>
+                    <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 transition-all hover:bg-white/10 group">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 group-hover:text-brand-gold transition-colors">
+                        Active Courses
+                      </p>
+                      <p className="text-2xl font-serif font-bold text-white">
+                        {profile?.subjects?.length || 0} Professional Subjects
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Session Card - Dynamic from Schedule API */}
+                <div className="mt-10 bg-brand-gold/10 border border-brand-gold/20 rounded-[2rem] p-8 transition-all hover:bg-brand-gold/15 group">
+                  <div className="flex flex-col md:flex-row items-center gap-6">
+                    <div className={cn(
+                      "w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl",
+                      currentSession ? "bg-emerald-500 shadow-emerald-500/20" : "bg-brand-gold shadow-brand-gold/20"
+                    )}>
+                      {currentSession ? <Play className="h-8 w-8 text-white animate-pulse" /> : <Clock className="h-8 w-8 text-brand-primary" />}
+                    </div>
+                    <div className="flex-1 text-center md:text-left">
+                      <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.3em] mb-1">
+                        {currentSession ? "Live Now: Ongoing Session" : "Up Next in Your Schedule"}
+                      </p>
+                      {currentSession || nextSession ? (
+                        <div>
+                          <p className="text-2xl font-serif font-bold text-white">
+                            {(currentSession || nextSession)?.subject}
+                            {currentSession && (
+                              <span className="ml-3 px-3 py-1 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest">
+                                Active
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-slate-400 font-medium mt-1">
+                            {(currentSession || nextSession)?.startTime} — {(currentSession || nextSession)?.endTime} 
+                            <span className="mx-2 opacity-30">|</span> 
+                            {(currentSession || nextSession)?.room || "TBA"} 
+                            <span className="mx-2 opacity-30">|</span>
+                            {(currentSession || nextSession)?.teacherId?.name || "Academic Expert"}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-2xl font-serif font-bold text-slate-500">
+                          No upcoming sessions scheduled
+                        </p>
+                      )}
+                    </div>
+                    <Button 
+                      onClick={() => document.getElementById('timetable-section')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="bg-brand-gold hover:bg-brand-gold/90 text-brand-primary font-black uppercase tracking-widest h-14 px-8 rounded-2xl shadow-lg shadow-brand-gold/20"
+                    >
+                      View Timetable
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+
+              {/* Background Watermark */}
+              <div className="absolute -bottom-20 -right-20 opacity-[0.03] pointer-events-none rotate-12">
+                <GraduationCap className="h-96 w-96 text-white" />
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Stats Column - Span 4 */}
+          <div className="md:col-span-4 space-y-6">
+            {/* Finance Widget with Glowing Shield */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <Card className="glass-ethereal border-white/10 rounded-[2rem] overflow-hidden">
+                <CardContent className="p-8">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                      Financial Standing
+                    </h3>
+                    {profile?.feeStatus === "paid" ? (
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                        <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Cleared</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-brand-gold/10 border border-brand-gold/20">
+                        <Clock className="h-4 w-4 text-brand-gold" />
+                        <span className="text-[10px] font-black text-brand-gold uppercase tracking-widest">Pending</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-center mb-8 relative">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pt-2">
+                      <p className="text-4xl font-serif font-black text-white">
+                        {feePercentage}%
+                      </p>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Paid</p>
+                    </div>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { value: feePercentage },
+                            { value: 100 - feePercentage },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={75}
+                          paddingAngle={8}
+                          dataKey="value"
+                          stroke="none"
+                        >
+                          <Cell
+                            fill={
+                              profile?.feeStatus === "paid"
+                                ? "#10b981"
+                                : "#B45309"
+                            }
+                            className="drop-shadow-[0_0_10px_rgba(180,83,9,0.3)]"
+                          />
+                          <Cell fill="rgba(255,255,255,0.05)" />
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="text-center space-y-4">
+                    <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Account Balance</p>
+                      <p className="text-2xl font-serif font-bold text-white">
+                        PKR {profile?.balance?.toLocaleString() || 0}
+                      </p>
+                    </div>
+                    {profile?.feeStatus !== "paid" && (
+                      <Button className="w-full h-12 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black uppercase tracking-widest text-xs rounded-xl">
+                        View Statement
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Progress Widget */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <Card className="glass-ethereal border-white/10 rounded-[2rem] overflow-hidden">
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="p-2 rounded-lg bg-brand-gold/10">
+                      <TrendingUp className="h-4 w-4 text-brand-gold" />
+                    </div>
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                      Learning Velocity
+                    </h3>
+                  </div>
+
+                  <div className="space-y-8">
+                    <div>
+                      <div className="flex justify-between items-end mb-3">
+                        <span className="text-xs font-bold text-slate-400">
+                          Lectures Completed
+                        </span>
+                        <span className="text-xl font-serif font-bold text-white">
+                          {videos.length} <span className="text-xs text-slate-500 font-sans">/ 100</span>
+                        </span>
+                      </div>
+                      <div className="h-2.5 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(videos.length * 10, 100)}%` }}
+                          className="h-full bg-gradient-to-r from-brand-gold to-brand-gold/60 rounded-full shadow-[0_0_15px_rgba(180,83,9,0.4)]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-brand-gold/10 border border-brand-gold/20 rounded-2xl p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.2em] mb-1">
+                            Current Tier
+                          </p>
+                          <p className="text-2xl font-serif font-bold text-white">
+                            Executive Scholar
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-brand-gold/20 border border-brand-gold/30 flex items-center justify-center">
+                          <GraduationCap className="h-6 w-6 text-brand-gold" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Upcoming Exams Widget */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <Card className="glass-ethereal border-white/10 rounded-[2rem] overflow-hidden shadow-2xl">
+                <CardContent className="p-8">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="p-2 rounded-lg bg-red-500/10">
+                      <FileQuestion className="h-4 w-4 text-red-400" />
+                    </div>
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                      Examination Hall
+                    </h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    {upcomingExams.length === 0 ? (
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
+                        <p className="text-xs text-slate-500 font-serif italic">
+                          No examinations currently scheduled.
+                        </p>
+                      </div>
+                    ) : (
+                      upcomingExams.map((exam: any) => {
+                        const isLive =
+                          new Date() >= new Date(exam.startTime) &&
+                          new Date() <= new Date(exam.endTime);
+                        const hasSubmitted = !!exam.mySubmission;
+
+                        return (
+                          <div
+                            key={exam._id}
+                            className={cn(
+                              "bg-white/5 border transition-all rounded-2xl p-5 hover:bg-white/10 group",
+                              hasSubmitted
+                                ? "border-emerald-500/20"
+                                : isLive
+                                  ? "border-brand-gold/40 bg-brand-gold/5"
+                                  : "border-white/10",
+                            )}
+                          >
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <p className="text-lg font-serif font-bold text-white group-hover:text-brand-gold transition-colors">
+                                  {exam.title}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
+                                  {exam.subject}
+                                </p>
+                              </div>
+                              {hasSubmitted ? (
+                                <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px] font-black uppercase tracking-widest px-3 h-6">
+                                  ✓ Result
+                                </Badge>
+                              ) : isLive ? (
+                                <Badge className="bg-brand-gold text-brand-primary text-[10px] font-black uppercase tracking-widest px-3 h-6 animate-pulse">
+                                  Live Now
+                                </Badge>
+                              ) : null}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 mb-6 font-black uppercase tracking-widest">
+                              <Calendar className="h-3 w-3 text-brand-gold" />
+                              {new Date(exam.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </div>
+
+                            {/* Show Score for Completed Exams */}
+                            {hasSubmitted ? (
+                              <div className="w-full bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                                      <ShieldCheck className="h-5 w-5 text-emerald-400" />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-black text-emerald-400 uppercase tracking-widest">
+                                        Grade {exam.mySubmission.grade}
+                                      </p>
+                                      <p className="text-sm font-serif font-bold text-white">
+                                        {exam.mySubmission.score} / {exam.mySubmission.totalMarks}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-lg font-serif font-bold text-emerald-400">{exam.mySubmission.percentage}%</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                onClick={() => {
+                                  if (isLive) {
+                                    window.open(
+                                      `/exam/${exam._id}`,
+                                      "_blank",
+                                      "width=1200,height=800,menubar=no,toolbar=no,location=no",
+                                    );
+                                  } else {
+                                    toast.info("Institutional Guard", {
+                                      description: `This examination will be accessible on ${new Date(exam.startTime).toLocaleString()}.`,
+                                    });
+                                  }
+                                }}
+                                className={cn(
+                                  "w-full h-12 text-[10px] font-black uppercase tracking-widest transition-all rounded-xl shadow-lg",
+                                  isLive
+                                    ? "bg-brand-gold hover:bg-brand-gold/90 text-brand-primary shadow-brand-gold/20"
+                                    : "bg-white/5 text-slate-500 cursor-not-allowed border border-white/5",
+                                )}
+                              >
+                                {isLive ? "Begin Examination" : "Locked by Office"}
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Weekly Timetable - Full Width */}
+          <div id="timetable-section" className="md:col-span-12 mt-4">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-3xl font-serif font-black text-white flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-brand-gold/10 border border-brand-gold/20">
+                  <Calendar className="h-6 w-6 text-brand-gold" />
+                </div>
+                Academic <span className="text-brand-gold">Schedule</span>
+              </h3>
+              <p className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Week of Excellence</p>
+            </div>
+
+            <Card className="glass-ethereal border-white/10 rounded-[3rem] overflow-hidden">
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
+                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+                    (day) => {
+                      const daySchedule = timetable.filter(
+                        (s) => s.day === day,
+                      );
+                      const isScheduled = daySchedule.length > 0;
+                      const today = [
+                        "Sunday",
+                        "Monday",
+                        "Tuesday",
+                        "Wednesday",
+                        "Thursday",
+                        "Friday",
+                        "Saturday",
+                      ][new Date().getDay()];
+                      const isToday = day === today;
+
+                      return (
+                        <div
+                          key={day}
+                          className={cn(
+                            "relative rounded-3xl p-6 transition-all duration-500 min-h-[160px] group",
+                            isScheduled
+                              ? "bg-brand-gold/10 border border-brand-gold/20 shadow-xl shadow-brand-gold/5"
+                              : "bg-white/5 border border-white/5 opacity-50 hover:opacity-100",
+                            isToday && "ring-2 ring-brand-gold ring-offset-4 ring-offset-brand-primary scale-105 z-10",
+                          )}
+                        >
+                          {/* Day Header */}
+                          <div
+                            className={cn(
+                              "text-[10px] font-black uppercase tracking-[0.2em] mb-4 flex items-center justify-between",
+                              isScheduled ? "text-brand-gold" : "text-slate-500",
+                            )}
+                          >
+                            {day.substring(0, 3)}
+                            {isToday && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />
+                            )}
+                          </div>
+
+                          {isScheduled ? (
+                            <div className="space-y-4">
+                              {daySchedule.map((entry, idx) => (
+                                <div key={idx} className={cn(
+                                  "pt-3",
+                                  idx !== 0 && "border-t border-white/5"
+                                )}>
+                                  <p className="text-lg font-serif font-bold text-white leading-none">
+                                    {entry.startTime}
+                                  </p>
+                                  <p className="text-[10px] text-brand-gold/80 font-bold uppercase tracking-widest mt-1">
+                                    {entry.subject}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-2 opacity-60">
+                                    <Clock className="h-2.5 w-2.5 text-slate-400" />
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                                      Room {entry.room || "TBA"}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-24 opacity-20 group-hover:opacity-40 transition-opacity">
+                              <Sparkles className="h-8 w-8 text-slate-500 mb-2" />
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                Self Study
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
                   )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Session Info */}
-          <Card className="border-0 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Clock className="h-8 w-8 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900">Session</h3>
-                  <p className="text-sm text-gray-600">
-                    {profile?.session?.name || "Current Session"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {profile?.subjects?.length || 0} Subjects Enrolled
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* My Subjects */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-indigo-600" />
-            My Subjects
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button
-              onClick={() => setActiveSubject(null)}
-              className={`p-4 rounded-xl border-2 text-left transition-all ${
-                activeSubject === null
-                  ? "border-indigo-500 bg-indigo-50"
-                  : "border-gray-200 bg-white hover:border-indigo-200"
-              }`}
-            >
-              <p className="font-semibold text-gray-900">All Videos</p>
-              <p className="text-sm text-gray-500">{videos.length} videos</p>
-            </button>
-            {profile?.subjects?.map((subject) => (
-              <button
-                key={subject.name}
-                onClick={() => setActiveSubject(subject.name)}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  activeSubject === subject.name
-                    ? "border-indigo-500 bg-indigo-50"
-                    : "border-gray-200 bg-white hover:border-indigo-200"
-                }`}
-              >
-                <p className="font-semibold text-gray-900">{subject.name}</p>
-                <p className="text-sm text-gray-500">
-                  {videosBySubject[subject.name]?.length || 0} videos
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Video Library */}
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Video className="h-5 w-5 text-indigo-600" />
-            Video Library
-          </h2>
-
-          {videosLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-            </div>
-          ) : videos.length === 0 ? (
-            <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
-              <CardContent className="py-12 text-center">
-                <Video className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-600 mb-1">
-                  No Videos Yet
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Videos for your subjects will appear here
-                </p>
               </CardContent>
             </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {videos.map((video) => (
-                <Card
-                  key={video._id}
-                  className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-                  onClick={() => handlePlayVideo(video)}
-                >
-                  {/* Thumbnail */}
-                  <div className="relative aspect-video bg-gray-900">
-                    {video.thumbnail ? (
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Play className="h-12 w-12 text-white/50" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <div className="h-16 w-16 rounded-full bg-white/90 flex items-center justify-center">
-                        <Play className="h-6 w-6 text-indigo-600 ml-1" />
-                      </div>
-                    </div>
-                    {video.formattedDuration && (
-                      <span className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
-                        {video.formattedDuration}
-                      </span>
-                    )}
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1">
-                      {video.title}
-                    </h3>
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <Badge variant="secondary" className="text-xs">
-                        {video.subjectName}
-                      </Badge>
-                      <span className="flex items-center gap-1">
-                        <Eye className="h-3.5 w-3.5" />
-                        {video.viewCount}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+          </div>
+
+          {/* Subject Cards - Full Width */}
+          <div className="md:col-span-12 mt-12">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-3xl font-serif font-black text-white flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-brand-gold/10 border border-brand-gold/20">
+                  <BookOpen className="h-6 w-6 text-brand-gold" />
+                </div>
+                Your <span className="text-brand-gold">Curriculum</span>
+              </h3>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Institutional Subjects</p>
             </div>
-          )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* All Courses Card */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+                whileHover={{ scale: 1.02, y: -4 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setActiveSubject(null)}
+                className="cursor-pointer"
+              >
+                <MagneticWrapper>
+                  <Card
+                    className={cn(
+                      "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden group h-full",
+                      activeSubject === null
+                        ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
+                        : "border-white/10 hover:border-white/20",
+                    )}
+                  >
+                    <CardContent className="p-8">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="w-14 h-14 rounded-2xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center group-hover:bg-brand-gold transition-colors duration-500 shadow-lg">
+                          <span className="text-3xl group-hover:scale-110 transition-transform">📚</span>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
+                        >
+                          {videos.length} Lectures
+                        </Badge>
+                      </div>
+                      <h4 className="font-serif font-bold text-2xl text-white mb-2 group-hover:text-brand-gold transition-colors">
+                        Full Library
+                      </h4>
+                      <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Complete Academic Content</p>
+                    </CardContent>
+                  </Card>
+                </MagneticWrapper>
+              </motion.div>
+
+              {/* Subject Cards */}
+              {profile?.subjects?.map((subject, index) => {
+                const colors =
+                  SUBJECT_COLORS[subject.name] || SUBJECT_COLORS.Mathematics;
+                return (
+                  <motion.div
+                    key={subject.name}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3, delay: index * 0.05 }}
+                    whileHover={{ scale: 1.02, y: -4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setActiveSubject(subject.name)}
+                    className="cursor-pointer group"
+                  >
+                    <MagneticWrapper>
+                      <Card
+                        className={cn(
+                          "glass-ethereal border transition-all duration-500 rounded-[2rem] overflow-hidden h-full",
+                          activeSubject === subject.name
+                            ? "border-brand-gold/50 shadow-2xl shadow-brand-gold/10 bg-brand-gold/5"
+                            : "border-white/10 hover:border-white/20",
+                          colors.glow,
+                        )}
+                      >
+                        <CardContent className="p-8 relative overflow-hidden">
+                          <div className="flex items-center justify-between mb-6 relative z-10">
+                            <div className="w-14 h-14 rounded-2xl bg-white/5 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:bg-brand-gold transition-colors duration-500 shadow-lg">
+                              <span className="text-3xl group-hover:scale-110 transition-transform">{colors.icon}</span>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className="font-black bg-white/5 text-white border-white/10 px-3 h-6 uppercase tracking-widest text-[10px]"
+                            >
+                              {videosBySubject[subject.name]?.length || 0} Lectures
+                            </Badge>
+                          </div>
+                          <h4 className="font-serif font-bold text-2xl text-white mb-2 relative z-10 group-hover:text-brand-gold transition-colors">
+                            {subject.name}
+                          </h4>
+                          <div className="flex items-center gap-2 relative z-10">
+                            <ShieldCheck className="h-3 w-3 text-emerald-400" />
+                            <p className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">
+                              Course Verified
+                            </p>
+                          </div>
+
+                          {/* Watermark Icon */}
+                          <div className="absolute -bottom-6 -right-6 opacity-[0.05] group-hover:opacity-10 transition-opacity duration-700 pointer-events-none">
+                            <span className="text-9xl">{colors.icon}</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </MagneticWrapper>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Video Library - Full Width */}
+          <div className="md:col-span-12">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Video className="h-5 w-5 text-amber-500" />
+                Lecture Library
+                {activeSubject && (
+                  <span className="text-stone-500 font-normal ml-2">
+                    • {activeSubject}
+                  </span>
+                )}
+              </h3>
+              <Badge
+                variant="outline"
+                className="bg-amber-500/5 text-amber-400 border-amber-500/20 px-4 py-1.5 rounded-full font-mono"
+              >
+                {videos.length} Available
+              </Badge>
+            </div>
+
+            {videosLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="animate-pulse bg-white/5 border border-white/10 rounded-[2rem] p-6">
+                    <div className="aspect-video bg-white/10 rounded-2xl mb-6" />
+                    <div className="h-6 bg-white/10 rounded-lg mb-4 w-3/4" />
+                    <div className="h-4 bg-white/10 rounded-lg w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : videos.length === 0 ? (
+              // Smart Empty State with Countdown
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="glass-ethereal border border-white/10 rounded-[3rem] p-16 text-center shadow-2xl"
+              >
+                <div className="max-w-md mx-auto">
+                  <div className="mb-10">
+                    <div className="w-32 h-32 mx-auto rounded-[2.5rem] bg-brand-gold/10 flex items-center justify-center border border-brand-gold/20 relative">
+                      <div className="absolute inset-0 rounded-[2.5rem] bg-brand-gold/5 animate-ping" />
+                      <Timer className="h-16 w-16 text-brand-gold" />
+                    </div>
+                  </div>
+                  <h3 className="text-4xl font-serif font-black text-white mb-4">
+                    Excellence takes <span className="text-brand-gold">Time.</span>
+                  </h3>
+                  <p className="text-slate-400 text-lg mb-10 leading-relaxed">
+                    You've mastered all current lectures. New elite content for{" "}
+                    <span className="text-brand-gold font-bold">{activeSubject || "your subjects"}</span> is being prepared.
+                  </p>
+
+                  {/* Next Session Countdown */}
+                  <div className="bg-white/5 border border-white/10 rounded-[2rem] p-8 inline-block shadow-inner">
+                    <p className="text-[10px] font-black text-brand-gold uppercase tracking-[0.3em] mb-4">
+                      Academic Milestone
+                    </p>
+                    <p className="text-2xl font-serif font-bold text-white mb-2">
+                      {profile?.session?.name || "Premium Session"}
+                    </p>
+                    <p className="text-xs text-slate-500 font-medium italic mb-6">Status: Curating Premium Content</p>
+                    <Button
+                      variant="outline"
+                      className="border-brand-gold/30 hover:bg-brand-gold/10 text-brand-gold font-black uppercase tracking-widest px-8 rounded-xl h-12"
+                    >
+                      View Syllabus
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                {videos.map((video, index) => (
+                  <motion.div
+                    key={video._id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    whileHover={{ y: -10 }}
+                    onClick={() => handlePlayVideo(video)}
+                    className="cursor-pointer group"
+                  >
+                    <Card className="overflow-hidden glass-ethereal border border-white/10 group-hover:border-brand-gold/40 transition-all duration-500 rounded-[2.5rem] shadow-2xl h-full flex flex-col">
+                      {/* Thumbnail */}
+                      <div className="relative aspect-video bg-brand-primary overflow-hidden">
+                        {video.thumbnail ? (
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Play className="h-12 w-12 text-white/20" />
+                          </div>
+                        )}
+
+                        {/* Duration Badge */}
+                        {video.formattedDuration && (
+                          <span className="absolute bottom-4 right-4 bg-brand-primary/90 backdrop-blur-md text-[10px] font-black text-white px-3 py-1.5 rounded-lg border border-white/10 tracking-widest">
+                            {video.formattedDuration}
+                          </span>
+                        )}
+
+                        {/* Play Overlay */}
+                        <div className="absolute inset-0 bg-brand-primary/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-center justify-center">
+                          <div className="w-16 h-16 rounded-full bg-brand-gold flex items-center justify-center shadow-2xl shadow-brand-gold/40 transform scale-75 group-hover:scale-100 transition-transform duration-500">
+                            <Play className="h-6 w-6 text-brand-primary fill-current" />
+                          </div>
+                        </div>
+
+                        {/* Subject Tag */}
+                        <div className="absolute top-4 left-4">
+                          <span className="px-3 py-1.5 rounded-lg bg-brand-gold text-brand-primary text-[10px] font-black uppercase tracking-widest shadow-xl">
+                            {video.subjectName}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <CardContent className="p-6 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-serif font-bold text-lg text-white mb-4 line-clamp-2 leading-tight group-hover:text-brand-gold transition-colors">
+                            {video.title}
+                          </h4>
+                          <div className="flex items-center justify-between mt-auto">
+                            <div className="flex items-center gap-2 text-slate-500">
+                              <Eye className="h-4 w-4" />
+                              <span className="text-[10px] font-black uppercase tracking-widest">
+                                {video.viewCount} Views
+                              </span>
+                            </div>
+                            {video.teacherName && (
+                              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+                                <User className="h-3 w-3 text-brand-gold" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {video.teacherName.split(" ")[0]}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
@@ -705,32 +1494,72 @@ export default function StudentPortal() {
         open={!!selectedVideo}
         onOpenChange={() => setSelectedVideo(null)}
       >
-        <DialogContent className="sm:max-w-4xl p-0 overflow-hidden rounded-2xl">
-          <div className="aspect-video bg-black">
-            {selectedVideo && (
-              <iframe
-                src={getEmbedUrl(selectedVideo)}
-                title={selectedVideo.title}
-                className="w-full h-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            )}
-          </div>
-          <div className="p-6">
-            <h3 className="font-bold text-xl text-gray-900 mb-2">
-              {selectedVideo?.title}
-            </h3>
-            {selectedVideo?.description && (
-              <p className="text-gray-600">{selectedVideo.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-4">
-              <Badge variant="secondary">{selectedVideo?.subjectName}</Badge>
-              {selectedVideo?.teacherName && (
-                <span className="text-sm text-gray-500">
-                  By {selectedVideo.teacherName}
-                </span>
+        <DialogContent className="max-w-6xl p-0 bg-black border-white/10 overflow-hidden rounded-3xl shadow-2xl">
+          <div className="flex flex-col lg:flex-row h-full">
+            <div className="flex-[2] aspect-video lg:aspect-auto h-full min-h-[400px]">
+              {selectedVideo && (
+                <iframe
+                  src={getEmbedUrl(selectedVideo)}
+                  title={selectedVideo.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
               )}
+            </div>
+
+            <div className="flex-1 p-8 lg:border-l border-white/5 bg-stone-950 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-amber-400 mb-6">
+                  <span className="px-3 py-1 rounded bg-amber-500/10 text-[10px] font-bold uppercase tracking-widest border border-amber-500/20">
+                    {selectedVideo?.subjectName}
+                  </span>
+                </div>
+
+                <h3 className="text-2xl font-bold text-white mb-4 line-clamp-3 leading-tight">
+                  {selectedVideo?.title}
+                </h3>
+
+                {selectedVideo?.description && (
+                  <p className="text-stone-400 text-sm leading-relaxed mb-6">
+                    {selectedVideo.description}
+                  </p>
+                )}
+
+                <div className="space-y-3">
+                  <div className="bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                    <User className="h-4 w-4 text-amber-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-500 uppercase">
+                        Instructor
+                      </p>
+                      <p className="text-sm font-bold text-white">
+                        {selectedVideo?.teacherName || "Academy Expert"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                    <Eye className="h-4 w-4 text-yellow-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-500 uppercase">
+                        Views
+                      </p>
+                      <p className="text-sm font-bold text-white font-mono">
+                        {selectedVideo?.viewCount}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 pt-8 border-t border-white/5">
+                <Button
+                  onClick={() => setSelectedVideo(null)}
+                  className="w-full h-12 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold transition-all"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
@@ -738,3 +1567,5 @@ export default function StudentPortal() {
     </div>
   );
 }
+
+export default StudentPortal;

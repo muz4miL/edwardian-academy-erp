@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Student = require("../models/Student");
 const { protect } = require("../middleware/authMiddleware");
+const { handlePhotoUpload } = require("../middleware/upload");
 const {
   collectFee,
   getFeeHistory,
@@ -36,6 +37,103 @@ router.post("/:id/print", protect, trackPrint);
 // @desc    Find student by receipt token (for Gate Scanner)
 // @access  Public (Gate needs fast access)
 router.get("/by-token/:token", findByToken);
+
+// ========================================
+// PHOTO UPLOAD ROUTES (System Bridge)
+// ========================================
+
+// @route   POST /api/students/:id/upload-photo
+// @desc    Upload student photo
+// @access  Protected (Staff/Admin)
+router.post("/:id/upload-photo", protect, handlePhotoUpload, async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No photo file provided",
+      });
+    }
+
+    // Store relative path for imageUrl
+    const imageUrl = `/uploads/students/${req.file.filename}`;
+    student.imageUrl = imageUrl;
+    await student.save();
+
+    console.log(`📸 Photo uploaded for student ${student.studentId}: ${imageUrl}`);
+
+    res.json({
+      success: true,
+      message: "Photo uploaded successfully",
+      data: {
+        studentId: student.studentId,
+        imageUrl: student.imageUrl,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error uploading photo:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Error uploading photo",
+      error: error.message,
+    });
+  }
+});
+
+// @route   GET /api/students/:id/placeholder-avatar
+// @desc    Generate SVG placeholder avatar with initials
+// @access  Public
+router.get("/:id/placeholder-avatar", async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).select("studentName");
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Generate initials from student name
+    const nameParts = student.studentName.trim().split(" ");
+    const initials = nameParts.length >= 2
+      ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+      : nameParts[0].slice(0, 2).toUpperCase();
+
+    // Generate a consistent color based on the name
+    const hash = student.studentName.split("").reduce((acc, char) => {
+      return char.charCodeAt(0) + ((acc << 5) - acc);
+    }, 0);
+    const hue = Math.abs(hash % 360);
+
+    // Generate SVG
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+        <rect width="300" height="300" fill="hsl(${hue}, 60%, 45%)"/>
+        <text x="150" y="150" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="central">${initials}</text>
+      </svg>
+    `.trim();
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(svg);
+  } catch (error) {
+    console.error("❌ Error generating placeholder:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Error generating placeholder avatar",
+      error: error.message,
+    });
+  }
+});
 
 // ========================================
 // EXISTING STUDENT CRUD ROUTES
@@ -170,6 +268,27 @@ router.post("/", async (req, res) => {
       console.log("🔧 Removed studentId from request (will be auto-generated)");
     }
 
+    // ✨ SYSTEM BRIDGE: Auto-generate login credentials for direct admissions
+    // Password formula: first 4 chars of name (lowercase) + last 4 digits of phone
+    if (!sanitizedData.password && (sanitizedData.parentCell || sanitizedData.studentCell)) {
+      const phone = sanitizedData.parentCell || sanitizedData.studentCell || "";
+      const phoneDigits = phone.replace(/\D/g, "").slice(-4);
+      const namePart = (sanitizedData.studentName || "user")
+        .replace(/\s/g, "")
+        .toLowerCase()
+        .slice(0, 4);
+      const generatedPassword = `${namePart}${phoneDigits}`;
+      
+      sanitizedData.password = generatedPassword;
+      sanitizedData.plainPassword = generatedPassword;
+      console.log("🔐 Auto-generated login credentials for student");
+    }
+
+    // Default to Active status for direct admissions (not pending approval)
+    if (!sanitizedData.studentStatus) {
+      sanitizedData.studentStatus = "Active";
+    }
+
     console.log("\n✅ Sanitized Data:", JSON.stringify(sanitizedData, null, 2));
 
     const newStudent = new Student(sanitizedData);
@@ -182,10 +301,20 @@ router.post("/", async (req, res) => {
     );
     console.log("✅ Fee Status:", savedStudent.feeStatus);
 
+    // Include credentials in response for admin display
+    const responseData = savedStudent.toObject();
+    if (sanitizedData.plainPassword) {
+      responseData.credentials = {
+        username: savedStudent.studentId,
+        password: sanitizedData.plainPassword,
+        note: "Share these credentials with the student for portal login",
+      };
+    }
+
     res.status(201).json({
       success: true,
       message: "Student created successfully",
-      data: savedStudent,
+      data: responseData,
     });
   } catch (error) {
     console.error("❌ Error creating student:", error.message);

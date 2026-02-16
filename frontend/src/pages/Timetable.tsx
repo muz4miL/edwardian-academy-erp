@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Clock, Plus, Loader2, Edit, Trash2, MapPin, Search, User } from "lucide-react";
+import { Clock, Plus, Loader2, Edit, Trash2, MapPin, Search, User, RefreshCw } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { timetableApi, classApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -60,10 +60,10 @@ const getSubjectStyles = (subject: string) => {
   }
   if (subjectLower.includes('physics')) {
     return {
-      bg: 'bg-gradient-to-br from-sky-100 to-sky-200',
-      border: 'border-sky-300',
+      bg: 'bg-gradient-to-br from-amber-100 to-amber-200',
+      border: 'border-amber-300',
       text: 'text-sky-800',
-      subtext: 'text-sky-600',
+      subtext: 'text-amber-600',
     };
   }
   if (subjectLower.includes('math')) {
@@ -109,6 +109,7 @@ const Timetable = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isBulkGenerateDialogOpen, setIsBulkGenerateDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
 
   // Form states
@@ -182,6 +183,21 @@ const Timetable = () => {
     },
     onError: (error: any) => {
       toast.error("Failed to delete entry", { description: error.message });
+    },
+  });
+
+  // Bulk generate mutation
+  const bulkGenerateMutation = useMutation({
+    mutationFn: timetableApi.bulkGenerate,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["timetable"] });
+      toast.success("Bulk Generate Complete", {
+        description: `Generated ${data.data?.generated || 0} entries from ${data.data?.classes || 0} classes`,
+      });
+      setIsBulkGenerateDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast.error("Failed to bulk generate", { description: error.message });
     },
   });
 
@@ -292,14 +308,25 @@ const Timetable = () => {
         title="Weekly Timetable"
         subtitle={`Total Entries: ${entries.length}`}
       >
-        <Button
-          className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
-          onClick={() => { resetForm(); setIsAddModalOpen(true); }}
-          style={{ borderRadius: "0.75rem" }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Entry
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="bg-primary-foreground/80 text-primary hover:bg-primary-foreground"
+            onClick={() => setIsBulkGenerateDialogOpen(true)}
+            style={{ borderRadius: "0.75rem" }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Bulk Generate
+          </Button>
+          <Button
+            className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+            onClick={() => { resetForm(); setIsAddModalOpen(true); }}
+            style={{ borderRadius: "0.75rem" }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Entry
+          </Button>
+        </div>
       </HeaderBanner>
 
       {/* TASK 2: Speed-Search Filter */}
@@ -315,7 +342,7 @@ const Timetable = () => {
         </div>
         {searchTerm && (
           <p className="text-sm text-muted-foreground">
-            Highlighting: <span className="font-semibold text-sky-600">"{searchTerm}"</span>
+            Highlighting: <span className="font-semibold text-amber-600">"{searchTerm}"</span>
           </p>
         )}
       </div>
@@ -328,7 +355,7 @@ const Timetable = () => {
           <span>Biology</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded bg-gradient-to-br from-sky-100 to-sky-200 border border-sky-300"></div>
+          <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-100 to-amber-200 border border-amber-300"></div>
           <span>Physics</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -354,13 +381,13 @@ const Timetable = () => {
         ) : (
           <div className="min-w-[1000px] rounded-xl border border-border bg-card overflow-hidden">
             {/* Grid Header - Days */}
-            <div className="grid grid-cols-7 bg-sky-600 text-white">
-              <div className="p-3 text-center font-semibold border-r border-sky-500">
+            <div className="grid grid-cols-7 bg-gradient-to-r from-amber-600 to-yellow-500 text-white">
+              <div className="p-3 text-center font-semibold border-r border-amber-500">
                 <Clock className="h-4 w-4 mx-auto mb-1" />
                 Time
               </div>
               {DAYS.map((day) => (
-                <div key={day} className="p-3 text-center font-semibold border-r border-sky-500 last:border-r-0">
+                <div key={day} className="p-3 text-center font-semibold border-r border-amber-500 last:border-r-0">
                   {day}
                 </div>
               ))}
@@ -450,8 +477,8 @@ const Timetable = () => {
         <DialogContent className="sm:max-w-[500px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <div className="bg-sky-100 p-2 rounded-lg">
-                <Plus className="h-5 w-5 text-sky-600" />
+              <div className="bg-amber-100 p-2 rounded-lg">
+                <Plus className="h-5 w-5 text-amber-600" />
               </div>
               Add Timetable Entry
             </DialogTitle>
@@ -578,7 +605,7 @@ const Timetable = () => {
             <Button
               onClick={handleSubmitAdd}
               disabled={createEntryMutation.isPending}
-              className="bg-sky-600 text-white hover:bg-sky-700"
+              className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
               {createEntryMutation.isPending ? (
@@ -599,12 +626,12 @@ const Timetable = () => {
         <DialogContent className="sm:max-w-[500px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
-              <div className="bg-sky-100 p-2 rounded-lg">
-                <Edit className="h-5 w-5 text-sky-600" />
+              <div className="bg-amber-100 p-2 rounded-lg">
+                <Edit className="h-5 w-5 text-amber-600" />
               </div>
               Edit Entry
               {selectedEntry?.entryId && (
-                <span className="ml-2 px-3 py-1 rounded-full bg-sky-600 text-white text-sm font-mono">
+                <span className="ml-2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-600 to-yellow-500 text-white text-sm font-mono">
                   {selectedEntry.entryId}
                 </span>
               )}
@@ -728,7 +755,7 @@ const Timetable = () => {
             <Button
               onClick={handleSubmitEdit}
               disabled={updateEntryMutation.isPending}
-              className="bg-sky-600 text-white hover:bg-sky-700"
+              className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:bg-sky-700"
               style={{ borderRadius: "0.75rem" }}
             >
               {updateEntryMutation.isPending ? (
@@ -772,6 +799,49 @@ const Timetable = () => {
                 </>
               ) : (
                 "Delete Entry"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Generate Confirmation */}
+      <AlertDialog open={isBulkGenerateDialogOpen} onOpenChange={setIsBulkGenerateDialogOpen}>
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <div className="bg-amber-100 p-2 rounded-lg">
+                <RefreshCw className="h-5 w-5 text-amber-600" />
+              </div>
+              Bulk Generate Timetable
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">This will regenerate timetable entries from <strong>all active classes</strong> that have assigned teachers.</span>
+              <span className="block text-destructive font-medium">Warning: All existing timetable entries (including manually edited ones) will be replaced.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkGenerateMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                bulkGenerateMutation.mutate();
+              }}
+              disabled={bulkGenerateMutation.isPending}
+              className="bg-gradient-to-r from-amber-600 to-yellow-500 text-white hover:opacity-90"
+            >
+              {bulkGenerateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Generate All
+                </>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

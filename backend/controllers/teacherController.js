@@ -81,16 +81,36 @@ exports.getTeacherById = async (req, res) => {
 
 /**
  * @route   POST /api/teachers
- * @desc    Create new teacher with smart defaults from Settings
+ * @desc    Create new teacher with smart defaults from Settings + auto-generate login credentials
  * @access  Public
  */
 exports.createTeacher = async (req, res) => {
   try {
     // 🔍 EXTREME DEBUGGING - Log incoming data
     console.log("=== CREATE TEACHER REQUEST ===");
-    console.log("Incoming Data:", JSON.stringify(req.body, null, 2));
+    console.log("Request Headers:", req.headers["content-type"]);
+    console.log(
+      "Payload Size:",
+      Buffer.byteLength(JSON.stringify(req.body)),
+      "bytes",
+    );
+    console.log("Teacher Name:", req.body.name);
+    console.log(
+      "Profile Image Size:",
+      req.body.profileImage ? Buffer.byteLength(req.body.profileImage) : "None",
+      "bytes",
+    );
 
-    const { name, phone, subject, joiningDate, compensation } = req.body;
+    const { name, phone, subject, joiningDate, compensation, profileImage } =
+      req.body;
+
+    // Validate required fields
+    if (!name || !phone || !subject) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name, phone, subject",
+      });
+    }
 
     // Fetch global settings for smart defaults
     let settings = await Settings.findOne();
@@ -138,36 +158,112 @@ exports.createTeacher = async (req, res) => {
       JSON.stringify(compensationData, null, 2),
     );
 
-    // Create new teacher document
+    // ========================================
+    // AUTO-GENERATE LOGIN CREDENTIALS
+    // ========================================
+
+    // Generate username from name (e.g., "Ahmed Khan" → "ahmed_khan")
+    const baseUsername = name
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, "") // Remove non-letters
+      .trim()
+      .replace(/\s+/g, "_"); // Replace spaces with underscores
+
+    // Ensure unique username by checking for existing users
+    let username = baseUsername;
+    let usernameExists = await User.findOne({ username });
+    let counter = 1;
+    while (usernameExists) {
+      username = `${baseUsername}${counter}`;
+      usernameExists = await User.findOne({ username });
+      counter++;
+    }
+
+    // Generate random 8-character password
+    const chars =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let plainPassword = "";
+    for (let i = 0; i < 8; i++) {
+      plainPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    // Generate unique userId for the User model
+    const userCount = await User.countDocuments();
+    const userId = `TCH${String(userCount + 1).padStart(4, "0")}`;
+
+    console.log("🔑 Generated credentials:", {
+      username,
+      userId,
+      passwordLength: plainPassword.length,
+    });
+
+    // Create User account for Teacher login
+    const user = new User({
+      userId,
+      username,
+      password: plainPassword, // Will be hashed by pre-save hook
+      fullName: name,
+      role: "TEACHER", // Must match User schema enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"]
+      permissions: ["dashboard", "lectures"],
+      phone,
+      profileImage: profileImage || null,
+      isActive: true,
+    });
+
+    await user.save();
+    console.log("✅ Created User account for teacher:", username);
+
+    // Create new teacher document with link to User
     const teacher = new Teacher({
       name,
       phone,
       subject,
       joiningDate: joiningDate || Date.now(),
       compensation: compensationData,
+      profileImage: profileImage || null,
+      userId: user._id,
+      username: username,
     });
 
     await teacher.save();
+
+    // Update User with teacherId reference
+    user.teacherId = teacher._id;
+    await user.save();
 
     console.log("✅ Created new teacher:", teacher.name);
 
     res.status(201).json({
       success: true,
-      message: "Teacher created successfully",
+      message: "Teacher created successfully with login credentials",
       data: teacher,
+      // Return credentials for display (THIS IS THE ONLY TIME THEY ARE SHOWN)
+      credentials: {
+        username: username,
+        password: plainPassword,
+        note: "Save these credentials! The password cannot be retrieved later.",
+      },
     });
   } catch (error) {
     console.error("❌ Error creating teacher:");
     console.error("Error Message:", error.message);
+    console.error("Error Code:", error.code);
+    console.error("Error Name:", error.name);
+    if (error.errors) {
+      console.error("Validation Errors:", error.errors);
+    }
     console.error("Error Stack:", error.stack);
-    console.error(
-      "Detailed Error:",
-      JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
-    );
 
-    res.status(400).json({
+    // Return appropriate status code based on error type
+    const statusCode = error.code === 11000 ? 409 : 400;
+    const message =
+      error.code === 11000
+        ? "Duplicate field value. This teacher may already exist."
+        : error.message || "Failed to create teacher";
+
+    res.status(statusCode).json({
       success: false,
-      message: "Failed to create teacher",
+      message,
       error: error.message,
     });
   }

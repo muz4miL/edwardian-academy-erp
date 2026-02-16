@@ -98,6 +98,15 @@ const studentSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Image URL (relative path for uploaded photos)
+    imageUrl: {
+      type: String,
+      default: null,
+    },
+    // Last scanned timestamp for audit trails
+    lastScannedAt: {
+      type: Date,
+    },
     // ========================================
     // Original Fields
     // ========================================
@@ -353,23 +362,25 @@ studentSchema.methods.generateBarcodeId = async function () {
 
 // Get public profile (for student portal)
 studentSchema.methods.getStudentProfile = function () {
+  const defaultPhoto = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + this.studentId;
   return {
     _id: this._id,
     studentId: this.studentId,
     barcodeId: this.barcodeId,
-    studentName: this.studentName,
+    name: this.studentName,
     fatherName: this.fatherName,
     class: this.class,
     group: this.group,
     subjects: this.subjects,
     email: this.email,
-    photo: this.photo,
+    photo: this.photo || defaultPhoto,
     studentStatus: this.studentStatus,
     feeStatus: this.feeStatus,
     totalFee: this.totalFee,
     paidAmount: this.paidAmount,
     balance: this.balance,
-    sessionRef: this.sessionRef,
+    session: this.sessionRef,
+    classRef: this.classRef,
   };
 };
 

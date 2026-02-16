@@ -65,9 +65,14 @@ const getInitials = (name: string): string => {
 
 // TASK 3: Helper to get subject name from string or object
 const getSubjectName = (subject: any): string => {
-  if (typeof subject === "string") return subject;
-  if (typeof subject === "object" && subject.name) return subject.name;
-  return "";
+  try {
+    if (typeof subject === "string") return subject;
+    if (typeof subject === "object" && subject?.name) return subject.name;
+    return "";
+  } catch (e) {
+    console.warn("Error getting subject name:", e);
+    return "";
+  }
 };
 
 const Students = () => {
@@ -236,28 +241,82 @@ const Students = () => {
 
   // Fee collection handler
   const handleCollectFee = (student: any) => {
-    setFeeStudent(student);
-    setFeeAmount("");
-    setFeeMonth(getMonthOptions()[0]);
-    setFeeSubject(student.subjects?.[0] || "");
-    setFeeSuccess(null);
-    setIsFeeModalOpen(true);
+    try {
+      if (!student || !student._id) {
+        toast.error("Invalid Student", {
+          description: "Student data is missing. Please refresh and try again.",
+          duration: 3000,
+        });
+        return;
+      }
+
+      setFeeStudent(student);
+      setFeeAmount("");
+      setFeeMonth(getMonthOptions()[0] || "");
+      setFeeSubject(student?.subjects?.[0] || "");
+      setFeeSuccess(null);
+      setIsFeeModalOpen(true);
+    } catch (error) {
+      console.error("❌ Error in handleCollectFee:", error);
+      toast.error("Error", {
+        description: "Failed to open fee collection modal. Please try again.",
+        duration: 3000,
+      });
+    }
   };
 
   const submitFeeCollection = () => {
-    if (!feeStudent || !feeAmount || !feeMonth) return;
-    collectFeeMutation.mutate({
-      studentId: feeStudent._id,
-      amount: parseFloat(feeAmount),
-      month: feeMonth,
-      subject: feeSubject,
-    });
+    if (!feeStudent || !feeStudent._id) {
+      toast.error("Invalid Student", {
+        description: "Student information is missing.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (!feeAmount || parseFloat(feeAmount) <= 0) {
+      toast.error("Invalid Amount", {
+        description: "Please enter a valid fee amount greater than 0.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (!feeMonth) {
+      toast.error("Missing Month", {
+        description: "Please select a month for this fee collection.",
+        duration: 3000,
+      });
+      return;
+    }
+
+    try {
+      collectFeeMutation.mutate({
+        studentId: feeStudent._id,
+        amount: parseFloat(feeAmount),
+        month: feeMonth,
+        subject: feeSubject || "",
+      });
+    } catch (error) {
+      console.error("❌ Error submitting fee collection:", error);
+      toast.error("Error", {
+        description: "Failed to submit fee collection. Please try again.",
+        duration: 3000,
+      });
+    }
   };
 
   const closeFeeModal = () => {
-    setIsFeeModalOpen(false);
-    setFeeStudent(null);
-    setFeeSuccess(null);
+    try {
+      setIsFeeModalOpen(false);
+      setFeeStudent(null);
+      setFeeSuccess(null);
+      setFeeAmount("");
+      setFeeMonth("");
+      setFeeSubject("");
+    } catch (error) {
+      console.warn("Error closing fee modal:", error);
+    }
   };
 
   return (
@@ -389,156 +448,180 @@ const Students = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {students.map((student: any) => {
-                const initials = getInitials(student.studentName || "NA");
-                const subjects = student.subjects || [];
+              {students && students.length > 0 ? (
+                students.map((student: any) => {
+                  try {
+                    const initials = getInitials(student?.studentName || "NA");
+                    const subjects = student?.subjects || [];
 
-                return (
-                  <TableRow key={student._id} className="hover:bg-secondary/50">
-                    <TableCell className="font-medium font-mono text-xs text-muted-foreground">
-                      {student.studentId}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white font-bold text-sm shadow-md">
-                          <span className="flex items-center justify-center">
-                            {initials}
+                    return (
+                      <TableRow
+                        key={student?._id || Math.random()}
+                        className="hover:bg-secondary/50"
+                      >
+                        <TableCell className="font-medium font-mono text-xs text-muted-foreground">
+                          {student.studentId}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white font-bold text-sm shadow-md">
+                              <span className="flex items-center justify-center">
+                                {initials}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-foreground">
+                                {student.studentName}
+                              </p>
+                              {student.fatherName === "To be updated" ? (
+                                <p className="text-[11px] italic text-slate-400">
+                                  {student.fatherName}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">
+                                  {student.fatherName}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {student.class}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {student.group}
                           </span>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {student.studentName}
-                          </p>
-                          {student.fatherName === "To be updated" ? (
-                            <p className="text-[11px] italic text-slate-400">
-                              {student.fatherName}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              {student.fatherName}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {student.class}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {student.group}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {/* TASK 3: Enterprise Subject Pills - Handles both string and object format */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {subjects.length > 0 ? (
-                          <>
-                            {subjects
-                              .slice(0, 2)
-                              .map((subject: any, idx: number) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-700"
-                                >
-                                  {getSubjectName(subject)}
-                                </span>
-                              ))}
-                            {subjects.length > 2 && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 border border-sky-200 text-sky-700">
-                                +{subjects.length - 2}
+                        </TableCell>
+                        <TableCell>
+                          {/* TASK 3: Enterprise Subject Pills - Handles both string and object format */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {subjects.length > 0 ? (
+                              <>
+                                {subjects
+                                  .slice(0, 2)
+                                  .map((subject: any, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-700"
+                                    >
+                                      {getSubjectName(subject)}
+                                    </span>
+                                  ))}
+                                {subjects.length > 2 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 border border-sky-200 text-sky-700">
+                                    +{subjects.length - 2}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">
+                                No subjects
                               </span>
                             )}
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">
-                            No subjects
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div
-                        className="inline-flex items-center justify-center"
-                        style={{
-                          filter:
-                            student.status === "active"
-                              ? "drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))"
-                              : "drop-shadow(0 0 8px rgba(148, 163, 184, 0.2))",
-                        }}
-                      >
-                        <StatusBadge status={student.status} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div
-                        className="inline-flex items-center justify-center"
-                        style={{
-                          filter:
-                            student.feeStatus === "paid"
-                              ? "drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))"
-                              : student.feeStatus === "partial"
-                                ? "drop-shadow(0 0 8px rgba(234, 179, 8, 0.3))"
-                                : "drop-shadow(0 0 8px rgba(217, 119, 6, 0.3))",
-                        }}
-                      >
-                        <StatusBadge status={student.feeStatus} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-purple-50 hover:text-purple-600"
-                          onClick={() => generatePDF(student._id, "reprint")}
-                          disabled={isPrinting}
-                          title="Print Receipt"
-                        >
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-green-50 hover:text-green-600"
-                          onClick={() => handleCollectFee(student)}
-                          title="Collect Fee"
-                        >
-                          <DollarSign className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-sky-50 hover:text-sky-600"
-                          onClick={() => handleView(student)}
-                          title="View Details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
-                          onClick={() => handleEdit(student)}
-                          title="Edit Student"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
-                          onClick={() => handleDelete(student)}
-                          disabled={deleteStudentMutation.isPending}
-                          title="Delete Student"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div
+                            className="inline-flex items-center justify-center"
+                            style={{
+                              filter:
+                                student.status === "active"
+                                  ? "drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))"
+                                  : "drop-shadow(0 0 8px rgba(148, 163, 184, 0.2))",
+                            }}
+                          >
+                            <StatusBadge status={student.status} />
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div
+                            className="inline-flex items-center justify-center"
+                            style={{
+                              filter:
+                                student.feeStatus === "paid"
+                                  ? "drop-shadow(0 0 8px rgba(34, 197, 94, 0.3))"
+                                  : student.feeStatus === "partial"
+                                    ? "drop-shadow(0 0 8px rgba(234, 179, 8, 0.3))"
+                                    : "drop-shadow(0 0 8px rgba(217, 119, 6, 0.3))",
+                            }}
+                          >
+                            <StatusBadge status={student.feeStatus} />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-purple-50 hover:text-purple-600"
+                              onClick={() =>
+                                generatePDF(student._id, "reprint")
+                              }
+                              disabled={isPrinting}
+                              title="Print Receipt"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-green-50 hover:text-green-600"
+                              onClick={() => handleCollectFee(student)}
+                              title="Collect Fee"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-sky-50 hover:text-sky-600"
+                              onClick={() => handleView(student)}
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
+                              onClick={() => handleEdit(student)}
+                              title="Edit Student"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
+                              onClick={() => handleDelete(student)}
+                              disabled={deleteStudentMutation.isPending}
+                              title="Delete Student"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  } catch (error) {
+                    console.error(
+                      "Error rendering student row:",
+                      student,
+                      error,
+                    );
+                    return null;
+                  }
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={10} className="h-24 text-center">
+                    <p className="text-muted-foreground">
+                      No students to display
+                    </p>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         )}
@@ -573,8 +656,9 @@ const Students = () => {
               Collect Fee
             </DialogTitle>
             <DialogDescription>
-              {feeStudent &&
-                `Collecting fee for ${feeStudent.studentName} (${feeStudent.studentId})`}
+              {feeStudent
+                ? `Collecting fee for ${feeStudent?.studentName || feeStudent?.name || "Student"} (${feeStudent?.studentId || "N/A"})`
+                : "Loading student information..."}
             </DialogDescription>
           </DialogHeader>
 
@@ -587,7 +671,7 @@ const Students = () => {
                   Fee Collected Successfully!
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Receipt #{feeSuccess.receiptNumber}
+                  Receipt #{feeSuccess?.receiptNumber || "N/A"}
                 </p>
               </div>
 
@@ -597,12 +681,14 @@ const Students = () => {
                     Total Amount
                   </span>
                   <span className="font-semibold">
-                    Rs. {feeSuccess.amount?.toLocaleString()}
+                    Rs. {feeSuccess?.amount?.toLocaleString() || "0"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Month</span>
-                  <span className="font-medium">{feeSuccess.month}</span>
+                  <span className="font-medium">
+                    {feeSuccess?.month || "N/A"}
+                  </span>
                 </div>
                 <div className="border-t border-border pt-3 mt-3">
                   <p className="text-xs text-muted-foreground mb-2">
@@ -611,21 +697,23 @@ const Students = () => {
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-blue-600">
                       Teacher Share (
-                      {feeSuccess.splitBreakdown?.teacherPercentage}%)
+                      {feeSuccess?.splitBreakdown?.teacherPercentage || "0"}%)
                     </span>
                     <span className="font-medium">
                       Rs.{" "}
-                      {feeSuccess.splitBreakdown?.teacherAmount?.toLocaleString()}
+                      {feeSuccess?.splitBreakdown?.teacherAmount?.toLocaleString() ||
+                        "0"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm mt-1">
                     <span className="text-purple-600">
                       Academy Share (
-                      {feeSuccess.splitBreakdown?.academyPercentage}%)
+                      {feeSuccess?.splitBreakdown?.academyPercentage || "0"}%)
                     </span>
                     <span className="font-medium">
                       Rs.{" "}
-                      {feeSuccess.splitBreakdown?.academyAmount?.toLocaleString()}
+                      {feeSuccess?.splitBreakdown?.academyAmount?.toLocaleString() ||
+                        "0"}
                     </span>
                   </div>
                 </div>
@@ -648,32 +736,43 @@ const Students = () => {
                     <SelectValue placeholder="Select month" />
                   </SelectTrigger>
                   <SelectContent>
-                    {getMonthOptions().map((month) => (
+                    {getMonthOptions()?.map((month) => (
                       <SelectItem key={month} value={month}>
                         {month}
                       </SelectItem>
-                    ))}
+                    )) || []}
                   </SelectContent>
                 </Select>
               </div>
 
-              {feeStudent?.subjects?.length > 0 && (
-                <div className="space-y-2">
-                  <Label htmlFor="feeSubject">Subject</Label>
-                  <Select value={feeSubject} onValueChange={setFeeSubject}>
-                    <SelectTrigger id="feeSubject">
-                      <SelectValue placeholder="Select subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {feeStudent.subjects.map((subj: string) => (
-                        <SelectItem key={subj} value={subj}>
-                          {subj}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {feeStudent?.subjects &&
+                Array.isArray(feeStudent.subjects) &&
+                feeStudent.subjects.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="feeSubject">Subject</Label>
+                    <Select value={feeSubject} onValueChange={setFeeSubject}>
+                      <SelectTrigger id="feeSubject">
+                        <SelectValue placeholder="Select subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {feeStudent?.subjects?.map((subj: any, idx: number) => {
+                          const subjName =
+                            typeof subj === "string"
+                              ? subj
+                              : subj?.name || `Subject ${idx + 1}`;
+                          return (
+                            <SelectItem
+                              key={`${subjName}-${idx}`}
+                              value={subjName}
+                            >
+                              {subjName}
+                            </SelectItem>
+                          );
+                        }) || []}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
               <div className="space-y-2">
                 <Label htmlFor="feeAmount">Amount (Rs.)</Label>

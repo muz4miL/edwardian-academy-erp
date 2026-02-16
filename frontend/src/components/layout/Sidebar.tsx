@@ -20,6 +20,9 @@ import {
   ScanLine,
   UserCheck,
   ClipboardCheck,
+  Video,
+  BarChart,
+  FileQuestion,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -57,7 +60,7 @@ const navItems = [
     icon: Phone,
     label: "Inquiries",
     path: "/leads",
-    permission: "dashboard", // Accessible to all logged-in users
+    permission: "inquiries",
   },
   { icon: BookOpen, label: "Classes", path: "/classes", permission: "classes" },
   {
@@ -77,13 +80,13 @@ const navItems = [
     icon: ScanLine,
     label: "Gate Scanner",
     path: "/gatekeeper",
-    permission: "dashboard",
+    permission: "gatekeeper",
   },
   {
     icon: ClipboardCheck,
     label: "Front Desk",
     path: "/front-desk",
-    permission: "admissions",
+    permission: "frontdesk",
   },
   {
     icon: Settings,
@@ -100,6 +103,24 @@ const navItems = [
     ownerOnly: true,
   },
   {
+    icon: Video,
+    label: "Lectures",
+    path: "/lectures",
+    permission: "lectures",
+  },
+  {
+    icon: FileQuestion,
+    label: "Exams",
+    path: "/exams",
+    permission: "exams",
+  },
+  {
+    icon: BarChart,
+    label: "Reports",
+    path: "/reports",
+    permission: "reports",
+  },
+  {
     icon: Globe,
     label: "Website",
     path: "/website-manager",
@@ -110,14 +131,14 @@ const navItems = [
     icon: Banknote,
     label: "Payroll",
     path: "/payroll",
-    permission: "payroll",
+    permission: "reports", // Changed to use reports permission
     ownerOnly: true,
   },
   {
     icon: Handshake,
     label: "Settlement",
     path: "/partner-settlement",
-    permission: "settlement",
+    permission: "reports", // Changed to use reports permission
     ownerOnly: true,
   },
 ];
@@ -139,6 +160,9 @@ export function Sidebar() {
     // ownerOnly items are restricted to OWNER role
     if (item.ownerOnly) return false;
 
+    // Teachers automatically get access to lectures
+    if (user?.role === "TEACHER" && item.label === "Lectures") return true;
+
     // Check if user has permission for this item
     return userPermissions.includes(item.permission);
   });
@@ -150,36 +174,34 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64",
       )}
     >
-      {/* Sidebar Header - Professional Layout */}
-      <div className="border-b border-slate-700/50 px-6 py-5">
+      {/* Sidebar Header - Luxury Academic Theme */}
+      <div className="border-b border-amber-500/20 px-4 py-5">
         {!collapsed && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center gap-2">
             <img
               src="/logo.png"
-              alt="Edwardian Logo"
-              className="h-12 w-12 object-contain"
+              alt="Edwardian Academy"
+              className="h-20 w-auto object-contain"
             />
-            <div className="flex flex-col">
-              <h1 className="font-bold text-lg leading-tight text-white">
-                Edwardian Academy
-              </h1>
-              <p className="text-xs font-medium text-blue-300/80 tracking-wide uppercase">
-                Enterprise ERP
-              </p>
-            </div>
+            <p className="text-[10px] font-semibold text-amber-400/80 tracking-widest uppercase">
+              Enterprise ERP
+            </p>
           </div>
         )}
         {collapsed && (
           <img
             src="/logo.png"
-            alt="Edwardian Logo"
+            alt="Edwardian Academy"
             className="mx-auto h-10 w-10 object-contain"
           />
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="mt-4 flex flex-col gap-1 px-2">
+      <nav
+        className="mt-4 flex flex-col gap-1 px-2 overflow-y-auto sidebar-scrollbar"
+        style={{ maxHeight: "calc(100vh - 180px)" }}
+      >
         {filteredNavItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -199,6 +221,8 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+
 
       {/* Collapse button */}
       <button

@@ -1,5 +1,6 @@
 const Student = require("../models/Student");
 const Video = require("../models/Video");
+const Lecture = require("../models/Lecture");
 
 /**
  * Student Portal Controller - LMS Module
@@ -138,6 +139,7 @@ exports.getStudentProfile = async (req, res) => {
         paidAmount: student.paidAmount,
         balance: Math.max(0, student.totalFee - student.paidAmount),
         session: student.sessionRef,
+        classRef: student.classRef,
         studentStatus: student.studentStatus,
       },
     });
@@ -165,29 +167,63 @@ exports.getStudentVideos = async (req, res) => {
       });
     }
 
-    // Get videos for student's class
-    const query = {
+    // Get videos from old Video model
+    const videoQuery = {
       isPublished: true,
     };
 
     if (student.classRef) {
-      query.classRef = student.classRef;
+      videoQuery.classRef = student.classRef;
     } else {
-      query.className = student.class;
+      videoQuery.className = student.class;
     }
 
     // Optional subject filter
     if (req.query.subject) {
-      query.subjectName = req.query.subject;
+      videoQuery.subjectName = req.query.subject;
     }
 
-    const videos = await Video.find(query)
+    const videos = await Video.find(videoQuery)
       .sort({ sortOrder: 1, uploadedAt: -1 })
       .lean();
 
+    // Also get lectures from new Lecture model (YouTube integration)
+    let lectures = [];
+    if (student.classRef) {
+      const lectureQuery = {
+        classRef: student.classRef,
+        isLocked: false,
+      };
+      if (req.query.subject) {
+        lectureQuery.subject = req.query.subject;
+      }
+
+      lectures = await Lecture.find(lectureQuery)
+        .populate("teacherRef", "fullName")
+        .sort({ order: 1, createdAt: -1 })
+        .lean();
+    }
+
+    // Transform lectures to match video format
+    const transformedLectures = lectures.map((lecture) => ({
+      _id: lecture._id,
+      title: lecture.title,
+      description: lecture.description,
+      url: lecture.youtubeUrl,
+      thumbnail: `https://img.youtube.com/vi/${lecture.youtubeId}/mqdefault.jpg`,
+      provider: "youtube",
+      subjectName: lecture.subject,
+      teacherName: lecture.teacherRef?.fullName,
+      viewCount: lecture.viewCount || 0,
+      isLecture: true, // Flag to identify new lecture system
+    }));
+
+    // Combine both sources
+    const allVideos = [...videos, ...transformedLectures];
+
     // Group by subject
     const videosBySubject = {};
-    videos.forEach((video) => {
+    allVideos.forEach((video) => {
       const subject = video.subjectName || "General";
       if (!videosBySubject[subject]) {
         videosBySubject[subject] = [];
@@ -197,8 +233,8 @@ exports.getStudentVideos = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      count: videos.length,
-      data: videos,
+      count: allVideos.length,
+      data: allVideos,
       bySubject: videosBySubject,
     });
   } catch (error) {
@@ -216,9 +252,18 @@ exports.getStudentVideos = async (req, res) => {
 // @access  Protected (Student)
 exports.recordVideoView = async (req, res) => {
   try {
-    await Video.findByIdAndUpdate(req.params.id, {
+    const { id } = req.params;
+
+    // Try Video model first, then Lecture model
+    let updated = await Video.findByIdAndUpdate(id, {
       $inc: { viewCount: 1 },
     });
+
+    if (!updated) {
+      updated = await Lecture.findByIdAndUpdate(id, {
+        $inc: { viewCount: 1 },
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -245,4 +290,126 @@ exports.studentLogout = async (req, res) => {
     success: true,
     message: "Logged out successfully",
   });
+};
+
+// @desc    Get student's class schedule/timetable
+// @route   GET /api/student-portal/schedule
+// @access  Protected (Student)
+exports.getStudentSchedule = async (req, res) => {
+  try {
+    const Class = require("../models/Class");
+
+    const student = await Student.findById(req.student._id).lean();
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Find the class the student is enrolled in
+    let classData = null;
+
+    if (student.classRef) {
+      classData = await Class.findById(student.classRef).lean();
+    } else if (student.class) {
+      // Fallback: Find by classTitle or gradeLevel
+      classData = await Class.findOne({
+        $or: [
+          { classTitle: { $regex: student.class, $options: 'i' } },
+          { gradeLevel: { $regex: student.class, $options: 'i' } }
+        ],
+        status: 'active'
+      }).lean();
+    }
+
+    if (!classData) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          schedule: [],
+          className: student.class || "Not Enrolled",
+          message: "No schedule found for your class"
+        },
+      });
+    }
+
+    // Format schedule for frontend calendar
+    const schedule = (classData.days || []).map(day => ({
+      day: day,
+      dayFull: {
+        'Mon': 'Monday',
+        'Tue': 'Tuesday',
+        'Wed': 'Wednesday',
+        'Thu': 'Thursday',
+        'Fri': 'Friday',
+        'Sat': 'Saturday',
+        'Sun': 'Sunday'
+      }[day] || day,
+      startTime: classData.startTime,
+      endTime: classData.endTime,
+      roomNumber: classData.roomNumber || 'TBD',
+      subjects: classData.subjects?.map(s => s.name) || [],
+      classTitle: classData.classTitle,
+      group: classData.group,
+      shift: classData.shift
+    }));
+
+    // Find next class
+    const now = new Date();
+    const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()];
+    const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+
+    let nextClass = null;
+    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const currentDayIndex = dayOrder.indexOf(currentDay);
+
+    // Look for next class starting from today
+    for (let i = 0; i < 7; i++) {
+      const checkDayIndex = (currentDayIndex + i) % 7;
+      const checkDay = dayOrder[checkDayIndex];
+
+      if (classData.days?.includes(checkDay)) {
+        // If it's today, check if the class hasn't started yet
+        if (i === 0 && classData.startTime <= currentTime) {
+          continue;
+        }
+
+        nextClass = {
+          day: checkDay,
+          dayFull: {
+            'Mon': 'Monday', 'Tue': 'Tuesday', 'Wed': 'Wednesday',
+            'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday', 'Sun': 'Sunday'
+          }[checkDay],
+          startTime: classData.startTime,
+          endTime: classData.endTime,
+          roomNumber: classData.roomNumber || 'TBD',
+          isToday: i === 0,
+          daysUntil: i
+        };
+        break;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        schedule,
+        className: classData.classTitle || classData.displayName,
+        group: classData.group,
+        shift: classData.shift,
+        roomNumber: classData.roomNumber,
+        nextClass,
+        subjects: classData.subjects
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getStudentSchedule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching schedule",
+      error: error.message,
+    });
+  }
 };

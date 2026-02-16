@@ -30,6 +30,12 @@ import PublicRegister from "./pages/PublicRegister";
 import PendingApprovals from "./pages/PendingApprovals";
 import VerificationHub from "./pages/VerificationHub";
 import StudentPortal from "./pages/StudentPortal";
+import Lectures from "./pages/Lectures";
+import Reports from "./pages/Reports";
+// Phase 4: Online Exam System
+import Exams from "./pages/Exams";
+import ExamBuilder from "./pages/ExamBuilder";
+import ExamRoom from "./pages/ExamRoom";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -208,6 +214,41 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <VerificationHub />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 3: Academic Video Module */}
+            <Route
+              path="/lectures"
+              element={
+                <ProtectedRoute>
+                  <Lectures />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 4: Online Exam System */}
+            <Route
+              path="/exams"
+              element={
+                <ProtectedRoute>
+                  <Exams />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/exams/create"
+              element={
+                <ProtectedRoute>
+                  <ExamBuilder />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/exam/:examId" element={<ExamRoom />} />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute>
+                  <Reports />
                 </ProtectedRoute>
               }
             />

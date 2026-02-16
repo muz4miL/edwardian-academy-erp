@@ -66,38 +66,49 @@ import { useNavigate } from "react-router-dom";
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// Permission options with labels
-const PERMISSION_OPTIONS = [
+// Permission options organized by group for clean 3-column layout
+const PERMISSION_GROUPS = [
   {
-    key: "dashboard",
-    label: "Dashboard",
-    description: "Main dashboard overview",
-    always: true,
+    title: "Core",
+    permissions: [
+      { key: "dashboard", label: "Dashboard", always: true },
+      { key: "admissions", label: "Admissions" },
+      { key: "students", label: "Students" },
+      { key: "teachers", label: "Teachers" },
+    ],
   },
   {
-    key: "admissions",
-    label: "Admissions",
-    description: "New student admissions",
+    title: "Operations",
+    permissions: [
+      { key: "finance", label: "Finance" },
+      { key: "gatekeeper", label: "Gatekeeper" },
+      { key: "frontdesk", label: "Front Desk" },
+      { key: "inquiries", label: "Inquiries" },
+    ],
   },
   {
-    key: "students",
-    label: "Students",
-    description: "View and manage students",
+    title: "Academic",
+    permissions: [
+      { key: "classes", label: "Classes" },
+      { key: "timetable", label: "Timetable" },
+      { key: "sessions", label: "Sessions" },
+      { key: "lectures", label: "Lectures" },
+      { key: "exams", label: "Exams" },
+    ],
   },
   {
-    key: "teachers",
-    label: "Teachers",
-    description: "View and manage teachers",
+    title: "Admin",
+    permissions: [
+      { key: "configuration", label: "Configuration" },
+      { key: "reports", label: "Reports" },
+    ],
   },
-  {
-    key: "finance",
-    label: "Finance",
-    description: "Fee collection and finance",
-  },
-  { key: "classes", label: "Classes", description: "Class management" },
-  { key: "timetable", label: "Timetable", description: "Class timetables" },
-  { key: "sessions", label: "Sessions", description: "Academic sessions" },
 ];
+
+// Flat list for compatibility
+const ALL_CHECKBOX_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) =>
+  g.permissions.map((p) => p.key),
+);
 
 interface User {
   _id: string;
@@ -350,7 +361,10 @@ export default function UserManagement() {
   };
 
   const getRoleBadge = (role: string) => {
-    switch (role) {
+    // Normalize role for case-insensitive matching
+    const normalizedRole = role?.toUpperCase();
+
+    switch (normalizedRole) {
       case "OWNER":
         return (
           <Badge className="bg-yellow-100 text-yellow-800 gap-1">
@@ -362,6 +376,8 @@ export default function UserManagement() {
         return <Badge className="bg-purple-100 text-purple-800">Partner</Badge>;
       case "STAFF":
         return <Badge className="bg-blue-100 text-blue-800">Staff</Badge>;
+      case "TEACHER":
+        return <Badge className="bg-blue-100 text-blue-800">Teacher</Badge>;
       default:
         return <Badge variant="outline">{role}</Badge>;
     }
@@ -668,26 +684,51 @@ export default function UserManagement() {
 
             {/* Permissions */}
             <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Sidebar Permissions
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Sidebar Permissions
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])
+                  }
+                  className="h-7 text-xs"
+                >
+                  Select All
+                </Button>
+              </div>
               <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="grid grid-cols-2 gap-3">
-                  {PERMISSION_OPTIONS.map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`add-${perm.key}`}
-                        checked={formPermissions.includes(perm.key)}
-                        onCheckedChange={() => handlePermissionToggle(perm.key)}
-                        disabled={perm.always}
-                      />
-                      <Label
-                        htmlFor={`add-${perm.key}`}
-                        className="text-sm cursor-pointer"
-                      >
-                        {perm.label}
-                      </Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  {PERMISSION_GROUPS.map((group) => (
+                    <div key={group.title} className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        {group.title}
+                      </h4>
+                      {group.permissions.map((perm) => (
+                        <div
+                          key={perm.key}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`add-${perm.key}`}
+                            checked={formPermissions.includes(perm.key)}
+                            onCheckedChange={() =>
+                              handlePermissionToggle(perm.key)
+                            }
+                            disabled={perm.always}
+                          />
+                          <Label
+                            htmlFor={`add-${perm.key}`}
+                            className="text-sm cursor-pointer"
+                          >
+                            {perm.label}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -808,31 +849,51 @@ export default function UserManagement() {
             {/* Permissions (only for non-OWNER) */}
             {selectedUser?.role !== "OWNER" && (
               <div className="space-y-3">
-                <Label className="flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Sidebar Permissions
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Sidebar Permissions
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setFormPermissions([...ALL_CHECKBOX_PERMISSIONS])
+                    }
+                    className="h-7 text-xs"
+                  >
+                    Select All
+                  </Button>
+                </div>
                 <div className="border rounded-lg p-4 bg-muted/30">
-                  <div className="grid grid-cols-2 gap-3">
-                    {PERMISSION_OPTIONS.map((perm) => (
-                      <div
-                        key={perm.key}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`edit-${perm.key}`}
-                          checked={formPermissions.includes(perm.key)}
-                          onCheckedChange={() =>
-                            handlePermissionToggle(perm.key)
-                          }
-                          disabled={perm.always}
-                        />
-                        <Label
-                          htmlFor={`edit-${perm.key}`}
-                          className="text-sm cursor-pointer"
-                        >
-                          {perm.label}
-                        </Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {PERMISSION_GROUPS.map((group) => (
+                      <div key={group.title} className="space-y-2">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          {group.title}
+                        </h4>
+                        {group.permissions.map((perm) => (
+                          <div
+                            key={perm.key}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`edit-${perm.key}`}
+                              checked={formPermissions.includes(perm.key)}
+                              onCheckedChange={() =>
+                                handlePermissionToggle(perm.key)
+                              }
+                              disabled={perm.always}
+                            />
+                            <Label
+                              htmlFor={`edit-${perm.key}`}
+                              className="text-sm cursor-pointer"
+                            >
+                              {perm.label}
+                            </Label>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>

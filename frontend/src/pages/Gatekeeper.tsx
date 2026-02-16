@@ -25,6 +25,9 @@ import {
   VolumeX,
   Fingerprint,
   ArrowLeft,
+  Clock,
+  BookOpen,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
@@ -33,11 +36,31 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 // ==================== TYPES ====================
+interface EnrolledClass {
+  classId: string;
+  classTitle: string;
+  subject: string;
+  teacherName: string;
+  days: string[];
+  startTime: string;
+  endTime: string;
+  roomNumber?: string;
+}
+
 interface ScanResult {
   success: boolean;
-  status: "success" | "defaulter" | "partial" | "blocked" | "unknown" | "error" | "too_early";
+  status:
+    | "success"
+    | "defaulter"
+    | "partial"
+    | "blocked"
+    | "unknown"
+    | "error"
+    | "too_early"
+    | "too_late"
+    | "no_class_today";
   message: string;
-  reason?: string; // Detailed rejection reason (e.g., "TOO EARLY", "OFF SCHEDULE")
+  reason?: string; 
   student?: {
     _id: string;
     studentId: string;
@@ -48,15 +71,17 @@ interface ScanResult {
     group: string;
     photo?: string;
     feeStatus: string;
-    totalFee: number;
-    paidAmount: number;
     balance: number;
     studentStatus: string;
-    session: string;
+  };
+  currentSession?: {
+    subject: string;
+    teacher: string;
+    startTime: string;
+    endTime: string;
+    room?: string;
   };
   scannedAt?: string;
-  currentTime?: string; // Current time when scanned
-  classStartTime?: string; // Expected class start time
 }
 
 type TerminalState = "standby" | "scanning" | "success" | "denied" | "warning";
@@ -189,13 +214,21 @@ export default function Gatekeeper() {
   const scanMutation = useMutation({
     mutationFn: async (barcode: string) => {
       if (isMounted) setTerminalState("scanning");
+      console.log(`🔍 Sending scan request for: "${barcode}"`);
+
       const response = await fetch(`${API_BASE_URL}/api/gatekeeper/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // CRITICAL: Send auth cookie
         body: JSON.stringify({ barcode }),
       });
-      if (!response.ok) throw new Error("Scan failed");
-      return response.json();
+
+      // Parse response even if not ok (to get error message)
+      const data = await response.json();
+      console.log(`📡 Gate response:`, data);
+
+      // Return data regardless of status - we handle it in onSuccess
+      return data;
     },
     onSuccess: (data: ScanResult) => {
       if (!isMounted) return; // Prevent state updates if unmounted
@@ -222,13 +255,15 @@ export default function Gatekeeper() {
       }
       setScanInput("");
     },
-    onError: () => {
+    onError: (error: any) => {
       if (!isMounted) return; // Prevent state updates if unmounted
+
+      console.error(`❌ Scan error:`, error);
 
       setScanResult({
         success: false,
         status: "error",
-        message: "SCAN ERROR - TRY AGAIN",
+        message: error?.message || "Network error - check connection",
       });
       setTerminalState("denied");
       if (soundEnabled) playDeniedSound();
@@ -273,10 +308,10 @@ export default function Gatekeeper() {
         <div className="flex items-center justify-between px-8 py-4 border-b border-slate-700/50">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate(-1)}
               className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors mr-2"
-              title="Back to Dashboard"
-              aria-label="Back to Dashboard"
+              title="Go Back"
+              aria-label="Go Back"
             >
               <ArrowLeft className="h-6 w-6 text-slate-400 hover:text-white" />
             </button>
@@ -340,7 +375,7 @@ export default function Gatekeeper() {
                 "border-4 border-cyan-500/30",
                 "shadow-[0_0_60px_rgba(34,211,238,0.3)]",
                 terminalState === "standby" &&
-                "animate-[pulse_3s_ease-in-out_infinite]",
+                  "animate-[pulse_3s_ease-in-out_infinite]",
               )}
             >
               {terminalState === "scanning" ? (
@@ -426,85 +461,108 @@ export default function Gatekeeper() {
 
   // SUCCESS STATE - Full-Screen Green Welcome
   if (terminalState === "success" && scanResult?.student) {
+    const defaultPhoto = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + scanResult.student.studentId;
+    
     return (
       <div
-        className="fixed inset-0 z-50 bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-600 flex flex-col cursor-pointer"
+        className="fixed inset-0 z-50 bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-600 flex flex-col cursor-pointer overflow-hidden font-sans"
         onClick={resetTerminal}
       >
-        {/* Flash overlay animation */}
         <div className="absolute inset-0 bg-white/30 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
 
-        {/* Content */}
-        <div className="relative flex-1 flex flex-col items-center justify-center px-8">
-          {/* Success Icon */}
-          <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
-            <div className="h-44 w-44 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
-              <ShieldCheck className="h-28 w-28 text-white drop-shadow-lg" />
-            </div>
-          </div>
-
-          {/* WELCOME Message */}
-          <h1 className="text-8xl font-black text-white mb-8 tracking-wider drop-shadow-lg">
-            ✓ WELCOME
-          </h1>
-
-          {/* Student Photo & Name */}
-          <div className="flex items-center gap-10 mb-10">
-            {scanResult.student.photo ? (
-              <img
-                src={scanResult.student.photo}
-                alt={scanResult.student.name}
-                className="h-36 w-36 rounded-full object-cover border-4 border-white shadow-2xl"
-              />
-            ) : (
-              <div className="h-36 w-36 rounded-full bg-white/30 flex items-center justify-center border-4 border-white shadow-xl">
-                <User className="h-20 w-20 text-white" />
+        <div className="relative flex-1 flex flex-col items-center justify-center p-8">
+          <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            
+            {/* Left: Visual Confirmation */}
+            <div className="lg:col-span-5 flex flex-col items-center">
+              <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+                <div className="h-32 w-32 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+                  <ShieldCheck className="h-20 w-20 text-white drop-shadow-lg" />
+                </div>
               </div>
-            )}
-            <div className="text-left">
-              <h2 className="text-6xl font-bold text-white drop-shadow-lg">
-                {scanResult.student.name}
-              </h2>
-              <p className="text-2xl text-white/80 mt-2">
-                S/O {scanResult.student.fatherName}
-              </p>
+              
+              <div className="relative group">
+                <div className="absolute -inset-4 bg-white/20 rounded-[3rem] blur-2xl group-hover:bg-white/30 transition-all duration-500" />
+                <img
+                  src={scanResult.student.photo || defaultPhoto}
+                  alt={scanResult.student.name}
+                  className="relative h-80 w-80 rounded-[2.5rem] object-cover border-8 border-white shadow-[0_40px_80px_rgba(0,0,0,0.3)] animate-in zoom-in-95 duration-500"
+                />
+                <div className="absolute -bottom-6 -right-6 h-20 w-20 rounded-2xl bg-emerald-400 border-4 border-white flex items-center justify-center shadow-xl animate-[bounce_2s_infinite]">
+                  <Fingerprint className="h-10 w-10 text-white" />
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Details Card */}
+            <div className="lg:col-span-7 space-y-8 text-white">
+              <div>
+                <h1 className="text-[10rem] font-black leading-none tracking-tighter drop-shadow-2xl">✓</h1>
+                <h2 className="text-7xl font-black tracking-tight mb-2">
+                  {scanResult.student.name.toUpperCase()}
+                </h2>
+                <p className="text-3xl font-medium text-white/80 italic">
+                  S/O {scanResult.student.fatherName}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20">
+                  <p className="text-xs font-black uppercase tracking-widest text-emerald-200 mb-2">Current Class</p>
+                  <p className="text-4xl font-bold">{scanResult.student.class}</p>
+                  <p className="text-xl text-white/60 mt-1">{scanResult.student.group}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20">
+                  <p className="text-xs font-black uppercase tracking-widest text-emerald-200 mb-2">Student ID</p>
+                  <p className="text-4xl font-mono font-black tracking-wider">{scanResult.student.studentId}</p>
+                  <p className="text-xl text-white/60 mt-1">Verified</p>
+                </div>
+              </div>
+
+              {/* Intelligent Schedule Highlight */}
+              {scanResult.currentSession ? (
+                <div className="bg-emerald-400/20 backdrop-blur-xl rounded-3xl p-8 border-2 border-emerald-300/50 shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:opacity-40 transition-opacity">
+                    <BookOpen className="h-20 w-20 rotate-12" />
+                  </div>
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="px-3 py-1 rounded-full bg-emerald-400 text-emerald-900 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                          Live Session
+                        </div>
+                        <span className="text-white/60 text-lg font-mono">{scanResult.currentSession.startTime} - {scanResult.currentSession.endTime}</span>
+                      </div>
+                      <h3 className="text-5xl font-black tracking-tight">{scanResult.currentSession.subject}</h3>
+                      <p className="text-2xl font-bold flex items-center gap-3 text-emerald-100">
+                        <User className="h-6 w-6" /> {scanResult.currentSession.teacher}
+                      </p>
+                    </div>
+                    {scanResult.currentSession.room && (
+                      <div className="text-right">
+                        <p className="text-sm font-black uppercase tracking-widest text-white/60">Room</p>
+                        <p className="text-6xl font-black text-emerald-300">{scanResult.currentSession.room}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white/5 backdrop-blur-sm rounded-3xl p-8 border border-white/10">
+                  <p className="text-xl font-medium text-white/60 flex items-center gap-3">
+                    <Clock className="h-6 w-6" /> No session scheduled for this time.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-4">
+                <div className="h-3 w-3 rounded-full bg-emerald-400 animate-pulse" />
+                <p className="text-2xl font-medium text-white/60 uppercase tracking-widest">Fee Status: <span className="text-emerald-300 font-black">CLEARED</span></p>
+              </div>
             </div>
           </div>
 
-          {/* Class & ID Info */}
-          <div className="flex items-center gap-16 bg-white/10 rounded-3xl px-16 py-8 backdrop-blur-sm">
-            <div className="text-center">
-              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
-                Class
-              </p>
-              <p className="text-5xl font-bold text-white">
-                {scanResult.student.class}
-              </p>
-              <p className="text-xl text-white/80 mt-1">
-                {scanResult.student.group}
-              </p>
-            </div>
-            <div className="w-px h-24 bg-white/30" />
-            <div className="text-center">
-              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
-                Student ID
-              </p>
-              <p className="text-5xl font-mono font-bold text-white tracking-wider">
-                {scanResult.student.studentId}
-              </p>
-            </div>
-            <div className="w-px h-24 bg-white/30" />
-            <div className="text-center">
-              <p className="text-xl text-white/70 uppercase tracking-wider mb-1">
-                Fee Status
-              </p>
-              <p className="text-5xl font-bold text-white">✓ CLEAR</p>
-            </div>
-          </div>
-
-          {/* Timestamp */}
-          <p className="mt-14 text-2xl text-white/60">
-            {new Date().toLocaleTimeString()} • Tap anywhere to scan next
+          <p className="absolute bottom-10 text-2xl text-white/40 font-mono tracking-widest">
+            {new Date().toLocaleTimeString()} • TAP ANYWHERE TO RESET
           </p>
         </div>
       </div>
@@ -517,103 +575,83 @@ export default function Gatekeeper() {
       scanResult.status === "too_early" ||
       scanResult.reason?.includes("TOO EARLY") ||
       scanResult.reason?.includes("OFF SCHEDULE");
+    
+    const defaultPhoto = "https://api.dicebear.com/7.x/avataaars/svg?seed=" + scanResult.student.studentId;
 
     return (
       <div
-        className={`fixed inset-0 z-50 ${isTooEarly
-            ? "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
-            : "bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600"
-          } flex flex-col cursor-pointer`}
+        className="fixed inset-0 z-50 bg-gradient-to-br from-amber-600 via-orange-500 to-amber-600 flex flex-col cursor-pointer overflow-hidden font-sans"
         onClick={resetTerminal}
       >
         <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
 
-        <div className="relative flex-1 flex flex-col items-center justify-center px-8">
-          {/* Warning Icon */}
-          <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
-            <div className="h-44 w-44 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
-              <ShieldAlert className="h-28 w-28 text-white drop-shadow-lg" />
+        <div className="relative flex-1 flex flex-col items-center justify-center p-8">
+          <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            
+            {/* Left: Photo */}
+            <div className="lg:col-span-5 flex flex-col items-center">
+              <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
+                <div className="h-32 w-32 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+                  <ShieldAlert className="h-20 w-20 text-white drop-shadow-lg" />
+                </div>
+              </div>
+              
+              <div className="relative">
+                <img
+                  src={scanResult.student.photo || defaultPhoto}
+                  alt={scanResult.student.name}
+                  className="h-80 w-80 rounded-[2.5rem] object-cover border-8 border-white/50 shadow-2xl"
+                />
+              </div>
+            </div>
+
+            {/* Right: Details */}
+            <div className="lg:col-span-7 space-y-8 text-white">
+              <div>
+                <h1 className="text-8xl font-black tracking-tight drop-shadow-2xl">
+                  {isTooEarly ? "⏰ TOO EARLY" : "⚠ ALLOWED"}
+                </h1>
+                <h2 className="text-5xl font-black mt-4">
+                  {scanResult.student.name.toUpperCase()}
+                </h2>
+                <p className="text-3xl text-white/80 mt-2 font-medium">
+                  {isTooEarly ? "CLASS NOT STARTED YET" : "PARTIAL FEE - BALANCE DUE"}
+                </p>
+              </div>
+
+              {isTooEarly ? (
+                <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/20">
+                  <p className="text-2xl font-medium text-white/90 mb-4">
+                    Please wait until your scheduled class time.
+                  </p>
+                  <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-white/40 w-1/3 animate-[shimmer_2s_infinite]" />
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white/20 backdrop-blur-xl rounded-3xl p-8 border-2 border-white/30 shadow-2xl">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-white/60 mb-2">Outstanding Balance</p>
+                  <p className="text-7xl font-black tracking-tighter">
+                    PKR {scanResult.student.balance?.toLocaleString() || "0"}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-6">
+                <div className="bg-white/10 rounded-2xl px-6 py-4 border border-white/10">
+                  <p className="text-xs font-black uppercase tracking-widest text-white/50">ID</p>
+                  <p className="text-2xl font-mono font-bold">{scanResult.student.studentId}</p>
+                </div>
+                <div className="bg-white/10 rounded-2xl px-6 py-4 border border-white/10">
+                  <p className="text-xs font-black uppercase tracking-widest text-white/50">Class</p>
+                  <p className="text-2xl font-bold">{scanResult.student.class}</p>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Message */}
-          <h1 className="text-7xl font-black text-white mb-4 tracking-wider drop-shadow-lg">
-            {isTooEarly ? "⏰ TOO EARLY" : "⚠ ALLOWED"}
-          </h1>
-          <p className="text-4xl text-white/90 mb-10 font-semibold">
-            {isTooEarly
-              ? "CLASS NOT STARTED YET"
-              : "PARTIAL FEE - BALANCE DUE"}
-          </p>
-
-          {/* Student Info */}
-          <div className="flex items-center gap-8 mb-10">
-            {scanResult.student.photo ? (
-              <img
-                src={scanResult.student.photo}
-                alt={scanResult.student.name}
-                className="h-32 w-32 rounded-full object-cover border-4 border-white shadow-2xl"
-              />
-            ) : (
-              <div className="h-32 w-32 rounded-full bg-white/30 flex items-center justify-center border-4 border-white">
-                <User className="h-16 w-16 text-white" />
-              </div>
-            )}
-            <div>
-              <h2 className="text-5xl font-bold text-white">
-                {scanResult.student.name}
-              </h2>
-              <p className="text-2xl text-white/80 mt-1">
-                {scanResult.student.class} • {scanResult.student.group}
-              </p>
-            </div>
-          </div>
-
-          {/* Schedule Info for TOO EARLY or Balance for Partial */}
-          {isTooEarly && (scanResult.currentTime || scanResult.classStartTime) ? (
-            <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
-              <p className="text-xl text-white/80 text-center mb-4 uppercase tracking-wider">
-                Schedule Information
-              </p>
-              <div className="grid grid-cols-2 gap-8">
-                {scanResult.currentTime && (
-                  <div className="text-center">
-                    <p className="text-sm text-white/70 uppercase mb-1">
-                      Current Time
-                    </p>
-                    <p className="text-4xl font-bold text-white font-mono">
-                      {scanResult.currentTime}
-                    </p>
-                  </div>
-                )}
-                {scanResult.classStartTime && (
-                  <div className="text-center">
-                    <p className="text-sm text-white/70 uppercase mb-1">
-                      Class Starts At
-                    </p>
-                    <p className="text-4xl font-bold text-emerald-300 font-mono">
-                      {scanResult.classStartTime}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <p className="text-center text-white/80 mt-4 text-lg">
-                Please wait until class time
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white/20 rounded-3xl px-16 py-8 backdrop-blur-sm">
-              <p className="text-xl text-white/80 text-center mb-2 uppercase tracking-wider">
-                Outstanding Balance
-              </p>
-              <p className="text-6xl font-bold text-white text-center">
-                PKR {scanResult.student.balance?.toLocaleString() || "0"}
-              </p>
-            </div>
-          )}
-
-          <p className="mt-12 text-2xl text-white/60">
-            Tap anywhere to scan next
+          <p className="absolute bottom-10 text-2xl text-white/40 font-mono tracking-widest">
+            TAP ANYWHERE TO RESET
           </p>
         </div>
       </div>
@@ -623,75 +661,66 @@ export default function Gatekeeper() {
   // DENIED STATE - Full-Screen Red Access Denied
   return (
     <div
-      className="fixed inset-0 z-50 bg-gradient-to-br from-red-700 via-red-600 to-rose-700 flex flex-col cursor-pointer"
+      className="fixed inset-0 z-50 bg-gradient-to-br from-red-700 via-red-600 to-rose-700 flex flex-col cursor-pointer overflow-hidden font-sans"
       onClick={resetTerminal}
     >
-      {/* Flash overlay */}
       <div className="absolute inset-0 bg-white/20 animate-[ping_0.4s_ease-out_forwards] opacity-0" />
 
-      <div className="relative flex-1 flex flex-col items-center justify-center px-8">
-        {/* Denied Icon */}
+      <div className="relative flex-1 flex flex-col items-center justify-center p-8">
         <div className="mb-10 animate-[bounceIn_0.5s_ease-out]">
-          <div className="h-48 w-48 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
-            <ShieldX className="h-32 w-32 text-white drop-shadow-lg" />
+          <div className="h-40 w-40 rounded-full bg-white/20 flex items-center justify-center shadow-2xl">
+            <ShieldX className="h-24 w-24 text-white drop-shadow-lg" />
           </div>
         </div>
 
-        {/* ACCESS DENIED */}
-        <h1 className="text-8xl font-black text-white mb-8 tracking-wider drop-shadow-lg">
-          ✕ DENIED
-        </h1>
-
-        {/* Reason */}
-        <div className="bg-white/20 rounded-3xl px-20 py-10 backdrop-blur-sm mb-10">
-          <p className="text-5xl font-bold text-white text-center">
-            {scanResult?.status === "unknown" && "UNKNOWN ID"}
-            {scanResult?.status === "defaulter" && "FEE DEFAULTER"}
+        <h1 className="text-[10rem] font-black text-white leading-none tracking-tighter drop-shadow-2xl mb-4">✕</h1>
+        
+        <div className="bg-white/15 backdrop-blur-xl rounded-[3rem] px-16 py-12 border-2 border-white/20 shadow-2xl text-center max-w-4xl">
+          <p className="text-6xl font-black text-white uppercase tracking-tight mb-6">
+            {scanResult?.status === "unknown" && "UNKNOWN STUDENT"}
+            {scanResult?.status === "defaulter" && "FEES PENDING"}
             {scanResult?.status === "blocked" && "ACCOUNT BLOCKED"}
+            {scanResult?.status === "no_class_today" && "NO CLASS TODAY"}
+            {scanResult?.status === "too_late" && "CLASS ENDED"}
             {scanResult?.status === "error" && "SCAN ERROR"}
             {!scanResult?.status && "VERIFICATION FAILED"}
           </p>
-          {scanResult?.message && (
-            <p className="text-2xl text-white/80 text-center mt-4">
-              {scanResult.message}
-            </p>
-          )}
+          <p className="text-3xl text-white/80 font-medium leading-relaxed italic">
+            "{scanResult?.message || "Please contact the Front Desk for assistance."}"
+          </p>
         </div>
 
-        {/* Student Info if available */}
         {scanResult?.student && (
-          <div className="flex items-center gap-8 mb-8">
-            {scanResult.student.photo ? (
-              <img
-                src={scanResult.student.photo}
-                alt={scanResult.student.name}
-                className="h-28 w-28 rounded-full object-cover border-4 border-white/50 opacity-80"
-              />
-            ) : (
-              <div className="h-28 w-28 rounded-full bg-white/20 flex items-center justify-center border-4 border-white/50">
-                <User className="h-14 w-14 text-white/80" />
-              </div>
-            )}
-            <div>
-              <h2 className="text-4xl font-bold text-white/90">
+          <div className="mt-12 flex items-center gap-10 bg-black/20 rounded-[2.5rem] p-8 border border-white/10 backdrop-blur-md">
+            <img
+              src={scanResult.student.photo || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + scanResult.student.studentId}
+              alt={scanResult.student.name}
+              className="h-32 w-32 rounded-3xl object-cover border-4 border-white/30 grayscale opacity-60"
+            />
+            <div className="text-left space-y-2">
+              <h2 className="text-4xl font-black text-white/90 uppercase tracking-tight">
                 {scanResult.student.name}
               </h2>
-              <p className="text-xl text-white/70">
-                {scanResult.student.class} • ID: {scanResult.student.studentId}
+              <p className="text-2xl text-white/60 font-medium">
+                ID: {scanResult.student.studentId} • {scanResult.student.class}
               </p>
               {scanResult.student.balance > 0 && (
-                <p className="text-2xl text-white/80 mt-2">
-                  Outstanding: PKR {scanResult.student.balance.toLocaleString()}
+                <p className="text-3xl font-black text-red-300 mt-2">
+                  DUE: PKR {scanResult.student.balance.toLocaleString()}
                 </p>
               )}
             </div>
           </div>
         )}
 
-        {/* Instructions */}
-        <p className="text-2xl text-white/60">
-          Contact Front Desk • Tap to retry
-        </p>
+        <div className="absolute bottom-10 flex flex-col items-center gap-4">
+          <p className="text-2xl text-white/40 font-mono tracking-[0.3em] uppercase">
+            Contact Security • Tap to Retry
+          </p>
+          <div className="h-1.5 w-40 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-full bg-white/30 w-full animate-[pulse_2s_infinite]" />
+          </div>
+        </div>
       </div>
     </div>
   );

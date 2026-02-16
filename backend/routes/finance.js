@@ -12,6 +12,15 @@ const {
   getReimbursementReport,
   getFinanceHistory,
   getPartnerPortalStats,
+  repayDebtToOwner,
+  processTeacherPayout,
+  resetSystem,
+  deleteTransaction,
+  // WAQAR PROTOCOL V2: Manual Payroll
+  processManualPayout,
+  updateManualBalance,
+  getTeacherPayrollData,
+  getPayoutHistory,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -39,6 +48,26 @@ router.get(
 // @desc    Get finance history (ledger) - OWNER sees all, PARTNER sees own
 // @access  Protected (OWNER, PARTNER)
 router.get("/history", protect, getFinanceHistory);
+
+// @route   POST /api/finance/reset-system
+// @desc    DANGER: Wipe all financial data for clean testing (Testing only)
+// @access  Protected (ADMIN, OWNER)
+router.post(
+  "/reset-system",
+  protect,
+  restrictTo("ADMIN", "OWNER"),
+  resetSystem,
+);
+
+// @route   DELETE /api/finance/transaction/:id
+// @desc    Delete a single transaction (for testing cleanup)
+// @access  Protected (OWNER only)
+router.delete(
+  "/transaction/:id",
+  protect,
+  restrictTo("OWNER", "ADMIN"),
+  deleteTransaction,
+);
 
 // @route   POST /api/finance/close-day
 // @desc    Close the day and lock floating cash
@@ -87,6 +116,64 @@ router.get(
   protect,
   restrictTo("PARTNER"),
   getPartnerExpenseDebt,
+);
+
+// @route   POST /api/finance/repay-debt
+// @desc    Partner records a debt repayment to Owner
+// @access  Protected (PARTNER only)
+router.post("/repay-debt", protect, restrictTo("PARTNER"), repayDebtToOwner);
+
+// @route   POST /api/finance/teacher-payout
+// @desc    Process teacher payout from pending balance (Owner pays teacher)
+// @access  Protected (OWNER only)
+router.post(
+  "/teacher-payout",
+  protect,
+  restrictTo("OWNER"),
+  processTeacherPayout,
+);
+
+// ========================================
+// WAQAR PROTOCOL V2: MANUAL PAYROLL ROUTES
+// ========================================
+
+// @route   POST /api/finance/manual-payout
+// @desc    Process manual payout to user/teacher (creates EXPENSE transaction)
+// @access  Protected (OWNER only)
+router.post(
+  "/manual-payout",
+  protect,
+  restrictTo("OWNER"),
+  processManualPayout,
+);
+
+// @route   POST /api/finance/update-manual-balance
+// @desc    Set/adjust a user's manual balance (what is owed to them)
+// @access  Protected (OWNER only)
+router.post(
+  "/update-manual-balance",
+  protect,
+  restrictTo("OWNER"),
+  updateManualBalance,
+);
+
+// @route   GET /api/finance/teacher-payroll
+// @desc    Get payroll data for all teachers (balances, history)
+// @access  Protected (OWNER only)
+router.get(
+  "/teacher-payroll",
+  protect,
+  restrictTo("OWNER"),
+  getTeacherPayrollData,
+);
+
+// @route   GET /api/finance/payout-history/:userId
+// @desc    Get payout history for a specific user
+// @access  Protected (OWNER or self)
+router.get(
+  "/payout-history/:userId",
+  protect,
+  getPayoutHistory,
 );
 
 // @route   POST /api/finance/mark-expense-paid
@@ -401,8 +488,12 @@ router.get("/stats/overview", protect, async (req, res) => {
     const adjustedRevenueForSplit = totalIncome - jointPoolExpenses;
 
     console.log(`💰 Gross Revenue: PKR ${totalIncome.toLocaleString()}`);
-    console.log(`🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`);
-    console.log(`📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`);
+    console.log(
+      `🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`,
+    );
+    console.log(
+      `📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`,
+    );
 
     // ========================================
     // NOTE: Teacher calculations above already use 'teacherRevenue'
@@ -436,6 +527,118 @@ router.get("/stats/overview", protect, async (req, res) => {
 
     // Academy's share (what's left after all costs)
     const academyShare = netProfit;
+
+    // === OWNER NET REVENUE CALCULATION WITH CATEGORIZED BREAKDOWN ===
+    // Calculate the same metric as in getDashboardStats
+    const Transaction = require("../models/Transaction");
+    const User = require("../models/User");
+
+    let ownerNetRevenue = 0;
+    let revenueBreakdown = {
+      matricRevenue: 0,
+      fscRevenue: 0,
+      chemistryRevenue: 0,
+      eteaRevenue: 0,
+      poolDividends: 0,
+    };
+    let ownerExpensesPaid = 0;
+
+    if (isOwner) {
+      const ownerId = req.user._id;
+
+      // Direct Teaching: Sum of 100% fees from classes where teacher = Waqar
+      const waqarTeacher = await Teacher.findOne({
+        $or: [{ userId: ownerId }, { name: { $regex: /waqar/i } }],
+      });
+
+      let directTeaching = 0;
+      if (waqarTeacher) {
+        // Get all owner chemistry transactions with category breakdown
+        const ownerTransactions = await Transaction.find({
+          stream: "OWNER_CHEMISTRY",
+          status: "VERIFIED",
+          type: "INCOME",
+        }).lean();
+
+        // Categorize by description patterns
+        for (const tx of ownerTransactions) {
+          directTeaching += tx.amount;
+          revenueBreakdown.chemistryRevenue += tx.amount;
+
+          const desc = (tx.description || "").toLowerCase();
+          if (
+            desc.includes("9th") ||
+            desc.includes("10th") ||
+            desc.includes("matric")
+          ) {
+            revenueBreakdown.matricRevenue += tx.amount;
+          } else if (
+            desc.includes("11th") ||
+            desc.includes("12th") ||
+            desc.includes("fsc")
+          ) {
+            revenueBreakdown.fscRevenue += tx.amount;
+          } else if (
+            desc.includes("etea") ||
+            desc.includes("mdcat") ||
+            desc.includes("ecat")
+          ) {
+            revenueBreakdown.eteaRevenue += tx.amount;
+          }
+        }
+
+        // Get ETEA revenue where Waqar is the teacher
+        const eteaResult = await Transaction.aggregate([
+          {
+            $match: {
+              stream: { $in: ["ETEA_POOL", "ETEA_ENGLISH"] },
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.teacherId": waqarTeacher._id,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.teacherShare" },
+            },
+          },
+        ]);
+        const eteaTeacherEarnings = eteaResult?.[0]?.total ?? 0;
+        revenueBreakdown.eteaRevenue += eteaTeacherEarnings;
+        directTeaching += eteaTeacherEarnings;
+      }
+
+      // Pool Dividends: Sum of all DIVIDEND transactions where recipient = Waqar
+      const poolDividendsResult = await Transaction.aggregate([
+        {
+          $match: {
+            stream: "DIVIDEND",
+            status: "VERIFIED",
+            type: "INCOME",
+            recipientPartner: ownerId,
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
+      const poolDividends = poolDividendsResult?.[0]?.total ?? 0;
+      revenueBreakdown.poolDividends = poolDividends;
+
+      // Expenses Paid: Sum of all expenses where paidBy = Waqar
+      const expensesPaidResult = await Expense.aggregate([
+        {
+          $match: {
+            paidBy: ownerId,
+            status: "paid",
+          },
+        },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]);
+      ownerExpensesPaid = expensesPaidResult?.[0]?.total ?? 0;
+
+      // Calculate Owner Net Revenue
+      ownerNetRevenue = directTeaching + poolDividends - ownerExpensesPaid;
+    }
 
     // === ROLE-BASED RESPONSE FILTERING ===
     // OPERATOR/PARTNER: Cannot see total revenue, net profit, academy balance
@@ -478,9 +681,12 @@ router.get("/stats/overview", protect, async (req, res) => {
         // Academy Metrics
         academyShare,
         totalExpenses,
-        jointPoolExpenses,  // NEW: Show joint pool expenses separately
-        otherExpenses,      // NEW: Show other expenses separately
+        jointPoolExpenses, // NEW: Show joint pool expenses separately
+        otherExpenses, // NEW: Show other expenses separately
         netProfit,
+        ownerNetRevenue, // NEW: Owner's personal net revenue
+        revenueBreakdown, // NEW: Categorized revenue breakdown
+        ownerExpensesPaid, // NEW: Expenses paid by owner
 
         // Percentages for UI
         collectionRate:

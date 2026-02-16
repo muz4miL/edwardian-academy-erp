@@ -8,6 +8,7 @@ const {
     getStudentVideos,
     recordVideoView,
     studentLogout,
+    getStudentSchedule,
 } = require("../controllers/studentPortalController");
 
 /**
@@ -80,6 +81,9 @@ router.get("/me", protectStudent, getStudentProfile);
 // Get videos
 router.get("/videos", protectStudent, getStudentVideos);
 
+// Get schedule/timetable
+router.get("/schedule", protectStudent, getStudentSchedule);
+
 // Record video view
 router.post("/videos/:id/view", protectStudent, recordVideoView);
 
@@ -87,3 +91,4 @@ router.post("/videos/:id/view", protectStudent, recordVideoView);
 router.post("/logout", protectStudent, studentLogout);
 
 module.exports = router;
+

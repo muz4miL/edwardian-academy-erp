@@ -1,5 +1,6 @@
 const Student = require("../models/Student");
 const Class = require("../models/Class");
+const Timetable = require("../models/Timetable");
 
 /**
  * Gatekeeper Controller - Smart Gate Scanner Module
@@ -46,6 +47,14 @@ const getCurrentDayAbbrev = () => {
 };
 
 /**
+ * Helper: Get current day full name (Monday, Tuesday, etc.) for Timetable model
+ */
+const getCurrentDayFull = (pktTime) => {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[pktTime.getDay()];
+};
+
+/**
  * Helper: Format minutes to readable time
  */
 const formatMinutesToTime = (minutes) => {
@@ -61,17 +70,27 @@ const formatMinutesToTime = (minutes) => {
 // @access  Protected (OWNER, OPERATOR)
 exports.scanBarcode = async (req, res) => {
   try {
-    const { barcodeId } = req.body;
+    // Accept both 'barcode' (from frontend) and 'barcodeId' (legacy)
+    const barcodeId = req.body.barcode || req.body.barcodeId;
+
+    console.log(`\n========================================`);
+    console.log(`🔍 GATE SCAN REQUEST`);
+    console.log(`   Input: "${barcodeId}"`);
+    console.log(
+      `   Time: ${new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" })}`,
+    );
+    console.log(`========================================`);
 
     if (!barcodeId || barcodeId.length < 5) {
+      console.log(
+        `❌ REJECTED: Invalid barcode format (length: ${barcodeId?.length || 0})`,
+      );
       return res.status(400).json({
         success: false,
         status: "error",
-        message: "Invalid barcode format",
+        message: `Invalid barcode format - received: "${barcodeId || "empty"}"`,
       });
     }
-
-    console.log(`🔍 Scanning: ${barcodeId}`);
 
     let student = null;
     let usedReceipt = null;
@@ -109,14 +128,63 @@ exports.scanBarcode = async (req, res) => {
     }
 
     if (!student) {
-      console.log(`❌ Unknown barcode: ${barcodeId}`);
+      console.log(`❌ STUDENT NOT FOUND`);
+      console.log(`   Searched for: "${barcodeId}"`);
+      console.log(`   Query: studentId OR barcodeId = "${barcodeId}"`);
       return res.status(404).json({
         success: false,
         status: "unknown",
-        message: "Unknown Student - Barcode not registered",
+        message: `Student ID "${barcodeId}" not found in database`,
         barcodeId,
       });
     }
+
+    console.log(
+      `✅ STUDENT FOUND: ${student.studentName} (ID: ${student.studentId})`,
+    );
+
+    // ========================================
+    // STEP 1B: QUERY TIMETABLE FOR CURRENT SESSION
+    // ========================================
+    // Get Pakistan time (UTC+5)
+    const now = new Date();
+    const pakistanTime = new Date(
+      now.toLocaleString("en-US", { timeZone: "Asia/Karachi" }),
+    );
+    const currentDayFull = getCurrentDayFull(pakistanTime);
+    const currentMinutes =
+      pakistanTime.getHours() * 60 + pakistanTime.getMinutes();
+    const currentTimeStr = formatMinutesToTime(currentMinutes);
+
+    // Query Timetable for current session (if student has classRef)
+    let currentSession = null;
+    if (student.classRef) {
+      const timetableEntries = await Timetable.find({
+        classId: student.classRef._id || student.classRef,
+        day: currentDayFull,
+        status: "active",
+      }).populate("teacherId", "name").lean();
+
+      // Find if any entry matches current time
+      for (const entry of timetableEntries) {
+        const startMins = parseTimeToMinutes(entry.startTime);
+        const endMins = parseTimeToMinutes(entry.endTime);
+        if (startMins !== null && endMins !== null) {
+          if (currentMinutes >= startMins && currentMinutes <= endMins) {
+            currentSession = {
+              subject: entry.subject,
+              teacher: entry.teacherId?.name || "TBD",
+              room: entry.room || "TBD",
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    console.log(`📅 Current Session: ${currentSession ? currentSession.subject : "None"}`);
 
     // ========================================
     // STEP 2: CHECK STUDENT STATUS (Expelled/Suspended)
@@ -179,8 +247,13 @@ exports.scanBarcode = async (req, res) => {
     // ========================================
     const classDoc = student.classRef;
     const currentDay = getCurrentDayAbbrev();
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    console.log(`\n📅 SCHEDULE CHECK:`);
+    console.log(`   Pakistan Time: ${pakistanTime.toLocaleString("en-PK")}`);
+    console.log(`   Current Day: ${currentDay}`);
+    console.log(
+      `   Current Minutes: ${currentMinutes} (${formatMinutesToTime(currentMinutes)})`,
+    );
 
     let scheduleStatus = "allowed";
     let scheduleMessage = null;
@@ -192,39 +265,73 @@ exports.scanBarcode = async (req, res) => {
       classEndTime = classDoc.endTime;
       const classDays = classDoc.days || [];
 
+      console.log(`   Class: ${classDoc.classTitle || "Unknown"}`);
+      console.log(`   Class Days: [${classDays.join(", ")}]`);
       console.log(
-        `   📅 Checking schedule: ${classDays.join(",")} @ ${classStartTime}`,
+        `   Class Time: ${classStartTime} - ${classEndTime || "N/A"}`,
+      );
+
+      // Normalize day comparison (handle both "Sat" and "Saturday" formats)
+      const normalizedClassDays = classDays.map((d) =>
+        d.toLowerCase().slice(0, 3),
+      );
+      const normalizedCurrentDay = currentDay.toLowerCase().slice(0, 3);
+      const isTodayClassDay =
+        normalizedClassDays.includes(normalizedCurrentDay);
+
+      console.log(
+        `   Day Match: "${normalizedCurrentDay}" in [${normalizedClassDays.join(", ")}] = ${isTodayClassDay}`,
       );
 
       // Check if today is a class day
-      if (!classDays.includes(currentDay)) {
+      if (!isTodayClassDay) {
         scheduleStatus = "no_class_today";
-        scheduleMessage = `NO CLASS TODAY - Next: ${classDays.join(", ")}`;
-        console.log(`   ❌ No class today (${currentDay})`);
+        scheduleMessage = `NO CLASS TODAY (${currentDay}) - Class days: ${classDays.join(", ")}`;
+        console.log(`   ❌ No class scheduled for ${currentDay}`);
       } else {
         // Check time window (60 min before start, until 30 min before end)
         const startMinutes = parseTimeToMinutes(classStartTime);
         const endMinutes = parseTimeToMinutes(classEndTime);
 
         if (startMinutes !== null) {
-          const allowedEntryFrom = startMinutes - 60; // 1 hour before
+          // SENSIBLE TIME WINDOW:
+          // - Allow entry from 60 minutes BEFORE class starts
+          // - Allow entry until 15 minutes AFTER class ends (grace period)
+          const allowedEntryFrom = startMinutes - 60; // 1 hour before start
           const allowedEntryUntil = endMinutes
-            ? endMinutes - 30
-            : startMinutes + 180; // 30 min before end or 3 hours after start
+            ? endMinutes + 15 // 15 minutes AFTER class ends (grace period)
+            : startMinutes + 240; // Or 4 hours after start if no end time
+
+          console.log(
+            `   Entry Window: ${formatMinutesToTime(allowedEntryFrom)} - ${formatMinutesToTime(allowedEntryUntil)}`,
+          );
+          console.log(
+            `   Current Time: ${formatMinutesToTime(currentMinutes)}`,
+          );
+          console.log(
+            `   Within Window: ${currentMinutes >= allowedEntryFrom && currentMinutes <= allowedEntryUntil}`,
+          );
 
           if (currentMinutes < allowedEntryFrom) {
             scheduleStatus = "too_early";
-            scheduleMessage = `TOO EARLY - Class starts at ${formatMinutesToTime(startMinutes)}`;
+            scheduleMessage = `TOO EARLY - Class starts at ${formatMinutesToTime(startMinutes)}. Entry opens at ${formatMinutesToTime(allowedEntryFrom)}`;
             console.log(
-              `   ⏰ Too early (now: ${formatMinutesToTime(currentMinutes)}, class: ${formatMinutesToTime(startMinutes)})`,
+              `   ⏰ Too early (now: ${formatMinutesToTime(currentMinutes)}, opens: ${formatMinutesToTime(allowedEntryFrom)})`,
             );
           } else if (currentMinutes > allowedEntryUntil) {
             scheduleStatus = "too_late";
-            scheduleMessage = `TOO LATE - Class ended`;
-            console.log(`   ⏰ Too late`);
+            scheduleMessage = `TOO LATE - Class ended at ${formatMinutesToTime(endMinutes || startMinutes + 180)}`;
+            console.log(
+              `   ⏰ Too late (now: ${formatMinutesToTime(currentMinutes)}, closed: ${formatMinutesToTime(allowedEntryUntil)})`,
+            );
+          } else {
+            console.log(`   ✅ Within allowed time window!`);
           }
         }
       }
+    } else {
+      // No class document - allow entry (class schedule not configured)
+      console.log(`   ⚠️ No class schedule found - allowing entry by default`);
     }
 
     // If schedule check failed, return denial
@@ -269,10 +376,72 @@ exports.scanBarcode = async (req, res) => {
 
     console.log(`✅ VERIFIED: ${student.studentName} (${verificationStatus})`);
 
+    // ========================================
+    // STEP 5B: DETERMINE STATUS COLOR (GREEN/RED/ORANGE)
+    // ========================================
+    // GREEN: Balance <= 0 AND currentSession exists
+    // RED: Balance > 0 (show pending amount)
+    // ORANGE: Balance <= 0 but no currentSession (wrong time/not scheduled)
+    const hasPaid = balance <= 0;
+    const hasCurrentSession = !!currentSession;
+
+    let statusColor = "GREEN";
+    let colorStatusMessage = "Access Granted";
+
+    if (!hasPaid) {
+      statusColor = "RED";
+      colorStatusMessage = `Fee Pending: PKR ${balance.toLocaleString()}`;
+    } else if (hasPaid && !hasCurrentSession) {
+      statusColor = "ORANGE";
+      colorStatusMessage = "No Class Scheduled Now";
+    }
+
+    // ========================================
+    // STEP 5C: UPDATE LAST SCANNED TIMESTAMP
+    // ========================================
+    await Student.findByIdAndUpdate(student._id, { lastScannedAt: now });
+    console.log(`🕒 Updated lastScannedAt for ${student.studentName}`);
+
+    // Build enriched class schedule with teacher info
+    let enrolledClasses = [];
+    if (classDoc) {
+      enrolledClasses.push({
+        classId: classDoc._id,
+        classTitle:
+          classDoc.classTitle || classDoc.displayName || student.class,
+        subject: classDoc.subjects?.[0]?.name || "General",
+        teacherName:
+          classDoc.teacherName || student.assignedTeacherName || "TBD",
+        days: classDoc.days || [],
+        startTime: classDoc.startTime || "TBD",
+        endTime: classDoc.endTime || "TBD",
+        roomNumber: classDoc.roomNumber || "TBD",
+      });
+    }
+
     return res.status(200).json({
       success: true,
       status: verificationStatus,
       message: statusMessage,
+      // New structured scanResult for System Bridge
+      scanResult: {
+        statusColor, // 'GREEN' | 'RED' | 'ORANGE'
+        statusMessage: colorStatusMessage,
+        student: {
+          id: student.studentId,
+          name: student.studentName,
+          photoUrl: student.imageUrl || student.photo || `/api/students/${student._id}/placeholder-avatar`,
+          className: student.class,
+        },
+        financial: {
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          balance,
+          status: balance <= 0 ? "PAID" : "PENDING",
+        },
+        session: currentSession,
+      },
+      // Legacy format for backward compatibility
       student: {
         _id: student._id,
         studentId: student.studentId,
@@ -281,18 +450,21 @@ exports.scanBarcode = async (req, res) => {
         fatherName: student.fatherName,
         class: student.class,
         group: student.group,
-        photo: student.photo,
+        photo: student.imageUrl || student.photo,
         feeStatus: student.feeStatus,
         totalFee: student.totalFee,
         paidAmount: student.paidAmount,
         balance,
         studentStatus: student.studentStatus || "Active",
+        // Enriched class data for Gatekeeper display
+        enrolledClasses,
       },
       schedule: {
         classStartTime,
         classEndTime,
         classDays: classDoc?.days,
         currentTime: formatMinutesToTime(currentMinutes),
+        teacherName: classDoc?.teacherName || student.assignedTeacherName,
       },
       usedReceipt: usedReceipt
         ? {

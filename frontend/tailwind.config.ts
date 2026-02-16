@@ -19,9 +19,18 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', "system-ui", "sans-serif"],
+        sans: ["Inter", '"Plus Jakarta Sans"', "system-ui", "sans-serif"],
+        serif: ['"Playfair Display"', "Georgia", "serif"],
+        mono: ['"JetBrains Mono"', "monospace"],
       },
       colors: {
+        brand: {
+          primary: "#0F172A",
+          secondary: "#F8FAFC",
+          accent: "#D97706",
+          navy: "#1A365D",
+          gold: "#B45309",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

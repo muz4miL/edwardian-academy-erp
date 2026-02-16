@@ -13,11 +13,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserPlus, Loader2, Trash2 } from "lucide-react";
+import { UserPlus, Loader2, Trash2, Wallet } from "lucide-react";
 // Import the Modals and API
 import { AddTeacherModal } from "@/components/dashboard/AddTeacherModal";
 import { ViewEditTeacherModal } from "@/components/dashboard/ViewEditTeacherModal";
 import { DeleteTeacherDialog } from "@/components/dashboard/DeleteTeacherDialog";
+import { TeacherFinanceModal } from "@/components/dashboard/TeacherFinanceModal";
 import { teacherApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -97,6 +98,7 @@ const Teachers = () => {
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
 
   // Fetch teachers from MongoDB using React Query
@@ -151,6 +153,11 @@ const Teachers = () => {
   const handleDelete = (teacher: any) => {
     setSelectedTeacher(teacher);
     setIsDeleteDialogOpen(true);
+  };
+
+  const handleWallet = (teacher: any) => {
+    setSelectedTeacher(teacher);
+    setIsFinanceModalOpen(true);
   };
 
   const confirmDelete = () => {
@@ -333,9 +340,17 @@ const Teachers = () => {
                 <TableRow key={teacher._id} className="hover:bg-secondary/50">
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
-                        {teacher.name.charAt(0)}
-                      </div>
+                      {teacher.profileImage ? (
+                        <img
+                          src={teacher.profileImage}
+                          alt={teacher.name}
+                          className="h-9 w-9 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success text-success-foreground font-medium">
+                          {teacher.name.charAt(0)}
+                        </div>
+                      )}
                       <div>
                         <p
                           className="font-medium text-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
@@ -413,6 +428,17 @@ const Teachers = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
+                      {/* Wallet Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 hover:bg-green-100 hover:text-green-600"
+                        onClick={() => handleWallet(teacher)}
+                        title="Finance Manager"
+                      >
+                        <Wallet className="h-4 w-4" />
+                      </Button>
+
                       {/* View Button */}
                       <Button
                         variant="ghost"
@@ -503,6 +529,12 @@ const Teachers = () => {
         onConfirm={confirmDelete}
         teacherName={selectedTeacher?.name || ""}
         isDeleting={deleteTeacherMutation.isPending}
+      />
+
+      <TeacherFinanceModal
+        open={isFinanceModalOpen}
+        onOpenChange={setIsFinanceModalOpen}
+        teacher={selectedTeacher}
       />
     </DashboardLayout>
   );

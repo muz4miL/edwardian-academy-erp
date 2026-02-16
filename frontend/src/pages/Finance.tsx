@@ -2,14 +2,21 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -18,873 +25,631 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip as InfoTooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  DollarSign,
-  TrendingUp,
-  AlertCircle,
-  GraduationCap,
-  Wallet,
-  Users,
-  Loader2,
-  Plus,
-  Trash2,
-  TrendingDown,
-  HelpCircle,
-  Info,
-  Search,
-  History,
-  FileText,
-  Building2,
-  Calendar,
-  Tag,
-  CheckCircle2,
-  Clock,
-  BarChart3,
-  Shield,
-  Eye,
-  EyeOff,
-} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  Legend,
-} from "recharts";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { PaymentReceipt } from "@/components/finance/PaymentReceipt";
-import { TeacherPayrollTable } from "@/components/finance/TeacherPayrollTable";
 import { useAuth } from "@/context/AuthContext";
-import { KPICard } from "@/components/dashboard/KPICard";
+import {
+  Wallet,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  HandCoins,
+  Receipt,
+} from "lucide-react";
+import { motion } from "framer-motion";
 
-// API Base URL
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+// API Base URL - Auto-detect Codespaces
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+    return `https://${codespaceBase}-5000.app.github.dev`;
+  }
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+};
+const API_BASE_URL = getApiBaseUrl();
 
-// Finance History Item Type
-interface FinanceHistoryItem {
+// Types
+interface PendingClosing {
   _id: string;
-  date: string;
-  type: "INCOME" | "EXPENSE" | "PARTNER_WITHDRAWAL";
-  description: string;
-  amount: number;
+  partnerId: {
+    _id: string;
+    fullName: string;
+    username: string;
+  };
+  totalAmount: number;
+  partnerShare: number;
+  handoverAmount: number;
   status: string;
-  isExpense: boolean;
-  category?: string;
-  collectedBy?: string;
-  studentName?: string;
-  paidBy?: string;
-  vendorName?: string;
+  notes: string;
+  createdAt: string;
 }
 
-// Expense Type
-interface Expense {
-  _id: string;
-  title: string;
-  category: string;
-  amount: number;
-  vendorName: string;
-  dueDate: string;
-  expenseDate: string;
-  paidDate?: string;
-  status: "pending" | "paid" | "overdue";
-  paidByType?: "ACADEMY_CASH" | "WAQAR" | "ZAHID" | "SAUD";
+interface PartnerDashboardData {
+  totalCashInDrawer: number;
+  calculatedShare: number;
+  suggestedHandover: number;
+  expenseDebt: number;
+  pendingClosings: PendingClosing[];
+  walletBalance: {
+    floating: number;
+    verified: number;
+  };
 }
 
-const Finance = () => {
-  const queryClient = useQueryClient();
+// Partner View Component
+const PartnerView = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [handoverAmount, setHandoverAmount] = useState("");
 
-  // Determine if user can see analytics (Owner only)
-  const isOwner = user?.role === "OWNER";
-  const showAnalytics = isOwner;
-
-  // Expense form state
-  const [expenseTitle, setExpenseTitle] = useState("");
-  const [expenseCategory, setExpenseCategory] = useState("");
-  const [expenseAmount, setExpenseAmount] = useState("");
-  const [vendorName, setVendorName] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [paidByType, setPaidByType] = useState("ACADEMY_CASH");
-
-  // Payment receipt modal state
-  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
-  const [voucherData, setVoucherData] = useState<any>(null);
-  const [teacherFilter, setTeacherFilter] = useState<string>("all");
-
-  // Finance History state
-  const [historySearch, setHistorySearch] = useState("");
-  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>("all");
-
-  // Fetch Finance History
-  const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: ["finance-history"],
+  // Fetch partner dashboard data
+  const { data: dashboardData, isLoading } = useQuery<PartnerDashboardData>({
+    queryKey: ["partner-dashboard"],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/api/finance/history`, {
-        credentials: "include",
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/finance/partner-dashboard`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-      if (!response.ok) throw new Error("Failed to fetch finance history");
-      const result = await response.json();
-      return result.data as FinanceHistoryItem[];
-    },
-    refetchInterval: 30000,
-  });
-
-  // Fetch real-time finance stats (Owner only sees full data)
-  const {
-    data: financeData,
-    isLoading: statsLoading,
-    isError: statsError,
-  } = useQuery({
-    queryKey: ["finance", "stats"],
-    queryFn: async () => {
-      const response = await fetch(
-        `${API_BASE_URL}/api/finance/stats/overview`,
-        { credentials: "include" }
-      );
-      if (!response.ok) throw new Error("Failed to fetch finance stats");
+      if (!response.ok) throw new Error("Failed to fetch dashboard data");
       const result = await response.json();
       return result.data;
     },
-    refetchInterval: 30000,
-    retry: 2,
-    enabled: showAnalytics, // Only fetch if owner
+    refetchInterval: 10000, // Refresh every 10 seconds
   });
 
-  // Fetch expenses
-  const { data: expensesData, isLoading: expensesLoading } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/api/expenses?limit=50`, {
-        credentials: "include",
+  // Close day mutation
+  const closeDayMutation = useMutation({
+    mutationFn: async (handover: number) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/finance/daily-closing`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          handoverAmount: handover,
+          notes: `Daily closing - Handing PKR ${handover.toLocaleString()} to owner`,
+        }),
       });
-      if (!response.ok) throw new Error("Failed to fetch expenses");
-      const result = await response.json();
-      return result.data as Expense[];
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to close day");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success("Day closed successfully! Awaiting owner verification.");
+      setShowCloseModal(false);
+      setHandoverAmount("");
+      queryClient.invalidateQueries({ queryKey: ["partner-dashboard"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to close day");
     },
   });
 
-  // Create expense mutation - invalidates finance-history for instant ledger update
-  const createExpenseMutation = useMutation({
-    mutationFn: async (expenseData: any) => {
-      const response = await fetch(`${API_BASE_URL}/api/expenses`, {
+  const handleCloseDay = () => {
+    if (!dashboardData) return;
+    setHandoverAmount(dashboardData.suggestedHandover.toString());
+    setShowCloseModal(true);
+  };
+
+  const confirmCloseDay = () => {
+    const amount = parseFloat(handoverAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    if (dashboardData && amount > dashboardData.totalCashInDrawer) {
+      toast.error("Handover amount cannot exceed total cash");
+      return;
+    }
+    closeDayMutation.mutate(amount);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-500">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-500">No data available</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Total Cash in Drawer */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <Card className="border-l-4 border-l-green-500">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-slate-600">
+                  Total Cash in Drawer
+                </CardTitle>
+                <Wallet className="h-5 w-5 text-green-500" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-slate-900">
+                PKR {dashboardData.totalCashInDrawer.toLocaleString()}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Today's collections</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Your Calculated Share */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-slate-600">
+                  Your Calculated Share
+                </CardTitle>
+                <TrendingUp className="h-5 w-5 text-blue-500" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-slate-900">
+                PKR {dashboardData.calculatedShare.toLocaleString()}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Your retention for today</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Expense Debt */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="border-l-4 border-l-orange-500">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-slate-600">
+                  Expense Debt Owed
+                </CardTitle>
+                <AlertCircle className="h-5 w-5 text-orange-500" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-slate-900">
+                PKR {dashboardData.expenseDebt.toLocaleString()}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Amount owed to owner</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Close Day Action */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HandCoins className="h-5 w-5" />
+            Daily Closing
+          </CardTitle>
+          <CardDescription>
+            Close your day and hand over cash to the owner
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="p-4 bg-slate-50 rounded-lg border">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-600">Total Collection:</span>
+                  <div className="font-semibold text-lg mt-1">
+                    PKR {dashboardData.totalCashInDrawer.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600">Your Share:</span>
+                  <div className="font-semibold text-lg mt-1">
+                    PKR {dashboardData.calculatedShare.toLocaleString()}
+                  </div>
+                </div>
+                <div className="col-span-2 border-t pt-3">
+                  <span className="text-slate-600">Suggested Handover:</span>
+                  <div className="font-bold text-2xl mt-1 text-green-600">
+                    PKR {dashboardData.suggestedHandover.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={handleCloseDay}
+              disabled={dashboardData.totalCashInDrawer === 0}
+              className="w-full"
+              size="lg"
+            >
+              <Receipt className="mr-2 h-4 w-4" />
+              Close Day & Submit Handover
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending Closings */}
+      {dashboardData.pendingClosings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-orange-500" />
+              Pending Verifications
+            </CardTitle>
+            <CardDescription>
+              Closings awaiting owner verification
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {dashboardData.pendingClosings.map((closing) => (
+                <div
+                  key={closing._id}
+                  className="flex items-center justify-between p-4 border rounded-lg bg-orange-50"
+                >
+                  <div>
+                    <div className="font-medium">
+                      PKR {closing.handoverAmount.toLocaleString()} handed over
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {new Date(closing.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+                    Pending Verification
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Close Day Modal */}
+      <Dialog open={showCloseModal} onOpenChange={setShowCloseModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Close Your Day</DialogTitle>
+            <DialogDescription>
+              Enter the amount you are physically handing to the owner
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Amount Handing to Owner (PKR)
+              </label>
+              <Input
+                type="number"
+                value={handoverAmount}
+                onChange={(e) => setHandoverAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="text-lg"
+              />
+              <p className="text-xs text-slate-500">
+                Suggested: PKR {dashboardData.suggestedHandover.toLocaleString()}
+              </p>
+            </div>
+            <div className="p-3 bg-blue-50 rounded border border-blue-200">
+              <p className="text-sm text-blue-900">
+                <strong>Note:</strong> The difference between your total collection
+                and this handover amount will be retained by you as your share.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCloseModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmCloseDay} disabled={closeDayMutation.isPending}>
+              {closeDayMutation.isPending ? "Processing..." : "Confirm Closing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+// Owner View Component
+const OwnerView = () => {
+  const queryClient = useQueryClient();
+  const [debtAmount, setDebtAmount] = useState<{ [key: string]: string }>({});
+
+  // Fetch pending closings
+  const { data: pendingClosings = [], isLoading: loadingClosings } = useQuery<
+    PendingClosing[]
+  >({
+    queryKey: ["pending-closings"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/finance/pending-closings`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch pending closings");
+      const result = await response.json();
+      return result.data || [];
+    },
+    refetchInterval: 10000,
+  });
+
+  // Fetch all partners with debt
+  const { data: partners = [] } = useQuery({
+    queryKey: ["partners-debt"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/users`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch partners");
+      const result = await response.json();
+      return result.data.filter((u: any) => u.role === "PARTNER");
+    },
+  });
+
+  // Verify closing mutation
+  const verifyMutation = useMutation({
+    mutationFn: async (closingId: string) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/finance/verify-closing`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(expenseData),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ closingId }),
       });
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.message || "Failed to create expense");
+        const error = await response.json();
+        throw new Error(error.message || "Failed to verify closing");
       }
       return response.json();
     },
     onSuccess: (data) => {
-      // Invalidate finance-history for instant ledger update
-      queryClient.invalidateQueries({ queryKey: ["finance-history"] });
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
-
-      toast.success("✅ Expense recorded successfully!", {
-        description: `${data.data?.title || "Expense"} - PKR ${data.data?.amount?.toLocaleString() || "0"}`,
-      });
-
-      // Reset form
-      setExpenseTitle("");
-      setExpenseCategory("");
-      setExpenseAmount("");
-      setVendorName("");
-      setDueDate("");
-      setPaidByType("ACADEMY_CASH");
+      toast.success(data.message || "Closing verified successfully!");
+      queryClient.invalidateQueries({ queryKey: ["pending-closings"] });
     },
-    onError: (error: any) => {
-      toast.error("Failed to add expense", {
-        description: error.message,
-      });
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to verify closing");
     },
   });
 
-  // Mark expense as paid mutation
-  const markAsPaidMutation = useMutation({
-    mutationFn: async (expenseId: string) => {
-      const response = await fetch(
-        `${API_BASE_URL}/api/expenses/${expenseId}/mark-paid`,
-        { method: "PATCH", credentials: "include" }
-      );
-      if (!response.ok) throw new Error("Failed to mark as paid");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["finance-history"] });
-      queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
-      toast.success("✅ Expense marked as paid!");
-    },
-  });
-
-  // Delete expense mutation
-  const deleteExpenseMutation = useMutation({
-    mutationFn: async (expenseId: string) => {
-      const response = await fetch(
-        `${API_BASE_URL}/api/expenses/${expenseId}`,
-        { method: "DELETE", credentials: "include" }
-      );
-      if (!response.ok) throw new Error("Failed to delete expense");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["finance-history"] });
-      queryClient.invalidateQueries({ queryKey: ["finance", "stats"] });
-      toast.success("🗑️ Expense deleted");
-    },
-  });
-
-  // Process teacher payment mutation
-  const processPaymentMutation = useMutation({
-    mutationFn: async ({
-      teacherId,
-      amountPaid,
-    }: {
-      teacherId: string;
-      amountPaid: number;
-    }) => {
-      const response = await fetch(`${API_BASE_URL}/api/teachers/payout`, {
+  // Clear debt mutation
+  const clearDebtMutation = useMutation({
+    mutationFn: async ({ partnerId, amount }: { partnerId: string; amount: number }) => {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_BASE_URL}/api/finance/clear-debt`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ teacherId, amount: amountPaid }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ partnerId, amount }),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || "Failed to process payment");
+        throw new Error(error.message || "Failed to clear debt");
       }
       return response.json();
     },
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["finance"] });
-      queryClient.invalidateQueries({ queryKey: ["teachers"] });
-      setVoucherData(response.data);
-      setIsReceiptOpen(true);
-      toast.success("Payment processed successfully!");
+    onSuccess: (data) => {
+      toast.success(data.message || "Debt cleared successfully!");
+      queryClient.invalidateQueries({ queryKey: ["partners-debt"] });
+      setDebtAmount({});
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to process payment");
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to clear debt");
     },
   });
 
-  const handleAddExpense = () => {
-    if (!expenseTitle || !expenseCategory || !expenseAmount || !vendorName || !dueDate) {
-      toast.error("⚠️ Please fill all required fields");
-      return;
+  const handleVerify = (closingId: string) => {
+    if (confirm("Confirm receipt of cash from partner?")) {
+      verifyMutation.mutate(closingId);
     }
-
-    if (parseFloat(expenseAmount) <= 0) {
-      toast.error("⚠️ Amount must be greater than 0");
-      return;
-    }
-
-    createExpenseMutation.mutate({
-      title: expenseTitle,
-      category: expenseCategory,
-      amount: parseFloat(expenseAmount),
-      vendorName,
-      dueDate,
-      paidByType,
-    });
   };
 
-  const handlePayTeacher = (teacher: any) => {
-    if (teacher.earnedAmount <= 0) {
-      toast.error("No payment due for this teacher");
+  const handleClearDebt = (partnerId: string) => {
+    const amount = parseFloat(debtAmount[partnerId] || "0");
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount");
       return;
     }
-    processPaymentMutation.mutate({
-      teacherId: teacher._id || teacher.teacherId || teacher.id,
-      amountPaid: teacher.earnedAmount,
-    });
-  };
-
-  // Loading state - only for stats if owner
-  if (statsLoading && isOwner) {
-    return (
-      <DashboardLayout title="Finance">
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // Error state for stats (Owner only)
-  if (statsError && isOwner) {
-    return (
-      <DashboardLayout title="Finance">
-        <div className="flex flex-col items-center justify-center h-96 gap-4">
-          <AlertCircle className="h-12 w-12 text-red-500" />
-          <p className="text-lg font-medium text-foreground">
-            Failed to load finance data
-          </p>
-          <Button onClick={() => queryClient.invalidateQueries({ queryKey: ["finance"] })}>
-            Retry
-          </Button>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  const {
-    totalIncome = 0,
-    totalExpected = 0,
-    totalPending = 0,
-    pendingStudentsCount = 0,
-    totalTeacherLiabilities = 0,
-    teacherPayroll = [],
-    academyShare = 0,
-    totalExpenses = 0,
-    netProfit = 0,
-    collectionRate = 0,
-  } = financeData || {};
-
-  const expenses = expensesData || [];
-  const pendingExpenses = expenses.filter(e => e.status === "pending" || e.status === "overdue");
-  const paidExpenses = expenses.filter(e => e.status === "paid");
-  const pendingTotal = pendingExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-  // Status badge helper
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return (
-          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
-            PAID
-          </Badge>
-        );
-      case "overdue":
-        return (
-          <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs animate-pulse">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            OVERDUE
-          </Badge>
-        );
-      default:
-        return (
-          <Badge className="bg-amber-600 hover:bg-amber-700 text-white text-xs">
-            <Clock className="h-3 w-3 mr-1" />
-            PENDING
-          </Badge>
-        );
+    if (confirm(`Clear debt of PKR ${amount.toLocaleString()}?`)) {
+      clearDebtMutation.mutate({ partnerId, amount });
     }
   };
 
   return (
-    <TooltipProvider>
-      <DashboardLayout title="Finance">
-        {/* ============================================ */}
-        {/* HERO SECTION: EXPENSE ENTRY FORM */}
-        {/* ============================================ */}
-        <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 bg-gray-100 rounded-lg">
-              <Plus className="h-5 w-5 text-gray-700" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Add New Expense</h2>
-              <p className="text-sm text-gray-500">Record operational costs and bills</p>
-            </div>
-          </div>
-
-          {/* Form Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="space-y-2">
-              <Label htmlFor="expense-title" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <FileText className="h-3 w-3 text-gray-500" />
-                Expense Title <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="expense-title"
-                placeholder="e.g., Electricity Bill"
-                value={expenseTitle}
-                onChange={(e) => setExpenseTitle(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500 focus:ring-gray-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor-name" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <Building2 className="h-3 w-3 text-gray-500" />
-                Vendor/Supplier <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="vendor-name"
-                placeholder="e.g., PESCO, SNGPL"
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="expense-category" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <Tag className="h-3 w-3 text-gray-500" />
-                Category <span className="text-red-500">*</span>
-              </Label>
-              <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                <SelectTrigger className="bg-gray-50 h-10 border-gray-300">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Utilities">💡 Utilities</SelectItem>
-                  <SelectItem value="Rent">🏢 Rent/Lease</SelectItem>
-                  <SelectItem value="Salaries">💵 Salaries</SelectItem>
-                  <SelectItem value="Stationery">📚 Stationery</SelectItem>
-                  <SelectItem value="Marketing">📣 Marketing</SelectItem>
-                  <SelectItem value="Misc">📦 Miscellaneous</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="expense-amount" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <DollarSign className="h-3 w-3 text-gray-500" />
-                Amount (PKR) <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="expense-amount"
-                type="number"
-                placeholder="0"
-                value={expenseAmount}
-                onChange={(e) => setExpenseAmount(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="due-date" className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                <Calendar className="h-3 w-3 text-gray-500" />
-                Payment Due <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="due-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="bg-gray-50 h-10 border-gray-300 focus:border-gray-500"
-              />
-            </div>
-          </div>
-
-          {/* Who Paid Dropdown */}
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-3">
-              <Users className="h-4 w-4 text-gray-600" />
-              Who Paid for This?
-              <InfoTooltip>
-                <TooltipTrigger>
-                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="text-xs">
-                    Select "Academy Cash" for normal operations. If a partner paid out-of-pocket, select their name.
-                  </p>
-                </TooltipContent>
-              </InfoTooltip>
-            </Label>
-            <Select value={paidByType} onValueChange={setPaidByType}>
-              <SelectTrigger className="bg-white h-10 border-gray-300 max-w-md">
-                <SelectValue placeholder="Who paid?" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ACADEMY_CASH">
-                  🏦 Academy Cash (Normal Flow)
-                </SelectItem>
-                <SelectItem value="WAQAR">👤 Sir Waqar (Out-of-Pocket)</SelectItem>
-                <SelectItem value="ZAHID">👤 Dr. Zahid (Out-of-Pocket)</SelectItem>
-                <SelectItem value="SAUD">👤 Sir Saud (Out-of-Pocket)</SelectItem>
-              </SelectContent>
-            </Select>
-            {paidByType !== "ACADEMY_CASH" && (
-              <p className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
-                ⚠️ This will generate debt for other partners
-              </p>
-            )}
-          </div>
-
-          {/* Submit Button */}
-          <Button
-            onClick={handleAddExpense}
-            disabled={createExpenseMutation.isPending}
-            className="w-full mt-4 bg-gray-900 hover:bg-gray-800 h-11 font-medium text-white"
-          >
-            {createExpenseMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Recording...
-              </>
-            ) : (
-              <>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
-              </>
-            )}
-          </Button>
-        </div>
-
-        {/* ============================================ */}
-        {/* LIVE LEDGER: FINANCE HISTORY TABLE */}
-        {/* ============================================ */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
-            <div className="flex items-center gap-2">
-              <History className="h-5 w-5 text-gray-600" />
-              <h3 className="text-lg font-semibold text-gray-900">
-                Finance History
-              </h3>
-              <Badge variant="outline" className="text-xs">
-                Live Ledger
-              </Badge>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              {/* Search Input - Owner only */}
-              {isOwner && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search by partner..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    className="pl-9 w-full sm:w-56 bg-gray-50 border-gray-300"
-                  />
-                </div>
-              )}
-              {/* Type Filter */}
-              <Select value={historyTypeFilter} onValueChange={setHistoryTypeFilter}>
-                <SelectTrigger className="w-full sm:w-36 bg-gray-50 border-gray-300">
-                  <SelectValue placeholder="Filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="INCOME">Income</SelectItem>
-                  <SelectItem value="EXPENSE">Expense</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {historyLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-            </div>
-          ) : !historyData || historyData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-              <FileText className="h-12 w-12 mb-3 opacity-50" />
-              <p className="text-lg font-medium">No records found</p>
-              <p className="text-sm">Transactions will appear here</p>
+    <div className="space-y-6">
+      {/* Pending Closings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-500" />
+            Pending Verifications
+          </CardTitle>
+          <CardDescription>
+            Partner closings awaiting your verification
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingClosings ? (
+            <div className="text-center py-8 text-slate-500">Loading...</div>
+          ) : pendingClosings.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              No pending verifications
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold text-gray-700">Date</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Type</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Description</TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700">Amount</TableHead>
-                    <TableHead className="font-semibold text-gray-700">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {historyData
-                    .filter((item) => {
-                      if (historyTypeFilter !== "all" && item.type !== historyTypeFilter) {
-                        return false;
-                      }
-                      if (isOwner && historySearch) {
-                        const searchLower = historySearch.toLowerCase();
-                        const collectedBy = item.collectedBy?.toLowerCase() || "";
-                        const paidBy = item.paidBy?.toLowerCase() || "";
-                        return collectedBy.includes(searchLower) || paidBy.includes(searchLower);
-                      }
-                      return true;
-                    })
-                    .slice(0, 50)
-                    .map((item) => {
-                      const isPositive = item.type === "INCOME" || item.type === "PARTNER_WITHDRAWAL";
-                      const amountColorClass = isPositive
-                        ? "text-emerald-600 font-semibold"
-                        : "text-red-600 font-semibold";
-
-                      const formattedDate = new Date(item.date).toLocaleDateString("en-PK", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      });
-
-                      const getStatusVariant = (status: string) => {
-                        switch (status?.toUpperCase()) {
-                          case "VERIFIED":
-                          case "PAID":
-                            return "default";
-                          case "FLOATING":
-                          case "PENDING":
-                            return "secondary";
-                          case "CANCELLED":
-                          case "OVERDUE":
-                            return "destructive";
-                          default:
-                            return "outline";
-                        }
-                      };
-
-                      return (
-                        <TableRow key={item._id} className="hover:bg-gray-50">
-                          <TableCell className="whitespace-nowrap text-gray-600">
-                            {formattedDate}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={item.isExpense ? "destructive" : "default"} className="text-xs">
-                              {item.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-xs truncate text-gray-700">
-                            {item.description}
-                            {item.collectedBy && isOwner && (
-                              <span className="text-xs text-gray-400 ml-2">
-                                (by {item.collectedBy})
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className={`text-right ${amountColorClass}`}>
-                            {isPositive ? "+" : "-"}PKR {item.amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={getStatusVariant(item.status)} className="text-xs">
-                              {item.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-
-        {/* ============================================ */}
-        {/* PENDING EXPENSES LIST */}
-        {/* ============================================ */}
-        {pendingExpenses.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-600" />
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Pending Bills ({pendingExpenses.length})
-                </h3>
-              </div>
-              <span className="text-sm font-medium text-gray-500">
-                Total: PKR {pendingTotal.toLocaleString()}
-              </span>
-            </div>
             <div className="space-y-3">
-              {pendingExpenses.map((expense) => (
+              {pendingClosings.map((closing) => (
                 <div
-                  key={expense._id}
-                  className={`flex items-center justify-between p-4 rounded-lg border ${expense.status === "overdue"
-                      ? "border-red-200 bg-red-50"
-                      : "border-amber-200 bg-amber-50"
-                    }`}
+                  key={closing._id}
+                  className="flex items-center justify-between p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
                 >
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <p className="font-medium text-gray-900">{expense.title}</p>
-                      {getStatusBadge(expense.status)}
+                    <div className="font-semibold text-lg">
+                      {closing.partnerId.fullName}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span className="px-2 py-0.5 rounded bg-white border">
-                        {expense.category}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Building2 className="h-3 w-3" />
-                        {expense.vendorName}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Due: {new Date(expense.dueDate).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}
-                      </span>
+                    <div className="text-sm text-slate-600 mt-1">
+                      Total: PKR {closing.totalAmount.toLocaleString()} • Handing: PKR{" "}
+                      {closing.handoverAmount.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {new Date(closing.createdAt).toLocaleString()}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-gray-900">
-                      PKR {expense.amount.toLocaleString()}
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => markAsPaidMutation.mutate(expense._id)}
-                      disabled={markAsPaidMutation.isPending}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Mark Paid
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-red-600 hover:text-red-700 hover:bg-red-100"
-                      onClick={() => deleteExpenseMutation.mutate(expense._id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={() => handleVerify(closing._id)}
+                    disabled={verifyMutation.isPending}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Verify Receipt
+                  </Button>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Empty state for no expenses */}
-        {!expensesLoading && expenses.length === 0 && (
-          <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center mb-6">
-            <TrendingDown className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Expenses Yet</h4>
-            <p className="text-sm text-gray-500 mb-4">
-              Start by adding your first expense using the form above
+      {/* Partner Debt Tracker */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-orange-500" />
+            Expense Debt Tracker
+          </CardTitle>
+          <CardDescription>
+            Track and clear partner expense debts
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Partner</TableHead>
+                <TableHead>Expense Debt</TableHead>
+                <TableHead>Amount to Clear</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {partners.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-slate-500">
+                    No partners found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                partners.map((partner: any) => (
+                  <TableRow key={partner._id}>
+                    <TableCell className="font-medium">{partner.fullName}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          (partner.expenseDebt || 0) > 0 ? "destructive" : "secondary"
+                        }
+                      >
+                        PKR {(partner.expenseDebt || 0).toLocaleString()}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        value={debtAmount[partner._id] || ""}
+                        onChange={(e) =>
+                          setDebtAmount({
+                            ...debtAmount,
+                            [partner._id]: e.target.value,
+                          })
+                        }
+                        placeholder="Amount"
+                        className="w-32"
+                        disabled={(partner.expenseDebt || 0) === 0}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        onClick={() => handleClearDebt(partner._id)}
+                        disabled={
+                          clearDebtMutation.isPending ||
+                          (partner.expenseDebt || 0) === 0
+                        }
+                        size="sm"
+                        variant="outline"
+                      >
+                        Mark Paid
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// Main Finance Component
+const Finance = () => {
+  const { user } = useAuth();
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Finance Dashboard</h1>
+            <p className="text-slate-600 mt-1">
+              {user?.role === "OWNER"
+                ? "Manage partner closings and debt tracking"
+                : "Track your collections and close your day"}
             </p>
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-              <FileText className="h-3 w-3" />
-              <span>Rent • Utilities • Salaries • Supplies</span>
-            </div>
           </div>
-        )}
+          <Badge variant="outline" className="text-sm px-4 py-2">
+            {user?.role === "OWNER" ? "Owner View" : "Partner View"}
+          </Badge>
+        </div>
 
-        {/* ============================================ */}
-        {/* OWNER-ONLY: ANALYTICS SECTION */}
-        {/* ============================================ */}
-        {showAnalytics && financeData && (
-          <>
-            {/* Analytics Header */}
-            <div className="flex items-center gap-3 mb-4 mt-8">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BarChart3 className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Owner Analytics</h3>
-                <p className="text-sm text-gray-500 flex items-center gap-1">
-                  <Shield className="h-3 w-3" />
-                  Visible only to you
-                </p>
-              </div>
-            </div>
-
-            {/* KPI Cards (Owner Only) */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-              <KPICard
-                title="Total Collected"
-                value={`PKR ${(totalIncome / 1000).toFixed(0)}K`}
-                subtitle={`${collectionRate}% collection rate`}
-                icon={TrendingUp}
-                variant="success"
-                trend={{ value: collectionRate, isPositive: collectionRate > 70 }}
-              />
-
-              <div className="relative">
-                <KPICard
-                  title="Teacher Liabilities"
-                  value={`PKR ${(totalTeacherLiabilities / 1000).toFixed(0)}K`}
-                  subtitle={`${teacherPayroll.length} active teachers`}
-                  icon={GraduationCap}
-                  variant="warning"
-                />
-                <InfoTooltip>
-                  <TooltipTrigger asChild>
-                    <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
-                      <HelpCircle className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-sm">
-                      Total amount owed to teachers based on collected fees.
-                    </p>
-                  </TooltipContent>
-                </InfoTooltip>
-              </div>
-
-              <KPICard
-                title="Total Expenses"
-                value={`PKR ${(totalExpenses / 1000).toFixed(0)}K`}
-                subtitle="Operational costs"
-                icon={TrendingDown}
-                variant="danger"
-              />
-
-              <div className="relative">
-                <KPICard
-                  title="Net Profit"
-                  value={`PKR ${(netProfit / 1000).toFixed(0)}K`}
-                  subtitle="After all costs"
-                  icon={Wallet}
-                  variant={netProfit > 0 ? "primary" : "danger"}
-                />
-                <InfoTooltip>
-                  <TooltipTrigger asChild>
-                    <button className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
-                      <HelpCircle className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-sm">
-                      Net Profit = Collected - (Teacher Payouts + Expenses)
-                    </p>
-                  </TooltipContent>
-                </InfoTooltip>
-              </div>
-            </div>
-
-            {/* Warning for Negative Profit */}
-            {netProfit < 0 && (
-              <div className="mb-6 rounded-lg border-2 border-red-500 bg-red-50 p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-red-900">
-                    ⚠️ Warning: Monthly Loss Detected
-                  </h4>
-                  <p className="text-sm text-red-700 mt-1">
-                    Your expenses exceed revenue. Consider reviewing costs.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Teacher Payroll Table (Owner Only) */}
-            <TeacherPayrollTable
-              teachers={teacherPayroll}
-              filter={teacherFilter}
-              onFilterChange={setTeacherFilter}
-              onPay={handlePayTeacher}
-              isPaying={processPaymentMutation.isPending}
-            />
-          </>
-        )}
-
-        {/* Payment Receipt Modal */}
-        <PaymentReceipt
-          isOpen={isReceiptOpen}
-          onClose={() => setIsReceiptOpen(false)}
-          voucherData={voucherData}
-        />
-      </DashboardLayout>
-    </TooltipProvider>
+        {user?.role === "OWNER" ? <OwnerView /> : <PartnerView />}
+      </div>
+    </DashboardLayout>
   );
 };
 

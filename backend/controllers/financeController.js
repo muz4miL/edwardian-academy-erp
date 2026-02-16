@@ -7,6 +7,10 @@ const Expense = require("../models/Expense");
 const Settings = require("../models/Settings");
 const Configuration = require("../models/Configuration");
 const User = require("../models/User");
+const Teacher = require("../models/Teacher");
+
+// Waqar's Protocol: Import expense debt creation from revenueHelper
+const { createExpenseDebtRecords } = require("../helpers/revenueHelper");
 
 // @desc    Close Day - Lock floating cash into verified balance
 // @route   POST /api/finance/close-day
@@ -216,46 +220,277 @@ exports.getDashboardStats = async (req, res) => {
 
         stats.tuitionRevenue = tuitionResult?.[0]?.total ?? 0;
 
-        // Expense Debt (what partner owes to owner)
-        const totalExpenses = await Transaction.aggregate([
+        // SRS 3.0 FIX: Get LIVE debt from User.debtToOwner (not historical Expense shares)
+        // This reflects actual remaining debt after payments
+        const partnerUser = await User.findById(userId).lean();
+        const liveDebtToOwner = partnerUser?.debtToOwner || 0;
+
+        console.log(
+          `💳 Partner ${req.user.fullName}: Live debtToOwner = PKR ${liveDebtToOwner}`,
+        );
+
+        stats.expenseDebt = liveDebtToOwner;
+        stats.hasExpenseDebt = liveDebtToOwner > 0; // Alert flag for UI
+        stats.expenseDebtDetails = []; // Historical details no longer needed
+
+        // ========================================
+        // WAQAR'S PROTOCOL: Net Cash Closing for Partners
+        // ========================================
+
+        // Get partner name from user profile for dividend lookup
+        const partnerName = (
+          req.user.fullName ||
+          req.user.username ||
+          ""
+        ).toLowerCase();
+        let dividendFilter = "Zahid"; // Default
+        if (partnerName.includes("zahid")) dividendFilter = "Zahid";
+        else if (partnerName.includes("saud")) dividendFilter = "Saud";
+
+        // 1. Total Cash Collected (All verified income for this partner)
+        const totalCashCollectedResult = await Transaction.aggregate([
           {
             $match: {
-              type: "EXPENSE",
+              collectedBy: collectedByMatch,
               status: "VERIFIED",
+              type: "INCOME",
             },
           },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]);
+        stats.totalCashCollected = totalCashCollectedResult?.[0]?.total ?? 0;
 
-        const totalExpenseAmount = totalExpenses?.[0]?.total ?? 0;
-        // Each partner owes 30% of total expenses
-        stats.expenseDebt = totalExpenseAmount * 0.3;
+        // 2. Pool Dividends Received (From protocol-based pool splits)
+        const dividendsResult = await Transaction.aggregate([
+          {
+            $match: {
+              category: "Dividend",
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.partnerName": dividendFilter,
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        stats.poolDividends = dividendsResult?.[0]?.total ?? 0;
+
+        // 3. Expense Share Payable (Pending DEBT transactions for this partner)
+        const expenseDebtResult = await Transaction.aggregate([
+          {
+            $match: {
+              type: "DEBT",
+              category: "ExpenseShare",
+              status: "PENDING",
+              "splitDetails.partnerName": dividendFilter,
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]);
+        stats.expenseSharePayable = expenseDebtResult?.[0]?.total ?? 0;
+
+        // 4. Net Cash to Close = Total Cash Collected - Expense Share Payable
+        stats.netCashToClose =
+          stats.totalCashCollected - stats.expenseSharePayable;
+
+        console.log(`💰 Partner Net Cash Closing (${dividendFilter}):
+  - Total Cash Collected: PKR ${stats.totalCashCollected.toLocaleString()}
+  - Pool Dividends: PKR ${stats.poolDividends.toLocaleString()}
+  - Expense Share Payable: PKR ${stats.expenseSharePayable.toLocaleString()}
+  - Net Cash to Close: PKR ${stats.netCashToClose.toLocaleString()}`);
+
+        // Link Partner to Teacher profile to get Teacher floatingCash
+        // Try to find Teacher by userId first, then by name match
+        let linkedTeacher = await Teacher.findOne({ userId: userId });
+
+        if (!linkedTeacher) {
+          // Fallback: Try to find by matching name
+          const partnerName = req.user.fullName || req.user.username || "";
+          if (partnerName) {
+            linkedTeacher = await Teacher.findOne({
+              name: { $regex: new RegExp(partnerName.split(" ")[0], "i") },
+            });
+          }
+        }
+
+        if (linkedTeacher) {
+          stats.teacherFloatingCash = linkedTeacher.balance?.floating || 0;
+          stats.teacherVerifiedCash = linkedTeacher.balance?.verified || 0;
+          stats.linkedTeacherId = linkedTeacher._id;
+          stats.linkedTeacherName = linkedTeacher.name;
+          console.log(`🔗 Partner linked to Teacher: ${linkedTeacher.name}`);
+        } else {
+          stats.teacherFloatingCash = 0;
+          stats.teacherVerifiedCash = 0;
+          console.log(
+            `⚠️ No Teacher profile found for Partner: ${req.user.fullName}`,
+          );
+        }
       }
 
       // 4. Owner-specific stats
       if (userRole === "OWNER") {
-        // Pending Reimbursements (Partner Debt)
-        const totalExpenses = await Transaction.aggregate([
+        // SRS 3.0: Get pending reimbursements from actual Expense shares
+        const pendingReimbursements = await Expense.aggregate([
+          { $match: { "shares.status": "UNPAID" } },
+          { $unwind: "$shares" },
+          { $match: { "shares.status": "UNPAID" } },
+          { $group: { _id: null, total: { $sum: "$shares.amount" } } },
+        ]);
+
+        stats.pendingReimbursements = pendingReimbursements?.[0]?.total ?? 0;
+
+        // Academy Pool (30% from staff tuition)
+        const poolResult = await Transaction.aggregate([
           {
             $match: {
-              type: "EXPENSE",
+              stream: { $in: ["ACADEMY_POOL", "STAFF_TUITION"] },
               status: "VERIFIED",
+              type: "INCOME",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.academyShare" },
+            },
+          },
+        ]);
+
+        stats.poolRevenue = poolResult?.[0]?.total ?? 0;
+
+        // Teacher Payables (70% owed to teachers)
+        const teacherPayables = await Transaction.aggregate([
+          {
+            $match: {
+              stream: "STAFF_TUITION",
+              status: "VERIFIED",
+              type: "INCOME",
+              "splitDetails.isPaid": false,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$splitDetails.teacherShare" },
+            },
+          },
+        ]);
+
+        stats.teacherPayables = teacherPayables?.[0]?.total ?? 0;
+
+        // === MY NET REVENUE CALCULATION WITH CATEGORIZED BREAKDOWN ===
+        // Direct Teaching: Sum of 100% fees from classes where teacher = Waqar
+        const waqarTeacher = await Teacher.findOne({
+          $or: [{ userId: userId }, { name: { $regex: /waqar/i } }],
+        });
+
+        let directTeaching = 0;
+        let revenueBreakdown = {
+          matricRevenue: 0, // 9th/10th Grade
+          fscRevenue: 0, // 11th/12th Grade
+          chemistryRevenue: 0, // Chemistry subject (any grade)
+          eteaRevenue: 0, // ETEA/MDCAT prep courses
+          poolDividends: 0, // Pool distribution dividends
+        };
+
+        if (waqarTeacher) {
+          // Get all owner chemistry transactions with category breakdown
+          const ownerTransactions = await Transaction.find({
+            stream: "OWNER_CHEMISTRY",
+            status: "VERIFIED",
+            type: "INCOME",
+          }).lean();
+
+          // Categorize by description or linked student's class
+          for (const tx of ownerTransactions) {
+            directTeaching += tx.amount;
+            revenueBreakdown.chemistryRevenue += tx.amount;
+
+            // Try to categorize by description patterns
+            const desc = (tx.description || "").toLowerCase();
+            if (
+              desc.includes("9th") ||
+              desc.includes("10th") ||
+              desc.includes("matric")
+            ) {
+              revenueBreakdown.matricRevenue += tx.amount;
+            } else if (
+              desc.includes("11th") ||
+              desc.includes("12th") ||
+              desc.includes("fsc")
+            ) {
+              revenueBreakdown.fscRevenue += tx.amount;
+            } else if (
+              desc.includes("etea") ||
+              desc.includes("mdcat") ||
+              desc.includes("ecat")
+            ) {
+              revenueBreakdown.eteaRevenue += tx.amount;
+            }
+          }
+
+          // Get ETEA revenue where Waqar is the teacher
+          const eteaResult = await Transaction.aggregate([
+            {
+              $match: {
+                stream: { $in: ["ETEA_POOL", "ETEA_ENGLISH"] },
+                status: "VERIFIED",
+                type: "INCOME",
+                "splitDetails.teacherId": waqarTeacher._id,
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$splitDetails.teacherShare" },
+              },
+            },
+          ]);
+          const eteaTeacherEarnings = eteaResult?.[0]?.total ?? 0;
+          revenueBreakdown.eteaRevenue += eteaTeacherEarnings;
+          directTeaching += eteaTeacherEarnings;
+        }
+
+        // Pool Dividends: Sum of all DIVIDEND transactions where recipient = Waqar
+        const poolDividendsResult = await Transaction.aggregate([
+          {
+            $match: {
+              stream: "DIVIDEND",
+              status: "VERIFIED",
+              type: "INCOME",
+              recipientPartner: userId,
             },
           },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]);
+        const poolDividends = poolDividendsResult?.[0]?.total ?? 0;
+        revenueBreakdown.poolDividends = poolDividends;
 
-        const totalExpenseAmount = totalExpenses?.[0]?.total ?? 0;
-        // Partners owe 60% of expenses (30% each)
-        stats.pendingReimbursements = totalExpenseAmount * 0.6;
-
-        // Academy Pool (30% shared revenue)
-        const poolResult = await Transaction.aggregate([
-          { $match: { category: "Pool", status: "VERIFIED", type: "INCOME" } },
+        // Expenses Paid: Sum of all expenses where paidBy = Waqar
+        const expensesPaidResult = await Expense.aggregate([
+          {
+            $match: {
+              paidBy: userId,
+              status: "paid",
+            },
+          },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]);
+        const expensesPaid = expensesPaidResult?.[0]?.total ?? 0;
 
-        stats.poolRevenue = poolResult?.[0]?.total ?? 0;
+        // Calculate Owner Net Revenue
+        stats.ownerNetRevenue = directTeaching + poolDividends - expensesPaid;
+        stats.revenueBreakdown = revenueBreakdown;
+        stats.expensesPaid = expensesPaid;
+
+        console.log(`💰 Owner Net Revenue Breakdown:
+  - Chemistry Revenue: PKR ${revenueBreakdown.chemistryRevenue.toLocaleString()}
+  - 9th/10th (Matric): PKR ${revenueBreakdown.matricRevenue.toLocaleString()}
+  - 11th/12th (FSc): PKR ${revenueBreakdown.fscRevenue.toLocaleString()}
+  - ETEA Revenue: PKR ${revenueBreakdown.eteaRevenue.toLocaleString()}
+  - Pool Dividends: PKR ${revenueBreakdown.poolDividends.toLocaleString()}
+  - Expenses Paid: PKR ${expensesPaid.toLocaleString()}
+  - NET REVENUE: PKR ${stats.ownerNetRevenue.toLocaleString()}`);
       }
     }
 
@@ -518,6 +753,28 @@ exports.createSharedExpense = async (req, res) => {
       shares,
     });
 
+    // CRITICAL: Debit Waqar's ledger - Create expense transaction
+    // All expenses are paid from Waqar's revenue (Chemistry + Dividends)
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      // Create a debit transaction for Waqar
+      await Transaction.create({
+        type: "EXPENSE",
+        category: category,
+        stream: "OWNER_DRAW",
+        amount: amount, // Positive amount, type EXPENSE indicates debit
+        description: `Expense: ${title} (${vendorName || "Academy"})`,
+        collectedBy: owner._id,
+        status: "VERIFIED",
+        date: new Date(),
+      });
+
+      console.log(
+        `💸 Debited PKR ${amount.toLocaleString()} from ${owner.fullName}'s revenue for expense: ${title}`,
+      );
+      // Silent: No notification to Owner - he knows he paid it
+    }
+
     // Notify partners about their share
     for (const share of shares) {
       await Notification.create({
@@ -526,6 +783,43 @@ exports.createSharedExpense = async (req, res) => {
         type: "FINANCE",
         relatedId: expense._id.toString(),
       });
+
+      // Update partner's debtToOwner and expenseDebt
+      await User.findByIdAndUpdate(share.partner, {
+        $inc: { 
+          debtToOwner: share.amount,
+          expenseDebt: share.amount 
+        },
+      });
+      console.log(
+        `📊 Added PKR ${share.amount} to ${share.partnerName}'s debt`,
+      );
+    }
+
+    // ========================================
+    // WAQAR'S PROTOCOL: Create DEBT Transaction Records
+    // ========================================
+    // These provide detailed transaction-level tracking for partner dashboards
+    try {
+      const config = await Configuration.findOne();
+      const debtResult = await createExpenseDebtRecords({
+        expenseAmount: amount,
+        expenseId: expense._id.toString(),
+        description: `Expense Share: ${title}`,
+        paidById: req.user._id,
+        config,
+      });
+
+      console.log(`📝 Created DEBT records for expense:
+  - Zahid owes: PKR ${debtResult.zahidOwes.toLocaleString()}
+  - Saud owes: PKR ${debtResult.saudOwes.toLocaleString()}
+  - Total debt created: PKR ${debtResult.totalDebt.toLocaleString()}`);
+    } catch (debtError) {
+      // Non-critical - debt records are supplementary, User.debtToOwner is source of truth
+      console.warn(
+        "⚠️ Failed to create DEBT transaction records:",
+        debtError.message,
+      );
     }
 
     return res.status(201).json({
@@ -788,14 +1082,17 @@ exports.getFinanceHistory = async (req, res) => {
       unifiedHistory.push({
         _id: tx._id,
         date: tx.createdAt || tx.date,
-        type: tx.type, // INCOME, EXPENSE, PARTNER_WITHDRAWAL
+        type: tx.type, // INCOME, EXPENSE, PARTNER_WITHDRAWAL, DIVIDEND, DEBT
         description: tx.description || `${tx.category} - ${tx.type}`,
         amount: tx.amount,
         status: tx.status, // FLOATING, VERIFIED, CANCELLED
-        isExpense: false,
+        isExpense: tx.type === "EXPENSE" || tx.type === "DEBT",
         category: tx.category,
         collectedBy: tx.collectedBy?.fullName || "Unknown",
         studentName: tx.studentId?.fullName || null,
+        // NEW: Include stream and splitDetails for pool distribution tracking
+        stream: tx.stream,
+        splitDetails: tx.splitDetails || null,
       });
     }
 
@@ -867,7 +1164,10 @@ exports.getPartnerPortalStats = async (req, res) => {
       });
     }
 
-    console.log("🏛️ Partner Portal Stats for:", req.user.fullName || req.user.username);
+    console.log(
+      "🏛️ Partner Portal Stats for:",
+      req.user.fullName || req.user.username,
+    );
     const collectedByMatch = { $in: [userId, userId.toString()] };
 
     // 1. CASH IN HAND: Floating (unverified) cash collected by this partner
@@ -894,7 +1194,8 @@ exports.getPartnerPortalStats = async (req, res) => {
 
     for (const exp of myExpenses) {
       const myShare = exp.shares.find(
-        (s) => s.partner.toString() === userId.toString() && s.status === "UNPAID"
+        (s) =>
+          s.partner.toString() === userId.toString() && s.status === "UNPAID",
       );
       if (myShare) {
         expenseLiability += myShare.amount;
@@ -1000,3 +1301,1958 @@ exports.getPartnerPortalStats = async (req, res) => {
     });
   }
 };
+
+// =================================================
+// SRS 3.0 MODULE 5: REFUND MECHANISM
+// =================================================
+
+// @desc    Process Student Refund (Financial Rollback)
+// @route   POST /api/finance/refund
+// @access  Protected (Owner/Admin Only)
+exports.processRefund = async (req, res) => {
+  try {
+    const { studentId, amount, reason, feeRecordId } = req.body;
+    const userId = req.user._id;
+
+    console.log("\n=== REFUND PROCESSING (SRS 3.0 Module 5) ===");
+    console.log("Student ID:", studentId);
+    console.log("Amount:", amount);
+    console.log("Reason:", reason);
+
+    // Validation
+    if (!studentId || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and refund amount are required",
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Refund amount must be greater than 0",
+      });
+    }
+
+    // Find the student
+    const Student = require("../models/Student");
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Find the original fee record (if provided)
+    let feeRecord = null;
+    let originalTransaction = null;
+    const FeeRecord = require("../models/FeeRecord");
+    const Teacher = require("../models/Teacher");
+
+    if (feeRecordId) {
+      feeRecord = await FeeRecord.findById(feeRecordId);
+    } else {
+      // Find the most recent paid fee record for this student
+      feeRecord = await FeeRecord.findOne({
+        student: studentId,
+        status: "PAID",
+      }).sort({ createdAt: -1 });
+    }
+
+    // Determine the reverse logic based on subject type
+    let stream = "ACADEMY_POOL";
+    let teacherDeduction = 0;
+    let academyDeduction = amount;
+    let teacher = null;
+    let isPartnerSubject = false;
+
+    if (feeRecord) {
+      // We have a specific fee record to reverse
+      const subjectLower = (feeRecord.subject || "").toLowerCase();
+
+      // Check if it was a partner subject
+      if (feeRecord.isPartnerTeacher) {
+        isPartnerSubject = true;
+
+        if (
+          subjectLower.includes("chemistry") ||
+          feeRecord.teacherName?.toLowerCase().includes("saud")
+        ) {
+          stream = "PARTNER_CHEMISTRY";
+        } else if (
+          subjectLower.includes("physics") ||
+          feeRecord.teacherName?.toLowerCase().includes("zahid")
+        ) {
+          stream = "PARTNER_PHYSICS";
+        } else {
+          stream = "ACADEMY_POOL";
+        }
+
+        // Partner subject: Full amount from partner
+        academyDeduction = 0;
+        teacherDeduction = amount;
+      } else {
+        // Staff subject: Apply reverse 70/30 logic
+        stream = "STAFF_TUITION";
+        const splitBreakdown = feeRecord.splitBreakdown || {
+          teacherPercentage: 70,
+          academyPercentage: 30,
+        };
+
+        teacherDeduction = Math.round(
+          (amount * splitBreakdown.teacherPercentage) / 100,
+        );
+        academyDeduction = amount - teacherDeduction;
+
+        // Find the teacher
+        if (feeRecord.teacher) {
+          teacher = await Teacher.findById(feeRecord.teacher);
+        }
+      }
+
+      // Find original transaction to mark as refunded
+      originalTransaction = await Transaction.findOne({
+        studentId: studentId,
+        type: "INCOME",
+        amount: feeRecord.amount,
+        createdAt: { $gte: feeRecord.createdAt },
+      }).sort({ createdAt: 1 });
+    }
+
+    console.log(`📊 Refund Stream: ${stream}`);
+    console.log(`💸 Teacher Deduction: PKR ${teacherDeduction}`);
+    console.log(`🏫 Academy Deduction: PKR ${academyDeduction}`);
+
+    // Case A: Partner Subject - Deduct from Partner Ledger
+    if (isPartnerSubject && stream !== "ACADEMY_POOL") {
+      console.log(`🎯 Case A: Partner Subject Refund`);
+
+      // Find the partner user and deduct from their wallet
+      const partnerName = stream === "PARTNER_CHEMISTRY" ? "saud" : "zahid";
+      const partnerUser = await User.findOne({
+        role: { $in: ["OWNER", "PARTNER"] },
+        fullName: { $regex: new RegExp(partnerName, "i") },
+      });
+
+      if (partnerUser && partnerUser.walletBalance) {
+        // Deduct from verified first, then floating
+        if (typeof partnerUser.walletBalance === "object") {
+          const verified = partnerUser.walletBalance.verified || 0;
+          if (verified >= amount) {
+            partnerUser.walletBalance.verified = verified - amount;
+          } else {
+            partnerUser.walletBalance.verified = 0;
+            partnerUser.walletBalance.floating =
+              (partnerUser.walletBalance.floating || 0) - (amount - verified);
+          }
+          await partnerUser.save();
+          console.log(
+            `✅ Deducted PKR ${amount} from ${partnerUser.fullName}'s ledger`,
+          );
+        }
+      }
+    }
+
+    // Case B: Staff Subject - Check teacher payment status
+    if (stream === "STAFF_TUITION" && teacher) {
+      console.log(`🎯 Case B: Staff Subject Refund`);
+
+      // Check if teacher was already paid their 70%
+      const teacherPaid = feeRecord?.splitBreakdown?.isPaid || false;
+
+      if (teacherPaid) {
+        // Teacher already paid - create negative balance for next month
+        teacher.balance = teacher.balance || { floating: 0, verified: 0 };
+        teacher.balance.verified =
+          (teacher.balance.verified || 0) - teacherDeduction;
+        await teacher.save();
+        console.log(
+          `⚠️ Teacher ${teacher.name} - Negative Balance: PKR ${teacherDeduction} (to recover)`,
+        );
+
+        // Create notification
+        await Notification.create({
+          recipient: teacher._id,
+          message: `⚠️ Refund processed for ${student.studentName}. PKR ${teacherDeduction.toLocaleString()} will be deducted from your next payment.`,
+          type: "FINANCE",
+        });
+      } else {
+        // Teacher not yet paid - reduce floating balance
+        teacher.balance = teacher.balance || { floating: 0, verified: 0 };
+        teacher.balance.floating = Math.max(
+          0,
+          (teacher.balance.floating || 0) - teacherDeduction,
+        );
+        await teacher.save();
+        console.log(
+          `✅ Reduced ${teacher.name}'s floating balance by PKR ${teacherDeduction}`,
+        );
+      }
+    }
+
+    // Update student's paid amount
+    student.paidAmount = Math.max(0, (student.paidAmount || 0) - amount);
+
+    // Recalculate fee status
+    const balance = student.totalFee - student.paidAmount;
+    if (balance <= 0) {
+      student.feeStatus = "paid";
+    } else if (student.paidAmount > 0) {
+      student.feeStatus = "partial";
+    } else {
+      student.feeStatus = "pending";
+    }
+    await student.save();
+
+    // Mark original transaction as refunded
+    if (originalTransaction) {
+      originalTransaction.status = "REFUNDED";
+      await originalTransaction.save();
+    }
+
+    // Create refund transaction for audit trail
+    const refundTransaction = await Transaction.create({
+      type: "REFUND",
+      category: "Refund",
+      stream,
+      amount,
+      description: `Refund: ${student.studentName} - ${reason || "Student withdrawal"}`,
+      collectedBy: userId,
+      status: "VERIFIED",
+      studentId: student._id,
+      originalTransactionId: originalTransaction?._id,
+      splitDetails: {
+        teacherShare: teacherDeduction,
+        academyShare: academyDeduction,
+        teacherId: teacher?._id,
+        teacherName: teacher?.name,
+        isPaid: true, // Refund is processed
+      },
+      date: new Date(),
+    });
+
+    // Update fee record status
+    if (feeRecord) {
+      feeRecord.status = "REFUNDED";
+      feeRecord.refundAmount = amount;
+      feeRecord.refundDate = new Date();
+      feeRecord.refundReason = reason;
+      await feeRecord.save();
+    }
+
+    console.log("✅ Refund processed successfully");
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Refund of PKR ${amount.toLocaleString()} processed for ${student.studentName}`,
+      data: {
+        refundTransaction,
+        breakdown: {
+          total: amount,
+          teacherDeduction,
+          academyDeduction,
+          stream,
+          isPartnerSubject,
+        },
+        student: {
+          id: student._id,
+          name: student.studentName,
+          newPaidAmount: student.paidAmount,
+          feeStatus: student.feeStatus,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error processing refund:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process refund",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// SRS 3.0 MODULE: POOL DISTRIBUTION (SHARED POOL)
+// =================================================
+
+// @desc    Distribute UNALLOCATED_POOL to Partners (40/30/30 Split)
+// @route   POST /api/finance/distribute-pool
+// @access  Protected (OWNER Only)
+exports.distributePool = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    // Security: Only OWNER can distribute pool
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can distribute the pool.",
+      });
+    }
+
+    console.log("\n=== POOL DISTRIBUTION REQUEST ===");
+
+    // 1. Sum all undistributed UNALLOCATED_POOL transactions
+    const undistributedTransactions = await Transaction.find({
+      stream: "UNALLOCATED_POOL",
+      isDistributed: false,
+      status: "VERIFIED",
+    });
+
+    if (undistributedTransactions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ No funds available for distribution. Pool is empty.",
+      });
+    }
+
+    const totalPool = undistributedTransactions.reduce(
+      (sum, tx) => sum + tx.amount,
+      0,
+    );
+
+    console.log(
+      `💰 Total Pool to Distribute: PKR ${totalPool.toLocaleString()}`,
+    );
+
+    // 2. Get distribution ratios from Configuration (use poolDistribution, fallback to expenseSplit, then defaults)
+    const config = await Configuration.findOne();
+    const distributionRatio = config?.poolDistribution ||
+      config?.expenseSplit || {
+      waqar: 40,
+      zahid: 30,
+      saud: 30,
+    };
+
+    console.log(`📊 Pool Distribution Ratio:`, distributionRatio);
+
+    // 3. Calculate shares
+    const shares = {
+      waqar: Math.round((totalPool * distributionRatio.waqar) / 100),
+      zahid: Math.round((totalPool * distributionRatio.zahid) / 100),
+      saud: Math.round((totalPool * distributionRatio.saud) / 100),
+    };
+
+    // Handle rounding: Give any remainder to Waqar (owner)
+    const shareTotal = shares.waqar + shares.zahid + shares.saud;
+    if (shareTotal < totalPool) {
+      shares.waqar += totalPool - shareTotal;
+    }
+
+    console.log(`💵 Calculated Shares:`, shares);
+
+    // 4. Find partner users
+    const partners = await User.find({
+      role: { $in: ["OWNER", "PARTNER"] },
+      isActive: true,
+    });
+
+    const partnerMap = {};
+    for (const partner of partners) {
+      const nameLower = (
+        partner.fullName ||
+        partner.username ||
+        ""
+      ).toLowerCase();
+      if (nameLower.includes("waqar")) {
+        partnerMap.waqar = partner;
+      } else if (nameLower.includes("zahid")) {
+        partnerMap.zahid = partner;
+      } else if (nameLower.includes("saud")) {
+        partnerMap.saud = partner;
+      }
+    }
+
+    // 5. Create DIVIDEND transactions for each partner
+    const dividendTransactions = [];
+    const distributionId = new mongoose.Types.ObjectId(); // Shared distribution batch ID
+
+    for (const [partnerKey, shareAmount] of Object.entries(shares)) {
+      const partner = partnerMap[partnerKey];
+      if (!partner) {
+        console.log(`⚠️ Partner ${partnerKey} not found, skipping...`);
+        continue;
+      }
+
+      // Create dividend transaction
+      const dividendTx = await Transaction.create({
+        type: "INCOME",
+        category: "Pool",
+        stream: "DIVIDEND",
+        amount: shareAmount,
+        description: `Pool Distribution: ${partnerKey.toUpperCase()} share (${distributionRatio[partnerKey]}%) of PKR ${totalPool.toLocaleString()}`,
+        collectedBy: userId,
+        status: "VERIFIED",
+        recipientPartner: partner._id,
+        recipientPartnerName: partner.fullName || partner.username,
+        distributionId,
+        date: new Date(),
+      });
+
+      dividendTransactions.push({
+        partnerKey,
+        partnerName: partner.fullName || partner.username,
+        partnerId: partner._id,
+        amount: shareAmount,
+        percentage: distributionRatio[partnerKey],
+        transactionId: dividendTx._id,
+      });
+
+      // Update partner's wallet balance
+      if (partner.walletBalance) {
+        if (typeof partner.walletBalance === "object") {
+          partner.walletBalance.verified =
+            (partner.walletBalance.verified || 0) + shareAmount;
+        } else {
+          partner.walletBalance = (partner.walletBalance || 0) + shareAmount;
+        }
+        await partner.save();
+      }
+
+      // Notify partner
+      await Notification.create({
+        recipient: partner._id,
+        message: `💰 Pool Distribution: You received PKR ${shareAmount.toLocaleString()} (${distributionRatio[partnerKey]}% of PKR ${totalPool.toLocaleString()})`,
+        type: "FINANCE",
+        relatedId: dividendTx._id.toString(),
+      });
+
+      console.log(
+        `✅ ${partnerKey.toUpperCase()}: PKR ${shareAmount.toLocaleString()} credited`,
+      );
+    }
+
+    // 6. Mark all original transactions as distributed
+    const transactionIds = undistributedTransactions.map((tx) => tx._id);
+    await Transaction.updateMany(
+      { _id: { $in: transactionIds } },
+      {
+        $set: {
+          isDistributed: true,
+          distributionId,
+        },
+      },
+    );
+
+    console.log(
+      `✅ Marked ${transactionIds.length} transactions as distributed`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Pool of PKR ${totalPool.toLocaleString()} distributed successfully!`,
+      data: {
+        totalPool,
+        transactionsProcessed: undistributedTransactions.length,
+        distributionId,
+        shares: dividendTransactions,
+        ratio: distributionRatio,
+        distributedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in distributePool:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to distribute pool",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get Pool Status (Current undistributed amount)
+// @route   GET /api/finance/pool-status
+// @access  Protected (OWNER/PARTNER)
+exports.getPoolStatus = async (req, res) => {
+  try {
+    // Sum undistributed pool
+    const undistributedResult = await Transaction.aggregate([
+      {
+        $match: {
+          stream: "UNALLOCATED_POOL",
+          isDistributed: false,
+          status: "VERIFIED",
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
+
+    const undistributedAmount = undistributedResult?.[0]?.total ?? 0;
+    const undistributedCount = undistributedResult?.[0]?.count ?? 0;
+
+    // Get recent distributions
+    const recentDistributions = await Transaction.find({
+      stream: "DIVIDEND",
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    // Get config for ratio display
+    const config = await Configuration.findOne();
+    const distributionRatio = config?.expenseSplit || {
+      waqar: 40,
+      zahid: 30,
+      saud: 30,
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        currentPool: {
+          amount: undistributedAmount,
+          transactionCount: undistributedCount,
+          canDistribute: undistributedAmount > 0,
+        },
+        distributionRatio,
+        recentDistributions: recentDistributions.map((d) => ({
+          id: d._id,
+          amount: d.amount,
+          recipient: d.recipientPartnerName,
+          date: d.createdAt,
+          description: d.description,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getPoolStatus:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get pool status",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// SRS 3.0 MODULE: EXPENSE APPROVAL WORKFLOW
+// =================================================
+
+// @desc    Partner marks their expense share as paid (Step 1: Partner Action)
+// @route   POST /api/finance/expenses/mark-paid
+// @access  Protected (PARTNER)
+exports.markExpenseAsPaid = async (req, res) => {
+  try {
+    const { expenseId } = req.body;
+    const userId = req.user._id;
+    const userName = req.user.fullName || req.user.username;
+
+    console.log("\n=== EXPENSE MARK PAID REQUEST ===");
+    console.log("Expense ID:", expenseId);
+    console.log("Partner:", userName);
+
+    if (!expenseId) {
+      return res.status(400).json({
+        success: false,
+        message: "Expense ID is required",
+      });
+    }
+
+    const expense = await Expense.findById(expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+
+    // Find the partner's share
+    const shareIndex = expense.shares.findIndex(
+      (s) => s.partner?.toString() === userId.toString(),
+    );
+
+    if (shareIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "You do not have a share in this expense",
+      });
+    }
+
+    const share = expense.shares[shareIndex];
+
+    // Check current status
+    if (share.repaymentStatus === "PAID" || share.status === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "This expense share has already been paid",
+      });
+    }
+
+    if (share.repaymentStatus === "PROCESSING") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment already marked, awaiting owner confirmation",
+      });
+    }
+
+    // Update to PROCESSING status
+    expense.shares[shareIndex].repaymentStatus = "PROCESSING";
+    expense.shares[shareIndex].markedPaidAt = new Date();
+    await expense.save();
+
+    // Notify Owner (Waqar) about the payment
+    const owner = await User.findOne({ role: "OWNER", isActive: true });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        message: `💳 ${userName} has marked PKR ${share.amount.toLocaleString()} as PAID for "${expense.title}". Please confirm receipt.`,
+        type: "FINANCE",
+        relatedId: expense._id.toString(),
+      });
+    }
+
+    console.log(
+      `✅ ${userName} marked PKR ${share.amount} as paid for "${expense.title}"`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payment marked! Awaiting ${owner?.fullName || "Owner"}'s confirmation.`,
+      data: {
+        expenseId: expense._id,
+        expenseTitle: expense.title,
+        amount: share.amount,
+        repaymentStatus: "PROCESSING",
+        markedPaidAt: expense.shares[shareIndex].markedPaidAt,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in markExpenseAsPaid:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark expense as paid",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Owner confirms receipt of partner payment (Step 2: Owner Action)
+// @route   POST /api/finance/expenses/confirm-receipt
+// @access  Protected (OWNER Only)
+exports.confirmExpenseReceipt = async (req, res) => {
+  try {
+    const { expenseId, partnerId } = req.body;
+    const userRole = req.user.role;
+
+    console.log("\n=== EXPENSE CONFIRM RECEIPT REQUEST ===");
+    console.log("Expense ID:", expenseId);
+    console.log("Partner ID:", partnerId);
+
+    // Security: Only OWNER can confirm receipts
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can confirm expense receipts.",
+      });
+    }
+
+    if (!expenseId || !partnerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Expense ID and Partner ID are required",
+      });
+    }
+
+    const expense = await Expense.findById(expenseId);
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: "Expense not found",
+      });
+    }
+
+    // Find the partner's share
+    const shareIndex = expense.shares.findIndex(
+      (s) => s.partner?.toString() === partnerId.toString(),
+    );
+
+    if (shareIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Partner share not found for this expense",
+      });
+    }
+
+    const share = expense.shares[shareIndex];
+
+    // Check current status
+    if (share.repaymentStatus === "PAID" || share.status === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "This expense share has already been confirmed as paid",
+      });
+    }
+
+    if (share.repaymentStatus !== "PROCESSING") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Partner has not marked this expense as paid yet. Current status: " +
+          share.repaymentStatus,
+      });
+    }
+
+    // Confirm the payment
+    expense.shares[shareIndex].repaymentStatus = "PAID";
+    expense.shares[shareIndex].status = "PAID";
+    expense.shares[shareIndex].confirmedAt = new Date();
+    expense.shares[shareIndex].paidAt = new Date();
+    await expense.save();
+
+    // Check if all shares are now PAID to update main expense status
+    const allPaid = expense.shares.every(
+      (s) => s.status === "PAID" || s.status === "N/A",
+    );
+    if (allPaid) {
+      expense.status = "paid";
+      expense.paidDate = new Date();
+      await expense.save();
+    }
+
+    // Notify the partner that payment was confirmed
+    await Notification.create({
+      recipient: share.partner,
+      message: `✅ Your payment of PKR ${share.amount.toLocaleString()} for "${expense.title}" has been confirmed. Debt cleared!`,
+      type: "FINANCE",
+      relatedId: expense._id.toString(),
+    });
+
+    console.log(
+      `✅ Confirmed receipt of PKR ${share.amount} from ${share.partnerName}`,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payment confirmed! ${share.partnerName}'s debt for "${expense.title}" is now cleared.`,
+      data: {
+        expenseId: expense._id,
+        expenseTitle: expense.title,
+        partnerName: share.partnerName,
+        amount: share.amount,
+        status: "PAID",
+        confirmedAt: expense.shares[shareIndex].confirmedAt,
+        allSharesPaid: allPaid,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in confirmExpenseReceipt:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to confirm expense receipt",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get pending expense confirmations for Owner
+// @route   GET /api/finance/expenses/pending-confirmations
+// @access  Protected (OWNER Only)
+exports.getPendingExpenseConfirmations = async (req, res) => {
+  try {
+    const userRole = req.user.role;
+
+    // Security: Only OWNER can view pending confirmations
+    if (userRole !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can view pending confirmations.",
+      });
+    }
+
+    // Find all expenses with shares in PROCESSING status
+    const pendingExpenses = await Expense.find({
+      "shares.repaymentStatus": "PROCESSING",
+    })
+      .populate("shares.partner", "fullName username")
+      .lean();
+
+    const pendingConfirmations = [];
+
+    for (const expense of pendingExpenses) {
+      for (const share of expense.shares) {
+        if (share.repaymentStatus === "PROCESSING") {
+          pendingConfirmations.push({
+            expenseId: expense._id,
+            expenseTitle: expense.title,
+            category: expense.category,
+            totalAmount: expense.amount,
+            partnerId: share.partner?._id,
+            partnerName: share.partner?.fullName || share.partnerName,
+            shareAmount: share.amount,
+            markedPaidAt: share.markedPaidAt,
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: pendingConfirmations.length,
+      data: pendingConfirmations,
+    });
+  } catch (error) {
+    console.error("❌ Error in getPendingExpenseConfirmations:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get pending confirmations",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * REPAY DEBT TO OWNER
+ * Partners can record a payment to reduce their debt to Waqar.
+ * - Creates a DEBT_REPAYMENT transaction
+ * - Deducts from partner's debtToOwner
+ * - Notifies Waqar of the payment
+ *
+ * @route   POST /api/finance/repay-debt
+ * @access  Protected (PARTNER only)
+ */
+exports.repayDebtToOwner = async (req, res) => {
+  try {
+    const { amount, notes } = req.body;
+    const partnerId = req.user._id;
+    const partnerName = req.user.fullName || req.user.username;
+
+    // Security: Only PARTNER can repay debt
+    if (req.user.role !== "PARTNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only PARTNER can record debt repayment.",
+      });
+    }
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid repayment amount greater than 0.",
+      });
+    }
+
+    // Find the partner user
+    const partner = await User.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "Partner account not found.",
+      });
+    }
+
+    const currentDebt = partner.debtToOwner || 0;
+
+    // Validate: Can't repay more than owed
+    if (amount > currentDebt) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot repay PKR ${amount.toLocaleString()}. Current debt is only PKR ${currentDebt.toLocaleString()}.`,
+      });
+    }
+
+    console.log(`\n=== DEBT REPAYMENT ===`);
+    console.log(`👤 Partner: ${partnerName}`);
+    console.log(`💰 Current Debt: PKR ${currentDebt.toLocaleString()}`);
+    console.log(`💵 Repayment Amount: PKR ${amount.toLocaleString()}`);
+
+    // Deduct from partner's debtToOwner
+    partner.debtToOwner -= amount;
+    await partner.save();
+
+    console.log(`✅ New Debt: PKR ${partner.debtToOwner.toLocaleString()}`);
+
+    // Create a DEBT_REPAYMENT transaction for audit trail
+    const transaction = await Transaction.create({
+      type: "INCOME",
+      category: "Debt Repayment",
+      stream: "DEBT_REPAYMENT",
+      amount: amount,
+      description: `Debt repayment from ${partnerName}${notes ? ": " + notes : ""}`,
+      collectedBy: partnerId,
+      status: "VERIFIED",
+      recipientPartner: partnerId,
+      recipientPartnerName: partnerName,
+      date: new Date(),
+    });
+
+    console.log(`📝 Transaction Created: ${transaction._id}`);
+
+    // Find Waqar (Owner) to notify him
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        recipientRole: "OWNER",
+        message: `💰 ${partnerName} has paid PKR ${amount.toLocaleString()} towards their debt.${notes ? " Note: " + notes : ""} Remaining: PKR ${partner.debtToOwner.toLocaleString()}`,
+        type: "FINANCE",
+        relatedId: transaction._id.toString(),
+      });
+      console.log(
+        `📬 Notification sent to ${owner.fullName || owner.username}`,
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Repayment of PKR ${amount.toLocaleString()} recorded successfully!`,
+      data: {
+        repaidAmount: amount,
+        previousDebt: currentDebt,
+        newDebt: partner.debtToOwner,
+        transactionId: transaction._id,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in repayDebtToOwner:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to record debt repayment",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Process Teacher Payout (Admin pays teacher from pending balance)
+ * - Deducts from teacher.balance.pending
+ * - Credits to teacher.totalPaid
+ * - Creates PAYOUT transaction for audit
+ *
+ * @route   POST /api/finance/teacher-payout
+ * @access  Protected (OWNER only)
+ */
+exports.processTeacherPayout = async (req, res) => {
+  try {
+    const { teacherId, amount, notes } = req.body;
+    const Teacher = require("../models/Teacher");
+
+    // Security: Only OWNER can process payouts
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can process teacher payouts.",
+      });
+    }
+
+    // Validate inputs
+    if (!teacherId || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher ID and valid amount are required.",
+      });
+    }
+
+    // Find the teacher
+    const teacher = await Teacher.findById(teacherId);
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: "Teacher not found.",
+      });
+    }
+
+    const pendingBalance = teacher.balance?.pending || 0;
+
+    // Validate: Can't pay more than pending
+    if (amount > pendingBalance) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot pay PKR ${amount.toLocaleString()}. Pending balance is only PKR ${pendingBalance.toLocaleString()}.`,
+      });
+    }
+
+    console.log(`\n=== TEACHER PAYOUT ===`);
+    console.log(`👤 Teacher: ${teacher.name}`);
+    console.log(`💰 Pending Balance: PKR ${pendingBalance.toLocaleString()}`);
+    console.log(`💵 Payout Amount: PKR ${amount.toLocaleString()}`);
+
+    // Deduct from pending, add to totalPaid
+    teacher.balance.pending -= amount;
+    teacher.totalPaid = (teacher.totalPaid || 0) + amount;
+    await teacher.save();
+
+    console.log(
+      `✅ New Pending: PKR ${teacher.balance.pending.toLocaleString()}`,
+    );
+    console.log(`✅ Total Paid: PKR ${teacher.totalPaid.toLocaleString()}`);
+
+    // Create a PAYOUT transaction for audit trail
+    const transaction = await Transaction.create({
+      type: "EXPENSE",
+      category: "Salaries",
+      stream: "TEACHER_PAYOUT",
+      amount: amount,
+      description: `Payout to ${teacher.name}${notes ? ": " + notes : ""}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      splitDetails: {
+        teacherId: teacher._id,
+        teacherName: teacher.name,
+        isPaid: true,
+      },
+      date: new Date(),
+    });
+
+    console.log(`📝 Payout Transaction Created: ${transaction._id}`);
+
+    // Mark related FLOATING transactions as paid
+    await Transaction.updateMany(
+      {
+        "splitDetails.teacherId": teacher._id,
+        "splitDetails.isPaid": false,
+        status: "FLOATING",
+      },
+      {
+        $set: { "splitDetails.isPaid": true },
+      },
+    );
+
+    // Notify the teacher
+    if (teacher.userId) {
+      await Notification.create({
+        recipient: teacher.userId,
+        message: `💰 You received a payout of PKR ${amount.toLocaleString()}!${notes ? " Note: " + notes : ""}`,
+        type: "FINANCE",
+        relatedId: transaction._id.toString(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Payout of PKR ${amount.toLocaleString()} to ${teacher.name} processed successfully!`,
+      data: {
+        paidAmount: amount,
+        previousPending: pendingBalance,
+        newPending: teacher.balance.pending,
+        totalPaid: teacher.totalPaid,
+        transactionId: transaction._id,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in processTeacherPayout:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process teacher payout",
+      error: error.message,
+    });
+  }
+};
+
+// =================================================
+// WAQAR PROTOCOL V2: MANUAL TEACHER PAYROLL SYSTEM
+// =================================================
+
+/**
+ * Process Manual Payout to User/Teacher
+ * - Creates an EXPENSE transaction in the main Ledger
+ * - Updates the User's payoutHistory
+ * - Subtracts amount from their manualBalance
+ * 
+ * @route   POST /api/finance/manual-payout
+ * @access  Protected (OWNER only)
+ */
+exports.processManualPayout = async (req, res) => {
+  try {
+    const { userId, amount, type, note } = req.body;
+
+    // Security: Only OWNER can process payouts
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can process payouts.",
+      });
+    }
+
+    // Validate inputs
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID and valid amount are required.",
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const currentBalance = user.manualBalance || 0;
+    const payoutType = type || "Salary";
+
+    console.log(`\n=== MANUAL PAYOUT ===`);
+    console.log(`👤 Recipient: ${user.fullName || user.username}`);
+    console.log(`💰 Manual Balance: PKR ${currentBalance.toLocaleString()}`);
+    console.log(`💵 Payout Amount: PKR ${amount.toLocaleString()}`);
+    console.log(`📋 Type: ${payoutType}`);
+
+    // Create payout record in user's history
+    const payoutRecord = {
+      date: new Date(),
+      amount: amount,
+      type: payoutType,
+      note: note || "",
+      processedBy: req.user._id,
+    };
+
+    user.payoutHistory = user.payoutHistory || [];
+    user.payoutHistory.push(payoutRecord);
+
+    // Subtract from manual balance (can go negative for advances)
+    user.manualBalance = Math.max(0, currentBalance - amount);
+    await user.save();
+
+    console.log(`✅ New Balance: PKR ${user.manualBalance.toLocaleString()}`);
+
+    // Create an EXPENSE transaction in the main ledger
+    const transaction = await Transaction.create({
+      type: "EXPENSE",
+      category: "Salaries",
+      stream: "MANUAL_PAYOUT",
+      amount: amount,
+      description: `${payoutType} payout to ${user.fullName || user.username}${note ? ": " + note : ""}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      splitDetails: {
+        userId: user._id,
+        userName: user.fullName || user.username,
+        payoutType: payoutType,
+        isPaid: true,
+      },
+      date: new Date(),
+    });
+
+    console.log(`📝 Transaction Created: ${transaction._id}`);
+
+    // Notify the recipient
+    await Notification.create({
+      recipient: user._id,
+      message: `💰 You received a ${payoutType.toLowerCase()} payment of PKR ${amount.toLocaleString()}!${note ? " Note: " + note : ""}`,
+      type: "FINANCE",
+      relatedId: transaction._id.toString(),
+    });
+
+    // Calculate totals
+    const totalPaid = user.payoutHistory.reduce((sum, p) => sum + p.amount, 0);
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ ${payoutType} of PKR ${amount.toLocaleString()} to ${user.fullName || user.username} processed successfully!`,
+      data: {
+        paidAmount: amount,
+        payoutType: payoutType,
+        previousBalance: currentBalance,
+        newBalance: user.manualBalance,
+        totalPaid: totalPaid,
+        transactionId: transaction._id,
+        voucherId: transaction._id, // For payment voucher printing
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in processManualPayout:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process payout",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update Manual Balance (Waqar sets/adjusts what is owed)
+ * 
+ * @route   POST /api/finance/update-manual-balance
+ * @access  Protected (OWNER only)
+ */
+exports.updateManualBalance = async (req, res) => {
+  try {
+    const { userId, amount, note } = req.body;
+
+    // Security: Only OWNER can update balances
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can update manual balances.",
+      });
+    }
+
+    // Validate inputs
+    if (!userId || amount === undefined || amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID and valid amount (>= 0) are required.",
+      });
+    }
+
+    // Find the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const previousBalance = user.manualBalance || 0;
+    user.manualBalance = amount;
+    await user.save();
+
+    console.log(`\n=== MANUAL BALANCE UPDATE ===`);
+    console.log(`👤 User: ${user.fullName || user.username}`);
+    console.log(`💰 Previous: PKR ${previousBalance.toLocaleString()}`);
+    console.log(`💵 New: PKR ${amount.toLocaleString()}`);
+    console.log(`📝 Note: ${note || "N/A"}`);
+
+    // Notify the user about balance update
+    if (amount !== previousBalance) {
+      await Notification.create({
+        recipient: user._id,
+        message: `📊 Your balance has been ${amount > previousBalance ? "increased" : "adjusted"} to PKR ${amount.toLocaleString()}.${note ? " Note: " + note : ""}`,
+        type: "FINANCE",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `✅ Balance updated to PKR ${amount.toLocaleString()} for ${user.fullName || user.username}`,
+      data: {
+        userId: user._id,
+        userName: user.fullName || user.username,
+        previousBalance,
+        newBalance: amount,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in updateManualBalance:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update balance",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get Teacher Payroll Data (for Finance UI)
+ * 
+ * @route   GET /api/finance/teacher-payroll
+ * @access  Protected (OWNER only)
+ */
+exports.getTeacherPayrollData = async (req, res) => {
+  try {
+    // Security: Only OWNER can view payroll data
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only OWNER can view payroll data.",
+      });
+    }
+
+    // Get all teachers (users with TEACHER role)
+    const teachers = await User.find({ role: "TEACHER", isActive: true })
+      .select("fullName username manualBalance payoutHistory profileImage phone")
+      .sort({ fullName: 1 })
+      .lean();
+
+    // Format the data
+    const payrollData = teachers.map((teacher) => {
+      const totalPaid = (teacher.payoutHistory || []).reduce(
+        (sum, p) => sum + (p.amount || 0),
+        0
+      );
+      const lastPayout = teacher.payoutHistory?.length > 0
+        ? teacher.payoutHistory[teacher.payoutHistory.length - 1]
+        : null;
+
+      return {
+        _id: teacher._id,
+        name: teacher.fullName || teacher.username,
+        profileImage: teacher.profileImage,
+        phone: teacher.phone,
+        manualBalance: teacher.manualBalance || 0,
+        totalPaid: totalPaid,
+        payoutCount: (teacher.payoutHistory || []).length,
+        lastPayout: lastPayout
+          ? {
+            date: lastPayout.date,
+            amount: lastPayout.amount,
+            type: lastPayout.type,
+          }
+          : null,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: payrollData.length,
+      data: payrollData,
+    });
+  } catch (error) {
+    console.error("❌ Error in getTeacherPayrollData:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get payroll data",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get Payout History for a specific User
+ * 
+ * @route   GET /api/finance/payout-history/:userId
+ * @access  Protected (OWNER or self)
+ */
+exports.getPayoutHistory = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Security: OWNER can view any, others can only view their own
+    if (req.user.role !== "OWNER" && req.user._id.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. You can only view your own payout history.",
+      });
+    }
+
+    const user = await User.findById(userId)
+      .select("fullName username manualBalance payoutHistory")
+      .populate("payoutHistory.processedBy", "fullName username")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const totalPaid = (user.payoutHistory || []).reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        userId: user._id,
+        name: user.fullName || user.username,
+        manualBalance: user.manualBalance || 0,
+        totalPaid: totalPaid,
+        history: (user.payoutHistory || []).reverse(), // Most recent first
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getPayoutHistory:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get payout history",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Reset System - Wipe all financial data for clean testing
+// @route   POST /api/finance/reset-system
+// @access  Protected (ADMIN only)
+exports.resetSystem = async (req, res) => {
+  try {
+    // Delete all transactions (complete ledger wipe)
+    await Transaction.deleteMany({});
+    console.log("✓ Wiped Transaction ledger");
+
+    // Delete all fee records (receipt history)
+    const FeeRecord = require("../models/FeeRecord");
+    await FeeRecord.deleteMany({});
+    console.log("✓ Wiped FeeRecord receipts");
+
+    // Delete all expenses (CRITICAL FIX!)
+    await Expense.deleteMany({});
+    console.log("✓ Wiped Expense records");
+
+    // Delete all students
+    const Student = require("../models/Student");
+    await Student.deleteMany({});
+    console.log("✓ Wiped Student records");
+
+    // Delete all notifications
+    await Notification.deleteMany({});
+    console.log("✓ Wiped Notification alerts");
+
+    // Reset all user balances and revenue counters
+    await User.updateMany(
+      {},
+      {
+        $set: {
+          "balance.verified": 0,
+          "balance.floating": 0,
+          "balance.pending": 0,
+          totalRevenue: 0,
+          totalPaid: 0,
+          debtToOwner: 0,
+        },
+      },
+    );
+    console.log("✓ Reset all user balances and debts to 0");
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "✅ System wiped. All financial history, students, expenses, and balances reset to 0. Ready for clean testing.",
+      wiped: {
+        transactions: "All deleted",
+        feeRecords: "All deleted",
+        expenses: "All deleted",
+        students: "All deleted",
+        notifications: "All deleted",
+        userBalances: "All reset to 0",
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in resetSystem:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reset system",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Delete Single Transaction or Expense - For testing cleanup
+// @route   DELETE /api/finance/transaction/:id
+// @access  Protected (OWNER only)
+exports.deleteTransaction = async (req, res) => {
+  const { id } = req.params;
+  console.log(`\n🗑️  DELETE REQUEST for ID: ${id}`);
+
+  try {
+    // Validate ID format
+    if (!id || id.length !== 24) {
+      console.log(`❌ Invalid ID length: ${id?.length}`);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID format",
+      });
+    }
+
+    let recordId;
+    try {
+      recordId = new mongoose.Types.ObjectId(id);
+      console.log(`✓ ID converted successfully`);
+    } catch (err) {
+      console.log(`❌ ObjectId conversion failed: ${err.message}`);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID format: " + err.message,
+      });
+    }
+
+    // First, try as Transaction
+    console.log(`📋 Looking for Transaction...`);
+    let transaction = await Transaction.findById(recordId);
+
+    if (transaction) {
+      console.log(`✓ Found Transaction: ${transaction.description}`);
+      const amount = transaction.amount;
+      const description = transaction.description;
+
+      // Delete transaction
+      await Transaction.findByIdAndDelete(recordId);
+      console.log(`✓ Deleted Transaction\n`);
+
+      return res.status(200).json({
+        success: true,
+        message: `✅ Transaction deleted: ${description}`,
+        deleted: {
+          type: "Transaction",
+          description,
+          amount,
+        },
+      });
+    }
+
+    // Not a transaction, try as Expense
+    console.log(`📋 Looking for Expense...`);
+    const Expense = require("../models/Expense");
+    let expense = await Expense.findById(recordId).populate(
+      "shares.partner",
+      "_id fullName",
+    );
+
+    if (expense) {
+      console.log(`✓ Found Expense: ${expense.title}`);
+      const amount = expense.amount;
+      const title = expense.title;
+
+      // Clean up partner debts
+      if (expense.shares && expense.shares.length > 0) {
+        console.log(`📍 Cleaning ${expense.shares.length} partner shares...`);
+
+        for (const share of expense.shares) {
+          if (share.partner && share.partner._id) {
+            console.log(`  ├─ Processing ${share.partner.fullName}...`);
+
+            // Find and delete debt transactions
+            const debtsToDelete = await Transaction.find({
+              type: "DEBT",
+              category: "ExpenseShare",
+              collectedBy: share.partner._id,
+            });
+
+            console.log(
+              `     Found ${debtsToDelete.length} DEBT transactions to delete`,
+            );
+
+            for (const debt of debtsToDelete) {
+              await Transaction.findByIdAndDelete(debt._id);
+            }
+
+            // Update partner balance
+            const partner = await User.findById(share.partner._id);
+            if (partner && partner.balance) {
+              const oldBalance = partner.balance.pending || 0;
+              partner.balance.pending = Math.max(
+                0,
+                oldBalance - (share.amount || 0),
+              );
+              await partner.save();
+              console.log(
+                `     ✓ Updated balance: PKR ${oldBalance.toLocaleString()} → PKR ${partner.balance.pending.toLocaleString()}`,
+              );
+            } else if (partner) {
+              console.log(
+                `     ⚠️  Partner has no balance object, skipping balance update`,
+              );
+            }
+          }
+        }
+      }
+
+      // Delete the expense
+      await Expense.findByIdAndDelete(recordId);
+      console.log(`✓ Deleted Expense\n`);
+
+      return res.status(200).json({
+        success: true,
+        message: `✅ Expense deleted: ${title}\n✓ Partner shares cleared`,
+        deleted: {
+          type: "Expense",
+          description: title,
+          amount,
+        },
+      });
+    }
+
+    // Not found as either
+    console.log(`❌ Record not found as Transaction or Expense\n`);
+    return res.status(404).json({
+      success: false,
+      message: "Record not found",
+    });
+  } catch (error) {
+    console.error(`\n❌ DELETION ERROR: ${error.message}`);
+    console.error(error.stack);
+    return res.status(500).json({
+      success: false,
+      message: `Error: ${error.message}`,
+    });
+  }
+};
+
+// ========================================
+// PARTNER RETENTION CLOSING SYSTEM
+// ========================================
+
+// @desc    Partner Daily Closing with Manual Handover
+// @route   POST /api/finance/daily-closing
+// @access  Partners Only
+exports.dailyClosing = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { handoverAmount, notes } = req.body;
+
+    // 1. Find partner/user
+    const partner = await User.findById(userId);
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 2. Calculate total collection from today's FLOATING transactions
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const floatingTransactions = await Transaction.find({
+      collectedBy: userId,
+      status: "FLOATING",
+      type: "INCOME",
+      createdAt: { $gte: today, $lt: tomorrow },
+    });
+
+    const totalCollection = floatingTransactions.reduce(
+      (sum, t) => sum + t.amount,
+      0
+    );
+
+    if (totalCollection === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No collections to close today",
+      });
+    }
+
+    // 3. Calculate partner's share (simplified: assume 10% for now, adjust as needed)
+    // TODO: Implement proper share calculation based on revenue split logic
+    const partnerSharePercentage = partner.role === "PARTNER" ? 10 : 0;
+    const partnerShare = Math.round((totalCollection * partnerSharePercentage) / 100);
+
+    // 4. Validate handover amount
+    const handover = Number(handoverAmount);
+    if (isNaN(handover) || handover < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid handover amount",
+      });
+    }
+
+    if (handover > totalCollection) {
+      return res.status(400).json({
+        success: false,
+        message: "Handover amount cannot exceed total collection",
+      });
+    }
+
+    // 5. Create daily closing record with PENDING_VERIFICATION status
+    const dailyClosing = await DailyClosing.create({
+      partnerId: userId,
+      date: new Date(),
+      totalAmount: totalCollection,
+      partnerShare: partnerShare,
+      handoverAmount: handover,
+      status: "PENDING_VERIFICATION",
+      notes: notes || `Daily closing - Handing ${handover} to owner`,
+    });
+
+    // 6. Update partner's totalCash
+    partner.totalCash = totalCollection;
+    await partner.save();
+
+    // 7. Create notification for owner
+    const owner = await User.findOne({ role: "OWNER" });
+    if (owner) {
+      await Notification.create({
+        recipient: owner._id,
+        message: `${partner.fullName} closed day: PKR ${totalCollection.toLocaleString()}. Handing you PKR ${handover.toLocaleString()}.`,
+        type: "FINANCE",
+        relatedId: dailyClosing._id.toString(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Day closed successfully. Awaiting verification from owner.`,
+      data: {
+        closingId: dailyClosing._id,
+        totalCollection,
+        partnerShare,
+        handoverAmount: handover,
+        status: "PENDING_VERIFICATION",
+      },
+    });
+  } catch (error) {
+    console.error("Daily Closing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Owner Verifies Partner's Daily Closing
+// @route   POST /api/finance/verify-closing
+// @access  Owner Only
+exports.verifyClosing = async (req, res) => {
+  try {
+    const { closingId } = req.body;
+    const ownerId = req.user._id;
+
+    // 1. Find the closing record
+    const closing = await DailyClosing.findById(closingId).populate('partnerId');
+    if (!closing) {
+      return res.status(404).json({
+        success: false,
+        message: "Closing record not found",
+      });
+    }
+
+    if (closing.status !== "PENDING_VERIFICATION") {
+      return res.status(400).json({
+        success: false,
+        message: "This closing has already been processed",
+      });
+    }
+
+    // 2. Find owner and partner
+    const owner = await User.findById(ownerId);
+    const partner = await User.findById(closing.partnerId);
+
+    if (!owner || !partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 3. Update owner's totalCash with handover amount
+    owner.totalCash = (owner.totalCash || 0) + closing.handoverAmount;
+    await owner.save();
+
+    // 4. Clear partner's totalCash (they've handed it over)
+    partner.totalCash = 0;
+    await partner.save();
+
+    // 5. Update all FLOATING transactions to VERIFIED
+    const today = new Date(closing.date);
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    await Transaction.updateMany(
+      {
+        collectedBy: closing.partnerId,
+        status: "FLOATING",
+        type: "INCOME",
+        createdAt: { $gte: today, $lt: tomorrow },
+      },
+      {
+        $set: {
+          status: "VERIFIED",
+          closingId: closing._id,
+        },
+      }
+    );
+
+    // 6. Update closing record
+    closing.status = "VERIFIED";
+    closing.verifiedBy = ownerId;
+    closing.verifiedAt = new Date();
+    await closing.save();
+
+    // 7. Notify partner
+    await Notification.create({
+      recipient: closing.partnerId,
+      message: `Your daily closing of PKR ${closing.handoverAmount.toLocaleString()} has been verified by ${owner.fullName}.`,
+      type: "FINANCE",
+      relatedId: closing._id.toString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Closing verified. PKR ${closing.handoverAmount.toLocaleString()} added to your account.`,
+      data: {
+        closingId: closing._id,
+        handoverAmount: closing.handoverAmount,
+        partnerRetained: closing.totalAmount - closing.handoverAmount,
+        ownerNewBalance: owner.totalCash,
+      },
+    });
+  } catch (error) {
+    console.error("Verify Closing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Clear Partner's Expense Debt
+// @route   POST /api/finance/clear-debt
+// @access  Owner Only
+exports.clearDebt = async (req, res) => {
+  try {
+    const { partnerId, amount } = req.body;
+    const ownerId = req.user._id;
+
+    // 1. Validate inputs
+    if (!partnerId || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner ID and amount are required",
+      });
+    }
+
+    const debtAmount = Number(amount);
+    if (isNaN(debtAmount) || debtAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amount",
+      });
+    }
+
+    // 2. Find partner and owner
+    const partner = await User.findById(partnerId);
+    const owner = await User.findById(ownerId);
+
+    if (!partner || !owner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // 3. Check if partner has enough debt
+    if ((partner.expenseDebt || 0) < debtAmount) {
+      return res.status(400).json({
+        success: false,
+        message: `Partner only owes PKR ${partner.expenseDebt || 0}`,
+      });
+    }
+
+    // 4. Clear the debt
+    partner.expenseDebt = (partner.expenseDebt || 0) - debtAmount;
+    await partner.save();
+
+    // 5. Add to owner's totalCash
+    owner.totalCash = (owner.totalCash || 0) + debtAmount;
+    await owner.save();
+
+    // 6. Create transaction record
+    await Transaction.create({
+      type: "INCOME",
+      category: "Debt Payment",
+      amount: debtAmount,
+      description: `Expense debt payment from ${partner.fullName}`,
+      collectedBy: ownerId,
+      status: "VERIFIED",
+      metadata: {
+        partnerId: partner._id,
+        partnerName: partner.fullName,
+        debtCleared: debtAmount,
+        remainingDebt: partner.expenseDebt,
+      },
+    });
+
+    // 7. Notify partner
+    await Notification.create({
+      recipient: partnerId,
+      message: `Your expense debt payment of PKR ${debtAmount.toLocaleString()} has been recorded. Remaining debt: PKR ${partner.expenseDebt.toLocaleString()}`,
+      type: "FINANCE",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Debt cleared: PKR ${debtAmount.toLocaleString()}`,
+      data: {
+        amountCleared: debtAmount,
+        remainingDebt: partner.expenseDebt,
+        partnerName: partner.fullName,
+      },
+    });
+  } catch (error) {
+    console.error("Clear Debt Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Get Pending Closings for Owner Verification
+// @route   GET /api/finance/pending-closings
+// @access  Owner Only
+exports.getPendingClosings = async (req, res) => {
+  try {
+    const pendingClosings = await DailyClosing.find({
+      status: "PENDING_VERIFICATION",
+    })
+      .populate("partnerId", "fullName username")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: pendingClosings.length,
+      data: pendingClosings,
+    });
+  } catch (error) {
+    console.error("Get Pending Closings Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Get Partner Finance Dashboard Stats
+// @route   GET /api/finance/partner-dashboard
+// @access  Partners Only
+exports.getPartnerDashboard = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const partner = await User.findById(userId);
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Calculate today's collections
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayTransactions = await Transaction.find({
+      collectedBy: userId,
+      status: "FLOATING",
+      type: "INCOME",
+      createdAt: { $gte: today, $lt: tomorrow },
+    });
+
+    const totalCashInDrawer = todayTransactions.reduce(
+      (sum, t) => sum + t.amount,
+      0
+    );
+
+    // Calculate partner share (simplified: 10%)
+    const partnerSharePercentage = partner.role === "PARTNER" ? 10 : 0;
+    const calculatedShare = Math.round((totalCashInDrawer * partnerSharePercentage) / 100);
+
+    // Get pending closings
+    const pendingClosings = await DailyClosing.find({
+      partnerId: userId,
+      status: "PENDING_VERIFICATION",
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalCashInDrawer,
+        calculatedShare,
+        suggestedHandover: totalCashInDrawer - calculatedShare,
+        expenseDebt: partner.expenseDebt || 0,
+        pendingClosings,
+        walletBalance: partner.walletBalance,
+      },
+    });
+  } catch (error) {
+    console.error("Partner Dashboard Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
