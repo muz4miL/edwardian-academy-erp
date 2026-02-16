@@ -642,3 +642,146 @@ export const examApi = {
         return data;
     },
 };
+
+// ========================================
+// Exam API Endpoints
+// ========================================
+export const examApi = {
+    // Get all exams (Teacher/Admin)
+    getAll: async (filters?: { status?: string; classRef?: string; subject?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.classRef) queryParams.append('classRef', filters.classRef);
+        if (filters?.subject) queryParams.append('subject', filters.subject);
+
+        const url = `${API_BASE_URL}/exams${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch exams');
+        }
+        return data;
+    },
+
+    // Get single exam by ID (with answers for Teacher)
+    getById: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}`, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch exam');
+        }
+        return data;
+    },
+
+    // Create new exam (Teacher/Admin)
+    create: async (examData: any) => {
+        const response = await fetch(`${API_BASE_URL}/exams`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(examData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create exam');
+        }
+        return data;
+    },
+
+    // Update exam (Teacher/Admin)
+    update: async (id: string, examData: any) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(examData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to update exam');
+        }
+        return data;
+    },
+
+    // Delete exam (Teacher/Admin)
+    delete: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to delete exam');
+        }
+        return data;
+    },
+
+    // Get exams for a class (Student - NO correct answers)
+    getForClass: async (classId: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/class/${classId}`, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch class exams');
+        }
+        return data;
+    },
+
+    // Get exam to take (Student - NO correct answers)
+    getForStudent: async (id: string, token?: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}/take`, {
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch exam');
+        }
+        return data;
+    },
+
+    // Submit exam answers (Student)
+    submit: async (id: string, submitData: {
+        answers: number[];
+        startedAt: string;
+        tabSwitchCount?: number;
+        isAutoSubmitted?: boolean;
+    }, token?: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}/submit`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: 'include',
+            body: JSON.stringify(submitData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to submit exam');
+        }
+        return data;
+    },
+
+    // Get exam results/leaderboard (Teacher/Admin)
+    getResults: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/${id}/results`, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch results');
+        }
+        return data;
+    },
+
+    // Get my results (Student)
+    getMyResults: async (token?: string) => {
+        const response = await fetch(`${API_BASE_URL}/exams/student/my-results`, {
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch my results');
+        }
+        return data;
+    },
+};
