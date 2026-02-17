@@ -31,6 +31,7 @@ import VerificationHub from "./pages/VerificationHub";
 import StudentPortal from "./pages/StudentPortal";
 import Lectures from "./pages/Lectures";
 import Reports from "./pages/Reports";
+import Attendance from "./pages/Attendance";
 // Phase 4: Online Exam System
 import Exams from "./pages/Exams";
 import ExamBuilder from "./pages/ExamBuilder";
@@ -183,6 +184,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Gatekeeper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/attendance"
+              element={
+                <ProtectedRoute>
+                  <Attendance />
                 </ProtectedRoute>
               }
             />

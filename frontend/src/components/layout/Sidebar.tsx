@@ -14,7 +14,6 @@ import {
   GraduationCap,
   Shield,
   Globe,
-  Banknote,
   Phone,
   ScanLine,
   UserCheck,
@@ -80,6 +79,12 @@ const navItems = [
     label: "Gate Scanner",
     path: "/gatekeeper",
     permission: "gatekeeper",
+  },
+  {
+    icon: UserCheck,
+    label: "Attendance",
+    path: "/attendance",
+    permission: "attendance",
   },
   {
     icon: ClipboardCheck,

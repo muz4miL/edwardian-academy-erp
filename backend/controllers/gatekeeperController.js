@@ -1,6 +1,7 @@
 const Student = require("../models/Student");
 const Class = require("../models/Class");
 const Timetable = require("../models/Timetable");
+const Attendance = require("../models/Attendance");
 
 /**
  * Gatekeeper Controller - Smart Gate Scanner Module
@@ -401,6 +402,35 @@ exports.scanBarcode = async (req, res) => {
     // ========================================
     await Student.findByIdAndUpdate(student._id, { lastScannedAt: now });
     console.log(`🕒 Updated lastScannedAt for ${student.studentName}`);
+
+    // ========================================
+    // STEP 5D: LOG ATTENDANCE RECORD
+    // ========================================
+    const dateStr = `${pakistanTime.getFullYear()}-${String(pakistanTime.getMonth() + 1).padStart(2, "0")}-${String(pakistanTime.getDate()).padStart(2, "0")}`;
+    const scanMethod = barcodeId.startsWith("TOKEN-") ? "token" : "barcode";
+
+    try {
+      await Attendance.create({
+        studentId: student._id,
+        studentNumericId: student.studentId,
+        studentName: student.studentName,
+        class: student.class,
+        classRef: student.classRef?._id || student.classRef,
+        group: student.group,
+        type: "check-in",
+        date: dateStr,
+        timestamp: now,
+        status: isPartial ? "present" : "present",
+        currentSession: currentSession || undefined,
+        scanMethod,
+        scannedValue: barcodeId,
+        scannedBy: req.user?._id,
+        feeStatus: student.feeStatus,
+      });
+      console.log(`📋 Attendance logged for ${student.studentName} on ${dateStr}`);
+    } catch (attErr) {
+      console.error(`⚠️ Attendance log failed (non-blocking):`, attErr.message);
+    }
 
     // Build enriched class schedule with teacher info
     let enrolledClasses = [];

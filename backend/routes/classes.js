@@ -347,8 +347,7 @@ router.post("/", async (req, res) => {
 
     console.log("✅ Class created:", savedClass.classId, savedClass.classTitle);
 
-    // ========== AUTO-GENERATE TIMETABLE ==========
-    await autoGenerateTimetable(savedClass);
+    // Timetable is now managed separately via Timetable > Bulk Generate
 
     res.status(201).json({
       success: true,
@@ -447,8 +446,7 @@ router.put("/:id", async (req, res) => {
     // Step 4: Save
     const updatedClass = await classDoc.save();
 
-    // ========== REGENERATE TIMETABLE ==========
-    await autoGenerateTimetable(updatedClass);
+    // Timetable is now managed separately via Timetable > Bulk Generate
 
     // Get updated stats
     const studentCount = await Student.countDocuments({
