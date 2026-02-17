@@ -11,11 +11,15 @@ const ExpenseSchema = new mongoose.Schema(
       type: String,
       required: [true, "Category is required"],
       enum: [
-        "Utilities",
+        "Generator Fuel",
+        "Electricity Bill",
+        "Staff Tea & Refreshments",
+        "Marketing / Ads",
+        "Stationery",
         "Rent",
         "Salaries",
-        "Stationery",
-        "Marketing",
+        "Utilities",
+        "Equipment/Asset",
         "Misc",
       ],
     },
@@ -40,7 +44,7 @@ const ExpenseSchema = new mongoose.Schema(
     },
     dueDate: {
       type: Date,
-      required: [true, "Due date is required"],
+      default: null,
     },
     paidDate: {
       type: Date,
@@ -126,12 +130,13 @@ const ExpenseSchema = new mongoose.Schema(
 // Virtual to check if expense is overdue
 ExpenseSchema.virtual("isOverdue").get(function () {
   if (this.status === "paid") return false;
+  if (!this.dueDate) return false;
   return new Date() > this.dueDate;
 });
 
 // Pre-save hook to auto-update status to overdue
 ExpenseSchema.pre("save", function () {
-  if (this.status === "pending" && new Date() > this.dueDate) {
+  if (this.status === "pending" && this.dueDate && new Date() > this.dueDate) {
     this.status = "overdue";
   }
 });

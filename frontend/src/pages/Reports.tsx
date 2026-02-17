@@ -1,6 +1,5 @@
 /**
- * Reports Page - Financial Reports Hub
- * Placeholder for Payroll and Settlement Reports
+ * Reports Page - Financial Reports & Analytics Hub
  */
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -13,6 +12,9 @@ import {
     TrendingUp,
     Calendar,
     Download,
+    Banknote,
+    Users,
+    BookOpen,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -25,7 +27,7 @@ export default function Reports() {
     const reportCards = [
         {
             title: "Fee Collection Report",
-            description: "Daily, weekly, and monthly fee collection summaries",
+            description: "Daily, weekly, and monthly fee collection summaries with full ledger view",
             icon: DollarSign,
             color: "text-green-600",
             bgColor: "bg-green-100",
@@ -33,21 +35,20 @@ export default function Reports() {
         },
         {
             title: "Payroll Report",
-            description: "Staff salary disbursements and history",
-            icon: FileText,
+            description: "Teacher salary credits, wallet payments, and payout history",
+            icon: Banknote,
             color: "text-blue-600",
             bgColor: "bg-blue-100",
             action: () => navigate("/payroll"),
             ownerOnly: true,
         },
         {
-            title: "Partner Settlement",
-            description: "Revenue sharing and partner payouts",
-            icon: TrendingUp,
-            color: "text-purple-600",
-            bgColor: "bg-purple-100",
-            action: () => navigate("/partner-settlement"),
-            ownerOnly: true,
+            title: "Expense Report",
+            description: "Daily expenses, category breakdown, and vendor tracking",
+            icon: FileText,
+            color: "text-red-600",
+            bgColor: "bg-red-100",
+            action: () => navigate("/finance?tab=expenses"),
         },
         {
             title: "Attendance Report",
@@ -56,6 +57,22 @@ export default function Reports() {
             color: "text-amber-600",
             bgColor: "bg-amber-100",
             action: () => navigate("/gatekeeper"),
+        },
+        {
+            title: "Student Report",
+            description: "Enrollment stats, fee status, and student activity overview",
+            icon: Users,
+            color: "text-violet-600",
+            bgColor: "bg-violet-100",
+            action: () => navigate("/students"),
+        },
+        {
+            title: "Asset Registry",
+            description: "Investment assets, depreciation tracking, and current valuations",
+            icon: BookOpen,
+            color: "text-teal-600",
+            bgColor: "bg-teal-100",
+            action: () => navigate("/finance?tab=assets"),
         },
     ];
 
@@ -110,8 +127,8 @@ export default function Reports() {
                         <BarChart className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
                         <h3 className="text-lg font-semibold mb-2">Advanced Analytics Coming Soon</h3>
                         <p className="text-muted-foreground max-w-md mx-auto">
-                            Detailed charts, exportable PDFs, and custom date range reports
-                            will be available in the next update.
+                            Exportable PDFs, custom date range reports, and detailed profit/loss
+                            statements will be available in the next update.
                         </p>
                     </CardContent>
                 </Card>

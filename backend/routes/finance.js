@@ -1,3 +1,11 @@
+/**
+ * ================================================================
+ * GENIUS ACADEMY — FINANCE ROUTES (Clean Single-Owner Edition)
+ * ================================================================
+ * All partner/pool/split routes removed. Single-owner model.
+ * ================================================================
+ */
+
 const express = require("express");
 const router = express.Router();
 const FinanceRecord = require("../models/FinanceRecord");
@@ -5,53 +13,38 @@ const {
   getDashboardStats,
   closeDay,
   recordTransaction,
-  collectPartnerRevenue,
-  createSharedExpense,
-  getPartnerExpenseDebt,
-  markExpenseSharePaid,
-  getReimbursementReport,
   getFinanceHistory,
-  getPartnerPortalStats,
-  repayDebtToOwner,
   processTeacherPayout,
-  resetSystem,
-  deleteTransaction,
-  // WAQAR PROTOCOL V2: Manual Payroll
   processManualPayout,
   updateManualBalance,
   getTeacherPayrollData,
   getPayoutHistory,
+  deleteTransaction,
+  resetSystem,
+  getAnalyticsDashboard,
+  generateFinancialReport,
+  recordStudentMiscPayment,
+  getStudentMiscPayments,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
 // ------------------------------------------------------------------
 // CRITICAL: Place static routes BEFORE "/:id" to avoid route capture.
-// These endpoints power the dashboard and must not be treated as IDs.
 // ------------------------------------------------------------------
 
 // @route   GET /api/finance/dashboard-stats
 // @desc    Get financial stats for dashboard widgets
-// @access  Protected
+// @access  Protected (OWNER)
 router.get("/dashboard-stats", protect, getDashboardStats);
 
-// @route   GET /api/finance/partner-portal-stats
-// @desc    Get Partner Portal personalized stats (cashInHand, expenseLiability, totalEarnings)
-// @access  Protected (PARTNER only)
-router.get(
-  "/partner-portal-stats",
-  protect,
-  restrictTo("PARTNER"),
-  getPartnerPortalStats,
-);
-
 // @route   GET /api/finance/history
-// @desc    Get finance history (ledger) - OWNER sees all, PARTNER sees own
-// @access  Protected (OWNER, PARTNER)
+// @desc    Get finance history (ledger) — full transaction log
+// @access  Protected (OWNER, STAFF)
 router.get("/history", protect, getFinanceHistory);
 
 // @route   POST /api/finance/reset-system
-// @desc    DANGER: Wipe all financial data for clean testing (Testing only)
-// @access  Protected (ADMIN, OWNER)
+// @desc    DANGER: Wipe all financial data for clean testing
+// @access  Protected (OWNER only, disabled in production)
 router.post(
   "/reset-system",
   protect,
@@ -59,8 +52,28 @@ router.post(
   resetSystem,
 );
 
+// @route   GET /api/finance/analytics-dashboard
+// @desc    Get analytics data for charts/graphs (revenue, enrollment, etc.)
+// @access  Protected (OWNER only)
+router.get(
+  "/analytics-dashboard",
+  protect,
+  restrictTo("OWNER"),
+  getAnalyticsDashboard,
+);
+
+// @route   GET /api/finance/generate-report
+// @desc    Generate financial report for a given period (today, week, month, custom)
+// @access  Protected (OWNER only)
+router.get(
+  "/generate-report",
+  protect,
+  restrictTo("OWNER"),
+  generateFinancialReport,
+);
+
 // @route   DELETE /api/finance/transaction/:id
-// @desc    Delete a single transaction (for testing cleanup)
+// @desc    Delete a single transaction
 // @access  Protected (OWNER only)
 router.delete(
   "/transaction/:id",
@@ -69,62 +82,42 @@ router.delete(
   deleteTransaction,
 );
 
+// @route   POST /api/finance/student-misc-payment
+// @desc    Record a misc student payment (trip, test, lab, event, etc.)
+// @access  Protected (OWNER, STAFF)
+router.post(
+  "/student-misc-payment",
+  protect,
+  restrictTo("OWNER", "STAFF"),
+  recordStudentMiscPayment,
+);
+
+// @route   GET /api/finance/student-misc-payments
+// @desc    Get history of misc student payments
+// @access  Protected (OWNER, STAFF)
+router.get(
+  "/student-misc-payments",
+  protect,
+  getStudentMiscPayments,
+);
+
 // @route   POST /api/finance/close-day
-// @desc    Close the day and lock floating cash
-// @access  Protected (OWNER, PARTNER)
-router.post("/close-day", protect, restrictTo("OWNER", "PARTNER"), closeDay);
+// @desc    Close the day and lock floating cash into verified balance
+// @access  Protected (OWNER, STAFF)
+router.post("/close-day", protect, restrictTo("OWNER", "STAFF"), closeDay);
 
 // @route   POST /api/finance/record-transaction
 // @desc    Record a new income or expense transaction
-// @access  Protected (OWNER, PARTNER)
+// @access  Protected (OWNER, STAFF)
 router.post(
   "/record-transaction",
   protect,
-  restrictTo("OWNER", "PARTNER"),
+  restrictTo("OWNER", "STAFF"),
   recordTransaction,
 );
 
-// @route   POST /api/finance/collect-partner-revenue
-// @desc    Partner withdraws accumulated daily revenue (Module 1: Partner Tuition Management)
-// @access  Protected (PARTNER only)
-router.post(
-  "/collect-partner-revenue",
-  protect,
-  restrictTo("PARTNER"),
-  collectPartnerRevenue,
-);
-
-// ========================================
-// MODULE 3: EXPENSE MANAGEMENT ROUTES
-// ========================================
-
-// @route   POST /api/finance/create-shared-expense
-// @desc    Create a shared expense with automatic split calculation
-// @access  Protected (OWNER only)
-router.post(
-  "/create-shared-expense",
-  protect,
-  restrictTo("OWNER"),
-  createSharedExpense,
-);
-
-// @route   GET /api/finance/partner-expense-debt
-// @desc    Get partner's expense debt (what they owe to owner)
-// @access  Protected (PARTNER)
-router.get(
-  "/partner-expense-debt",
-  protect,
-  restrictTo("PARTNER"),
-  getPartnerExpenseDebt,
-);
-
-// @route   POST /api/finance/repay-debt
-// @desc    Partner records a debt repayment to Owner
-// @access  Protected (PARTNER only)
-router.post("/repay-debt", protect, restrictTo("PARTNER"), repayDebtToOwner);
-
 // @route   POST /api/finance/teacher-payout
-// @desc    Process teacher payout from pending balance (Owner pays teacher)
+// @desc    Process payout to teacher from verified balance
 // @access  Protected (OWNER only)
 router.post(
   "/teacher-payout",
@@ -133,12 +126,8 @@ router.post(
   processTeacherPayout,
 );
 
-// ========================================
-// WAQAR PROTOCOL V2: MANUAL PAYROLL ROUTES
-// ========================================
-
 // @route   POST /api/finance/manual-payout
-// @desc    Process manual payout to user/teacher (creates EXPENSE transaction)
+// @desc    Process manual payout/advance to any user
 // @access  Protected (OWNER only)
 router.post(
   "/manual-payout",
@@ -148,7 +137,7 @@ router.post(
 );
 
 // @route   POST /api/finance/update-manual-balance
-// @desc    Set/adjust a user's manual balance (what is owed to them)
+// @desc    Set/adjust a user's manual owed balance
 // @access  Protected (OWNER only)
 router.post(
   "/update-manual-balance",
@@ -158,7 +147,7 @@ router.post(
 );
 
 // @route   GET /api/finance/teacher-payroll
-// @desc    Get payroll data for all teachers (balances, history)
+// @desc    Get payroll data for all active teachers
 // @access  Protected (OWNER only)
 router.get(
   "/teacher-payroll",
@@ -170,62 +159,28 @@ router.get(
 // @route   GET /api/finance/payout-history/:userId
 // @desc    Get payout history for a specific user
 // @access  Protected (OWNER or self)
-router.get(
-  "/payout-history/:userId",
-  protect,
-  getPayoutHistory,
-);
+router.get("/payout-history/:userId", protect, getPayoutHistory);
 
-// @route   POST /api/finance/mark-expense-paid
-// @desc    Mark partner's expense share as paid (Owner action)
-// @access  Protected (OWNER only)
-router.post(
-  "/mark-expense-paid",
-  protect,
-  restrictTo("OWNER"),
-  markExpenseSharePaid,
-);
-
-// @route   GET /api/finance/reimbursement-report
-// @desc    Get Owner's reimbursement report (who owes what)
-// @access  Protected (OWNER only)
-router.get(
-  "/reimbursement-report",
-  protect,
-  restrictTo("OWNER"),
-  getReimbursementReport,
-);
+// ------------------------------------------------------------------
+// FINANCE RECORD CRUD (FinanceRecord model — used by frontend)
+// ------------------------------------------------------------------
 
 // @route   GET /api/finance
 // @desc    Get all finance records
-// @access  Public
-router.get("/", async (req, res) => {
+// @access  Protected
+router.get("/", protect, async (req, res) => {
   try {
     const { status, month, year } = req.query;
-
     let query = {};
-
-    if (status) {
-      query.status = status;
-    }
-
-    if (month) {
-      query.month = month;
-    }
-
-    if (year) {
-      query.year = parseInt(year);
-    }
+    if (status) query.status = status;
+    if (month) query.month = month;
+    if (year) query.year = parseInt(year);
 
     const records = await FinanceRecord.find(query)
       .populate("studentId", "name class")
       .sort({ createdAt: -1 });
 
-    res.json({
-      success: true,
-      count: records.length,
-      data: records,
-    });
+    res.json({ success: true, count: records.length, data: records });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -235,27 +190,121 @@ router.get("/", async (req, res) => {
   }
 });
 
+// @route   GET /api/finance/stats/overview
+// @desc    Get real-time finance overview (MONTHLY - synced with Dashboard)
+// @access  Protected (OWNER)
+router.get("/stats/overview", protect, async (req, res) => {
+  try {
+    const Student = require("../models/Student");
+    const Teacher = require("../models/Teacher");
+    const Expense = require("../models/Expense");
+    const Transaction = require("../models/Transaction");
+
+    // THIS MONTH ONLY - Sync with Dashboard
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // Monthly Income from Transactions (consistent with Dashboard)
+    const monthlyIncomeResult = await Transaction.aggregate([
+      { $match: { type: "INCOME", date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const totalIncome = monthlyIncomeResult[0]?.total || 0;
+
+    // Monthly Expenses from Transactions (consistent with Dashboard)
+    const monthlyExpensesResult = await Transaction.aggregate([
+      { $match: { type: "EXPENSE", date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const totalExpenses = monthlyExpensesResult[0]?.total || 0;
+
+    // Total Expected & Pending (all-time student data)
+    const expectedResult = await Student.aggregate([
+      { $group: { _id: null, totalExpected: { $sum: "$totalFee" } } },
+    ]);
+    const totalExpected = expectedResult[0]?.totalExpected || 0;
+
+    const collectedResult = await Student.aggregate([
+      { $group: { _id: null, totalCollected: { $sum: "$paidAmount" } } },
+    ]);
+    const totalCollected = collectedResult[0]?.totalCollected || 0;
+    const totalPending = totalExpected - totalCollected;
+
+    const pendingStudentsCount = await Student.countDocuments({
+      feeStatus: { $in: ["pending", "partial", "Pending"] },
+    });
+
+    // Teacher liabilities
+    const teachers = await Teacher.find({ status: "active" });
+    let totalTeacherLiabilities = 0;
+    const teacherPayroll = [];
+
+    for (const teacher of teachers) {
+      const balance = teacher.balance || {};
+      const owed =
+        (balance.floating || 0) +
+        (balance.verified || 0) +
+        (balance.pending || 0);
+      totalTeacherLiabilities += owed;
+
+      teacherPayroll.push({
+        teacherId: teacher._id,
+        name: teacher.name,
+        subject: teacher.subject,
+        compensationType: teacher.compensation?.type || "percentage",
+        earnedAmount: owed,
+        totalPaid: teacher.totalPaid || 0,
+      });
+    }
+
+    // Net Profit = Monthly Income - Monthly Expenses (matches Dashboard exactly)
+    const netProfit = totalIncome - totalExpenses;
+
+    res.json({
+      success: true,
+      data: {
+        totalIncome,       // Monthly INCOME transactions
+        totalExpected,     // All-time total fees
+        totalPending,      // All-time unpaid fees
+        pendingStudentsCount,
+        totalTeacherLiabilities,  // Current owed to teachers
+        teacherPayroll,
+        teacherCount: teachers.length,
+        academyShare: netProfit,
+        totalExpenses,     // Monthly EXPENSE transactions
+        netProfit,         // Monthly Net (INCOME - EXPENSE)
+        collectionRate:
+          totalExpected > 0
+            ? Math.round((totalCollected / totalExpected) * 100)
+            : 0,
+      },
+    });
+  } catch (error) {
+    console.error("Finance stats error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching finance statistics",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api/finance/:id
-// @desc    Get single finance record by ID
-// @access  Public
-router.get("/:id", async (req, res) => {
+// @desc    Get single finance record
+// @access  Protected
+router.get("/:id", protect, async (req, res) => {
   try {
     const record = await FinanceRecord.findById(req.params.id).populate(
       "studentId",
       "name class",
     );
-
     if (!record) {
-      return res.status(404).json({
-        success: false,
-        message: "Finance record not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Finance record not found" });
     }
-
-    res.json({
-      success: true,
-      data: record,
-    });
+    res.json({ success: true, data: record });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -267,12 +316,11 @@ router.get("/:id", async (req, res) => {
 
 // @route   POST /api/finance
 // @desc    Create a new finance record
-// @access  Public
-router.post("/", async (req, res) => {
+// @access  Protected
+router.post("/", protect, async (req, res) => {
   try {
     const newRecord = new FinanceRecord(req.body);
     const savedRecord = await newRecord.save();
-
     res.status(201).json({
       success: true,
       message: "Finance record created successfully",
@@ -289,22 +337,19 @@ router.post("/", async (req, res) => {
 
 // @route   PUT /api/finance/:id
 // @desc    Update a finance record
-// @access  Public
-router.put("/:id", async (req, res) => {
+// @access  Protected
+router.put("/:id", protect, async (req, res) => {
   try {
     const updatedRecord = await FinanceRecord.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true, runValidators: true },
     );
-
     if (!updatedRecord) {
-      return res.status(404).json({
-        success: false,
-        message: "Finance record not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Finance record not found" });
     }
-
     res.json({
       success: true,
       message: "Finance record updated successfully",
@@ -321,18 +366,15 @@ router.put("/:id", async (req, res) => {
 
 // @route   DELETE /api/finance/:id
 // @desc    Delete a finance record
-// @access  Public
-router.delete("/:id", async (req, res) => {
+// @access  Protected (OWNER only)
+router.delete("/:id", protect, async (req, res) => {
   try {
     const deletedRecord = await FinanceRecord.findByIdAndDelete(req.params.id);
-
     if (!deletedRecord) {
-      return res.status(404).json({
-        success: false,
-        message: "Finance record not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Finance record not found" });
     }
-
     res.json({
       success: true,
       message: "Finance record deleted successfully",
@@ -342,364 +384,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error deleting finance record",
-      error: error.message,
-    });
-  }
-});
-
-// @route   GET /api/finance/stats/overview
-// @desc    Get real-time finance statistics from Student and Teacher data
-// @access  Protected (Role-based response filtering)
-router.get("/stats/overview", protect, async (req, res) => {
-  try {
-    const userRole = req.user?.role || "OPERATOR";
-    const isOwner = userRole === "OWNER";
-
-    const Student = require("../models/Student");
-    const Teacher = require("../models/Teacher");
-    const Class = require("../models/Class");
-
-    // TASK 1: Real-Time Metrics from Student Data
-
-    // Total Income: Sum of all paidAmount
-    const incomeResult = await Student.aggregate([
-      { $group: { _id: null, totalIncome: { $sum: "$paidAmount" } } },
-    ]);
-    const totalIncome = incomeResult[0]?.totalIncome || 0;
-
-    // Total Expected: Sum of all totalFee
-    const expectedResult = await Student.aggregate([
-      { $group: { _id: null, totalExpected: { $sum: "$totalFee" } } },
-    ]);
-    const totalExpected = expectedResult[0]?.totalExpected || 0;
-
-    // Total Pending: Expected - Collected
-    const totalPending = totalExpected - totalIncome;
-
-    // Count students with pending fees
-    const pendingStudentsCount = await Student.countDocuments({
-      feeStatus: { $in: ["pending", "partial"] },
-    });
-
-    // TASK 2: Teacher Compensation Calculations
-
-    // Get all active teachers with their assigned classes
-    const teachers = await Teacher.find({ status: "active" });
-
-    let totalTeacherLiabilities = 0;
-    const teacherPayroll = [];
-
-    for (const teacher of teachers) {
-      // Find classes taught by this teacher
-      const teacherClasses = await Class.find({
-        subjects: {
-          $elemMatch: {
-            name: { $regex: new RegExp(`^${teacher.subject}$`, "i") },
-          },
-        },
-      });
-
-      // Calculate total collected from this teacher's classes
-      let teacherRevenue = 0;
-      for (const cls of teacherClasses) {
-        const classRevenue = await Student.aggregate([
-          { $match: { classRef: cls._id } },
-          { $group: { _id: null, collected: { $sum: "$paidAmount" } } },
-        ]);
-        teacherRevenue += classRevenue[0]?.collected || 0;
-      }
-
-      // Calculate teacher's earned amount based on compensation model
-      let earnedAmount = 0;
-      const compensationType = teacher.compensation?.type || "percentage";
-
-      if (compensationType === "percentage") {
-        const teacherShare = teacher.compensation?.teacherShare || 70;
-        earnedAmount = teacherRevenue * (teacherShare / 100);
-      } else if (compensationType === "fixed") {
-        earnedAmount = teacher.compensation?.fixedSalary || 0;
-      } else if (compensationType === "hybrid") {
-        const baseSalary = teacher.compensation?.baseSalary || 0;
-        const profitShare = teacher.compensation?.profitShare || 0;
-        earnedAmount = baseSalary + teacherRevenue * (profitShare / 100);
-      }
-
-      // Check if teacher already paid for current month
-      const TeacherPayment = require("../models/TeacherPayment");
-      const now = new Date();
-      const currentMonth = now.toLocaleString("en-US", { month: "long" });
-      const currentYear = now.getFullYear();
-
-      const alreadyPaid = await TeacherPayment.findOne({
-        teacherId: teacher._id,
-        month: currentMonth,
-        year: currentYear,
-        status: "paid",
-      });
-
-      // Subtract already paid amount from earned amount
-      if (alreadyPaid) {
-        earnedAmount = Math.max(0, earnedAmount - alreadyPaid.amountPaid);
-      }
-
-      totalTeacherLiabilities += earnedAmount;
-
-      teacherPayroll.push({
-        teacherId: teacher._id,
-        name: teacher.name,
-        subject: teacher.subject,
-        compensationType,
-        revenue: teacherRevenue,
-        earnedAmount: Math.round(earnedAmount),
-        classesCount: teacherClasses.length,
-      });
-    }
-
-    // TASK 2 & 3: Net Balance Calculation with Real Expenses
-    const Expense = require("../models/Expense");
-    const TeacherPayment = require("../models/TeacherPayment");
-
-    // ========================================
-    // CRITICAL: JOINT_POOL Expense Handling
-    // ========================================
-    // Get JOINT_POOL expenses - these are deducted from GROSS revenue
-    // BEFORE the 70/30 teacher split is applied
-    const jointPoolExpensesResult = await Expense.aggregate([
-      { $match: { paidByType: "JOINT_POOL" } },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
-    const jointPoolExpenses = jointPoolExpensesResult[0]?.total || 0;
-
-    // Get OTHER expenses (ACADEMY_CASH, partner-paid, etc.)
-    const otherExpensesResult = await Expense.aggregate([
-      { $match: { paidByType: { $ne: "JOINT_POOL" } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
-    const otherExpenses = otherExpensesResult[0]?.total || 0;
-
-    // Total expenses for reporting
-    const totalExpenses = jointPoolExpenses + otherExpenses;
-
-    // ========================================
-    // ADJUSTED REVENUE for Teacher Calculations
-    // ========================================
-    // Deduct JOINT_POOL expenses from gross revenue FIRST
-    // This ensures the 70/30 split applies to the NET revenue after joint costs
-    const adjustedRevenueForSplit = totalIncome - jointPoolExpenses;
-
-    console.log(`💰 Gross Revenue: PKR ${totalIncome.toLocaleString()}`);
-    console.log(
-      `🏦 Joint Pool Expenses: PKR ${jointPoolExpenses.toLocaleString()}`,
-    );
-    console.log(
-      `📊 Adjusted Revenue (for 70/30 split): PKR ${adjustedRevenueForSplit.toLocaleString()}`,
-    );
-
-    // ========================================
-    // NOTE: Teacher calculations above already use 'teacherRevenue'
-    // which is based on student paidAmount. The JOINT_POOL deduction
-    // affects the academy's final net profit, not individual teacher shares.
-    // ========================================
-
-    // Get total teacher payouts (money already paid out)
-    const now = new Date();
-    const currentMonth = now.toLocaleString("en-US", { month: "long" });
-    const currentYear = now.getFullYear();
-
-    const teacherPayoutsResult = await TeacherPayment.aggregate([
-      {
-        $match: {
-          status: "paid",
-          month: currentMonth,
-          year: currentYear,
-        },
-      },
-      { $group: { _id: null, totalPaid: { $sum: "$amountPaid" } } },
-    ]);
-    const totalTeacherPayouts = teacherPayoutsResult[0]?.totalPaid || 0;
-
-    // Net Profit Formula: Income - (Teacher Pending Liabilities + Already Paid Payouts + Expenses)
-    const netProfit =
-      totalIncome -
-      totalTeacherLiabilities -
-      totalTeacherPayouts -
-      totalExpenses;
-
-    // Academy's share (what's left after all costs)
-    const academyShare = netProfit;
-
-    // === OWNER NET REVENUE CALCULATION WITH CATEGORIZED BREAKDOWN ===
-    // Calculate the same metric as in getDashboardStats
-    const Transaction = require("../models/Transaction");
-    const User = require("../models/User");
-
-    let ownerNetRevenue = 0;
-    let revenueBreakdown = {
-      matricRevenue: 0,
-      fscRevenue: 0,
-      chemistryRevenue: 0,
-      eteaRevenue: 0,
-      poolDividends: 0,
-    };
-    let ownerExpensesPaid = 0;
-
-    if (isOwner) {
-      const ownerId = req.user._id;
-
-      // Direct Teaching: Sum of 100% fees from classes where teacher = Waqar
-      const waqarTeacher = await Teacher.findOne({
-        $or: [{ userId: ownerId }, { name: { $regex: /waqar/i } }],
-      });
-
-      let directTeaching = 0;
-      if (waqarTeacher) {
-        // Get all owner chemistry transactions with category breakdown
-        const ownerTransactions = await Transaction.find({
-          stream: "OWNER_CHEMISTRY",
-          status: "VERIFIED",
-          type: "INCOME",
-        }).lean();
-
-        // Categorize by description patterns
-        for (const tx of ownerTransactions) {
-          directTeaching += tx.amount;
-          revenueBreakdown.chemistryRevenue += tx.amount;
-
-          const desc = (tx.description || "").toLowerCase();
-          if (
-            desc.includes("9th") ||
-            desc.includes("10th") ||
-            desc.includes("matric")
-          ) {
-            revenueBreakdown.matricRevenue += tx.amount;
-          } else if (
-            desc.includes("11th") ||
-            desc.includes("12th") ||
-            desc.includes("fsc")
-          ) {
-            revenueBreakdown.fscRevenue += tx.amount;
-          } else if (
-            desc.includes("etea") ||
-            desc.includes("mdcat") ||
-            desc.includes("ecat")
-          ) {
-            revenueBreakdown.eteaRevenue += tx.amount;
-          }
-        }
-
-        // Get ETEA revenue where Waqar is the teacher
-        const eteaResult = await Transaction.aggregate([
-          {
-            $match: {
-              stream: { $in: ["ETEA_POOL", "ETEA_ENGLISH"] },
-              status: "VERIFIED",
-              type: "INCOME",
-              "splitDetails.teacherId": waqarTeacher._id,
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              total: { $sum: "$splitDetails.teacherShare" },
-            },
-          },
-        ]);
-        const eteaTeacherEarnings = eteaResult?.[0]?.total ?? 0;
-        revenueBreakdown.eteaRevenue += eteaTeacherEarnings;
-        directTeaching += eteaTeacherEarnings;
-      }
-
-      // Pool Dividends: Sum of all DIVIDEND transactions where recipient = Waqar
-      const poolDividendsResult = await Transaction.aggregate([
-        {
-          $match: {
-            stream: "DIVIDEND",
-            status: "VERIFIED",
-            type: "INCOME",
-            recipientPartner: ownerId,
-          },
-        },
-        { $group: { _id: null, total: { $sum: "$amount" } } },
-      ]);
-      const poolDividends = poolDividendsResult?.[0]?.total ?? 0;
-      revenueBreakdown.poolDividends = poolDividends;
-
-      // Expenses Paid: Sum of all expenses where paidBy = Waqar
-      const expensesPaidResult = await Expense.aggregate([
-        {
-          $match: {
-            paidBy: ownerId,
-            status: "paid",
-          },
-        },
-        { $group: { _id: null, total: { $sum: "$amount" } } },
-      ]);
-      ownerExpensesPaid = expensesPaidResult?.[0]?.total ?? 0;
-
-      // Calculate Owner Net Revenue
-      ownerNetRevenue = directTeaching + poolDividends - ownerExpensesPaid;
-    }
-
-    // === ROLE-BASED RESPONSE FILTERING ===
-    // OPERATOR/PARTNER: Cannot see total revenue, net profit, academy balance
-    // OWNER: Gets full analytics dashboard data
-
-    if (!isOwner) {
-      // Minimal response for OPERATOR/PARTNER/STAFF
-      return res.json({
-        success: true,
-        data: {
-          // Only show what's needed for expense entry
-          pendingStudentsCount,
-          teacherCount: teachers.length,
-          // Percentages only (not absolute values)
-          collectionRate:
-            totalExpected > 0
-              ? Math.round((totalIncome / totalExpected) * 100)
-              : 0,
-        },
-        message: "Limited view - contact administrator for full analytics",
-      });
-    }
-
-    // OWNER: Full analytics dashboard
-    res.json({
-      success: true,
-      data: {
-        // Income Metrics
-        totalIncome,
-        totalExpected,
-        totalPending,
-        pendingStudentsCount,
-
-        // Teacher Metrics
-        totalTeacherLiabilities, // What we OWE (pending)
-        totalTeacherPayouts, // What we've PAID (current month)
-        teacherPayroll,
-        teacherCount: teachers.length,
-
-        // Academy Metrics
-        academyShare,
-        totalExpenses,
-        jointPoolExpenses, // NEW: Show joint pool expenses separately
-        otherExpenses, // NEW: Show other expenses separately
-        netProfit,
-        ownerNetRevenue, // NEW: Owner's personal net revenue
-        revenueBreakdown, // NEW: Categorized revenue breakdown
-        ownerExpensesPaid, // NEW: Expenses paid by owner
-
-        // Percentages for UI
-        collectionRate:
-          totalExpected > 0
-            ? Math.round((totalIncome / totalExpected) * 100)
-            : 0,
-      },
-    });
-  } catch (error) {
-    console.error("Finance stats error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching finance statistics",
       error: error.message,
     });
   }

@@ -76,6 +76,7 @@ const studentPortalRoutes = require("./routes/studentPortal");
 const lectureRoutes = require("./routes/lectureRoutes");
 const examRoutes = require("./routes/examRoutes");
 const notificationRoutes = require("./routes/notifications");
+const inventoryRoutes = require("./routes/inventory");
 
 // API Routes
 app.use("/api/auth", authRoutes);
@@ -98,6 +99,7 @@ app.use("/api/student-portal", studentPortalRoutes);
 app.use("/api/lectures", lectureRoutes);
 app.use("/api/exams", examRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -120,6 +122,7 @@ app.get("/", (req, res) => {
       public: "/api/public",
       studentPortal: "/api/student-portal",
       lectures: "/api/lectures",
+      inventory: "/api/inventory",
     },
   });
 });

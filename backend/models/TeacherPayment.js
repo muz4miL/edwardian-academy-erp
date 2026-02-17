@@ -48,6 +48,16 @@ const teacherPaymentSchema = new mongoose.Schema(
             required: true,
         },
 
+        // Session Metadata (optional)
+        sessionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Session',
+        },
+        sessionName: {
+            type: String,
+            trim: true,
+        },
+
         // Payment Metadata
         paymentDate: {
             type: Date,
@@ -79,17 +89,13 @@ const teacherPaymentSchema = new mongoose.Schema(
     }
 );
 
-// Auto-generate voucher ID before saving
-teacherPaymentSchema.pre('save', async function () {
-    console.log('🎫 PRE-SAVE HOOK TRIGGERED for TeacherPayment');
-    console.log('🎫 Current voucherId:', this.voucherId);
-
+// Auto-generate voucher ID before validation
+teacherPaymentSchema.pre('validate', async function () {
     if (!this.voucherId) {
         const count = await mongoose.model('TeacherPayment').countDocuments();
         const year = new Date().getFullYear();
         const month = String(new Date().getMonth() + 1).padStart(2, '0');
         this.voucherId = `TP-${year}${month}-${String(count + 1).padStart(4, '0')}`;
-        console.log('🎫 GENERATED voucherId:', this.voucherId);
     }
 });
 

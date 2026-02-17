@@ -254,11 +254,14 @@ router.get("/:id/wallet", async (req, res) => {
 });
 
 // @route   POST /api/teachers/:id/wallet/credit
-// @desc    Add amount to teacher's payable balance (Credit)
+// @desc    Add amount to teacher's payable balance (Credit) + sync with finance ledger
 // @access  Public
 router.post("/:id/wallet/credit", async (req, res) => {
   try {
     const Teacher = require("../models/Teacher");
+    const Transaction = require("../models/Transaction");
+    const Notification = require("../models/Notification");
+    const User = require("../models/User");
     const { amount, description } = req.body;
 
     if (!amount || amount <= 0) {
@@ -285,6 +288,48 @@ router.post("/:id/wallet/credit", async (req, res) => {
     teacher.balance.pending =
       (teacher.balance.pending || 0) + parseFloat(amount);
     await teacher.save();
+
+    // ==================== CREATE TRANSACTION RECORD (LEDGER SYNC) ====================
+    try {
+      const transaction = new Transaction({
+        type: "LIABILITY",
+        amount: parseFloat(amount),
+        description: `Teacher Credit: ${teacher.name} (${teacher.subject || "N/A"}) - ${description || "Manual credit"}`,
+        category: "Teacher Credit",
+        stream: teacher.subject || "General",
+        date: new Date(),
+        status: "VERIFIED",
+        createdBy: req.user?._id || null,
+      });
+      await transaction.save();
+      console.log(
+        `📊 Created LIABILITY transaction for teacher credit: PKR ${amount} → ${teacher.name}`,
+      );
+    } catch (txError) {
+      console.error("⚠️ Could not create transaction record:", txError.message);
+    }
+
+    // ==================== CREATE NOTIFICATION FOR OWNER ====================
+    try {
+      const performedBy = req.user?.name || "System";
+      const ownerUser = await User.findOne({
+        role: { $in: ["owner", "OWNER"] },
+      });
+
+      const notification = new Notification({
+        recipient: ownerUser?._id || null,
+        recipientRole: "OWNER",
+        message: `💰 WALLET CREDIT: PKR ${parseFloat(amount).toLocaleString()} credited to ${teacher.name}'s wallet by ${performedBy}. Description: ${description || "Manual credit"}`,
+        type: "FINANCE",
+        relatedId: teacher._id.toString(),
+      });
+      await notification.save();
+      console.log(
+        `🔔 Created notification for owner: Teacher wallet credit of PKR ${amount}`,
+      );
+    } catch (notifError) {
+      console.error("⚠️ Could not create notification:", notifError.message);
+    }
 
     console.log(
       `💰 Credited PKR ${amount} to ${teacher.name}'s wallet. New balance: ${teacher.balance.pending}`,
@@ -409,6 +454,27 @@ router.post("/:id/wallet/debit", async (req, res) => {
         "⚠️ Could not create expense record:",
         expenseError.message,
       );
+    }
+
+    // ==================== CREATE TRANSACTION RECORD (LEDGER SYNC) ====================
+    try {
+      const Transaction = require("../models/Transaction");
+      const transaction = new Transaction({
+        type: "EXPENSE",
+        amount: parseFloat(amount),
+        description: `Teacher Payout: ${teacher.name} (${teacher.subject || "N/A"}) - Voucher: ${voucherId}`,
+        category: "Teacher Payout",
+        stream: teacher.subject || "General",
+        date: now,
+        status: "VERIFIED",
+        createdBy: req.user?._id || null,
+      });
+      await transaction.save();
+      console.log(
+        `📊 Created EXPENSE transaction for teacher payout: PKR ${amount} → ${teacher.name} (${voucherId})`,
+      );
+    } catch (txError) {
+      console.error("⚠️ Could not create transaction record:", txError.message);
     }
 
     // ==================== CREATE NOTIFICATION FOR OWNER ====================

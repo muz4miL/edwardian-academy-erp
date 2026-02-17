@@ -21,9 +21,8 @@ import StudentCard from "./pages/StudentCard";
 import UserManagement from "./pages/UserManagement";
 import WebsiteManager from "./pages/WebsiteManager";
 import PublicLanding from "./pages/PublicLanding";
-import Payroll from "./pages/Payroll";
-import PartnerSettlement from "./pages/PartnerSettlement";
 import Leads from "./pages/Leads";
+// Payroll removed — teacher payments handled via Teachers tab
 // Phase 2 & 3: Security & LMS
 import Gatekeeper from "./pages/Gatekeeper";
 import PublicRegister from "./pages/PublicRegister";
@@ -168,22 +167,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/payroll"
-              element={
-                <ProtectedRoute>
-                  <Payroll />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/partner-settlement"
-              element={
-                <ProtectedRoute>
-                  <PartnerSettlement />
-                </ProtectedRoute>
-              }
-            />
+
+
             <Route
               path="/leads"
               element={

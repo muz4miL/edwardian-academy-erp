@@ -1,11 +1,20 @@
 const mongoose = require('mongoose');
 
+/**
+ * DailyClosing — Single-Owner Edition
+ * Locks floating cash into verified at end-of-day.
+ * No partner handover logic.
+ */
 const dailyClosingSchema = new mongoose.Schema(
     {
-        partnerId: {
+        closedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
-            required: [true, 'Partner ID is required'],
+            required: [true, 'Closed-by user is required'],
+        },
+        closedByName: {
+            type: String,
+            trim: true,
         },
         date: {
             type: Date,
@@ -17,45 +26,18 @@ const dailyClosingSchema = new mongoose.Schema(
             required: [true, 'Total amount is required'],
             default: 0,
         },
-        // Partner's calculated share (reference only)
-        partnerShare: {
+        transactionCount: {
             type: Number,
             default: 0,
-        },
-        // Actual amount partner is handing to owner
-        handoverAmount: {
-            type: Number,
-            default: 0,
-        },
-        breakdown: {
-            chemistry: {
-                type: Number,
-                default: 0,
-            },
-            tuition: {
-                type: Number,
-                default: 0,
-            },
-            pool: {
-                type: Number,
-                default: 0,
-            },
         },
         status: {
             type: String,
-            enum: ['PENDING', 'PENDING_VERIFICATION', 'VERIFIED', 'CANCELLED'],
+            enum: ['PENDING', 'VERIFIED', 'CANCELLED'],
             default: 'VERIFIED',
         },
         notes: {
             type: String,
             maxlength: 500,
-        },
-        verifiedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-        },
-        verifiedAt: {
-            type: Date,
         },
     },
     {
@@ -63,21 +45,8 @@ const dailyClosingSchema = new mongoose.Schema(
     }
 );
 
-// INDEXES: For faster queries
-dailyClosingSchema.index({ partnerId: 1, date: -1 });
+// INDEXES
+dailyClosingSchema.index({ closedBy: 1, date: -1 });
 dailyClosingSchema.index({ status: 1 });
-
-// INSTANCE METHOD: Get closing summary
-dailyClosingSchema.methods.getSummary = function () {
-    return {
-        id: this._id,
-        date: this.date,
-        totalAmount: this.totalAmount,
-        partnerShare: this.partnerShare,
-        handoverAmount: this.handoverAmount,
-        breakdown: this.breakdown,
-        status: this.status,
-    };
-};
 
 module.exports = mongoose.model('DailyClosing', dailyClosingSchema);

@@ -15,7 +15,6 @@ import {
   Shield,
   Globe,
   Banknote,
-  Handshake,
   Phone,
   ScanLine,
   UserCheck,
@@ -120,25 +119,12 @@ const navItems = [
     path: "/reports",
     permission: "reports",
   },
+
   {
     icon: Globe,
     label: "Website",
     path: "/website-manager",
     permission: "website",
-    ownerOnly: true,
-  },
-  {
-    icon: Banknote,
-    label: "Payroll",
-    path: "/payroll",
-    permission: "reports", // Changed to use reports permission
-    ownerOnly: true,
-  },
-  {
-    icon: Handshake,
-    label: "Settlement",
-    path: "/partner-settlement",
-    permission: "reports", // Changed to use reports permission
     ownerOnly: true,
   },
 ];
