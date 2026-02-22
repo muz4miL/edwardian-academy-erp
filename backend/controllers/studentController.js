@@ -315,7 +315,49 @@ exports.trackPrint = async (req, res) => {
     student.printHistory.push({ receiptId, printedAt: new Date(), version });
     await student.save();
 
-    res.json({ success: true, data: { receiptId, version, student } });
+    // Enrich subjects with teacher names from the Class model
+    let enrichedStudent = student.toObject();
+    try {
+      let classDoc = null;
+      if (student.classRef) {
+        classDoc = await Class.findById(student.classRef);
+      }
+      if (!classDoc && student.class) {
+        classDoc = await Class.findOne({ classTitle: student.class });
+      }
+      if (!classDoc && student.class) {
+        // Fallback: try regex match on classTitle
+        classDoc = await Class.findOne({ classTitle: { $regex: student.class, $options: "i" } });
+      }
+
+      if (classDoc && classDoc.subjectTeachers && classDoc.subjectTeachers.length > 0) {
+        const teacherMap = {};
+        classDoc.subjectTeachers.forEach((st) => {
+          if (st.subject && st.teacherName) {
+            teacherMap[st.subject.toLowerCase().trim()] = st.teacherName;
+          }
+        });
+
+        enrichedStudent.subjects = (enrichedStudent.subjects || []).map((sub) => ({
+          ...sub,
+          teacherName: teacherMap[sub.name.toLowerCase().trim()] || null,
+        }));
+        console.log(`📄 Receipt enriched with teacher names for ${student.studentId}`);
+      }
+    } catch (enrichErr) {
+      console.log("Subject teacher enrichment skipped:", enrichErr.message);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        receiptId,
+        version,
+        isOriginal: version === 1,
+        printedAt: new Date(),
+        student: enrichedStudent,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

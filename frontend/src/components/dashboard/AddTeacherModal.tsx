@@ -76,6 +76,7 @@ export const AddTeacherModal = ({
   const [joiningDate, setJoiningDate] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [role, setRole] = useState<"TEACHER" | "PARTNER" | "OWNER">("TEACHER");
 
   // Credentials display state
   const [showCredentials, setShowCredentials] = useState(false);
@@ -131,6 +132,7 @@ export const AddTeacherModal = ({
     setSubject("");
     setJoiningDate("");
     setStatus("active");
+    setRole("TEACHER");
     setCompType(defaultMode);
     setTeacherShare(defaultTeacherShare);
     setAcademyShare(defaultAcademyShare);
@@ -250,6 +252,7 @@ export const AddTeacherModal = ({
       subject,
       joiningDate: joiningDate || new Date().toISOString(),
       status,
+      role,
       compensation,
       profileImage: profileImage || null,
     };
@@ -430,6 +433,26 @@ export const AddTeacherModal = ({
                           className="pl-9 h-10 focus-visible:ring-primary/20 text-gray-600"
                         />
                       </div>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label className="text-sm font-medium text-gray-700">
+                        System Role <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={role} onValueChange={(v: "TEACHER" | "PARTNER" | "OWNER") => setRole(v)}>
+                        <SelectTrigger className="h-10 focus-visible:ring-primary/20">
+                          <SelectValue placeholder="Select Role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="TEACHER">Teacher</SelectItem>
+                          <SelectItem value="PARTNER">Partner</SelectItem>
+                          <SelectItem value="OWNER">Owner</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-400">
+                        {role === "TEACHER" && "Standard teacher with access to dashboard and lectures only."}
+                        {role === "PARTNER" && "Partner with extended access to admissions, students, and finance."}
+                        {role === "OWNER" && "Full system access with all permissions."}
+                      </p>
                     </div>
                   </div>
                 </section>

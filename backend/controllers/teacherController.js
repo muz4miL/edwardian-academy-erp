@@ -9,7 +9,7 @@ const User = require("../models/User");
  */
 exports.getTeachers = async (req, res) => {
   try {
-    const teachers = await Teacher.find().sort({ createdAt: -1 });
+    const teachers = await Teacher.find().populate('userId', 'role').sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -101,7 +101,7 @@ exports.createTeacher = async (req, res) => {
       "bytes",
     );
 
-    const { name, phone, subject, joiningDate, compensation, profileImage } =
+    const { name, phone, subject, joiningDate, compensation, profileImage, role: requestedRole } =
       req.body;
 
     // Validate required fields
@@ -197,14 +197,23 @@ exports.createTeacher = async (req, res) => {
       passwordLength: plainPassword.length,
     });
 
+    // Determine role and permissions based on requested role
+    const userRole = ["OWNER", "PARTNER", "STAFF", "TEACHER"].includes(requestedRole) ? requestedRole : "TEACHER";
+    let userPermissions = ["dashboard", "lectures"];
+    if (userRole === "PARTNER") {
+      userPermissions = ["dashboard", "admissions", "students", "lectures", "finance"];
+    } else if (userRole === "OWNER") {
+      userPermissions = ["dashboard", "admissions", "students", "teachers", "finance", "classes", "timetable", "sessions", "configuration", "users", "website", "payroll", "settlement", "gatekeeper", "frontdesk", "inquiries", "reports", "lectures"];
+    }
+
     // Create User account for Teacher login
     const user = new User({
       userId,
       username,
       password: plainPassword, // Will be hashed by pre-save hook
       fullName: name,
-      role: "TEACHER", // Must match User schema enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"]
-      permissions: ["dashboard", "lectures"],
+      role: userRole,
+      permissions: userPermissions,
       phone,
       profileImage: profileImage || null,
       isActive: true,
@@ -223,6 +232,7 @@ exports.createTeacher = async (req, res) => {
       profileImage: profileImage || null,
       userId: user._id,
       username: username,
+      plainPassword: plainPassword,
     });
 
     await teacher.save();

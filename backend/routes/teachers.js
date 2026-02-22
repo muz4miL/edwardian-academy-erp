@@ -8,6 +8,47 @@ const {
   deleteTeacher,
 } = require("../controllers/teacherController");
 const TeacherPayment = require("../models/TeacherPayment");
+const { protect } = require("../middleware/authMiddleware");
+const Teacher = require("../models/Teacher");
+const User = require("../models/User");
+
+// @route   PUT /api/teachers/me/profile
+// @desc    Teacher updates own profile (image, phone etc) — syncs to User model
+// @access  Private (TEACHER role)
+router.put("/me/profile", protect, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const teacherId = req.user.teacherId;
+
+    if (!teacherId) {
+      return res.status(400).json({ success: false, message: "No linked teacher account found" });
+    }
+
+    const { profileImage } = req.body;
+    const updateFields = {};
+    if (profileImage !== undefined) updateFields.profileImage = profileImage;
+
+    // Update Teacher document
+    const teacher = await Teacher.findByIdAndUpdate(teacherId, updateFields, { new: true });
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: "Teacher not found" });
+    }
+
+    // Sync profileImage to User document
+    if (profileImage !== undefined) {
+      await User.findByIdAndUpdate(userId, { profileImage });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: teacher,
+    });
+  } catch (error) {
+    console.error("❌ Error updating teacher profile:", error);
+    res.status(500).json({ success: false, message: "Failed to update profile", error: error.message });
+  }
+});
 
 // @route   GET /api/teachers
 // @desc    Get all teachers

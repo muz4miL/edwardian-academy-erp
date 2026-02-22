@@ -1,0 +1,219 @@
+[
+  {
+    "line": 110,
+    "col": 3,
+    "text": "ðŸ‘‘",
+    "hex": "00f0 0178 2018 2018",
+    "context": "// ðŸ‘‘ OWNER DASHBOARD COM"
+  },
+  {
+    "line": 205,
+    "col": 53,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "d} Financial Report â€” Edwardian Academy</"
+  },
+  {
+    "line": 225,
+    "col": 12,
+    "text": "ðŸ“Š",
+    "hex": "00f0 0178 201c 0160",
+    "context": "<h1>ðŸ“Š ${reportData.period"
+  },
+  {
+    "line": 226,
+    "col": 53,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "\">Edwardian Academy â€” Generated on ${new"
+  },
+  {
+    "line": 263,
+    "col": 31,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "p>Edwardian Academy â€” Confidential Financ"
+  },
+  {
+    "line": 364,
+    "col": 32,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "Edwardian Academy â€” Management Dashboar"
+  },
+  {
+    "line": 374,
+    "col": 16,
+    "text": "âœ“",
+    "hex": "00e2 0153 201c",
+    "context": "âœ“"
+  },
+  {
+    "line": 665,
+    "col": 47,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "orts for any period â€” printable & downloa"
+  },
+  {
+    "line": 926,
+    "col": 16,
+    "text": "ðŸ”’",
+    "hex": "00f0 0178 201d 2019",
+    "context": "ðŸ”’ Close Day"
+  },
+  {
+    "line": 938,
+    "col": 3,
+    "text": "",
+    "hex": "009d",
+    "context": "//  PARTNER DASHBOARD C"
+  },
+  {
+    "line": 1144,
+    "col": 14,
+    "text": "âœ“",
+    "hex": "00e2 0153 201c",
+    "context": "âœ“"
+  },
+  {
+    "line": 1195,
+    "col": 16,
+    "text": "âš ï¸",
+    "hex": "00e2 0161 00a0 00ef 00b8 008f",
+    "context": "âš ï¸ Needs End of Day Cl"
+  },
+  {
+    "line": 1245,
+    "col": 21,
+    "text": "âš ï¸",
+    "hex": "00e2 0161 00a0 00ef 00b8 008f",
+    "context": "? \"âš ï¸ Expense Payable\""
+  },
+  {
+    "line": 1259,
+    "col": 21,
+    "text": "âœ“",
+    "hex": "00e2 0153 201c",
+    "context": ": \"âœ“ All Caught Up!\"}"
+  },
+  {
+    "line": 1364,
+    "col": 14,
+    "text": "ðŸ”’",
+    "hex": "00f0 0178 201d 2019",
+    "context": "ðŸ”’ Verify & Close"
+  },
+  {
+    "line": 1376,
+    "col": 3,
+    "text": "ðŸ§‘â€ðŸ«",
+    "hex": "00f0 0178 00a7 2018 00e2 20ac 008d 00f0 0178 008f 00ab",
+    "context": "// ðŸ§‘â€ðŸ« TEACHER DASHBOARD C"
+  },
+  {
+    "line": 1436,
+    "col": 34,
+    "text": "—",
+    "hex": "2014",
+    "context": "mage upload handler — compresses and sync"
+  },
+  {
+    "line": 1537,
+    "col": 29,
+    "text": "—",
+    "hex": "2014",
+    "context": "{/* Teacher Avatar — Clickable to change"
+  },
+  {
+    "line": 1552,
+    "col": 30,
+    "text": "—",
+    "hex": "2014",
+    "context": "{/* Hover overlay — click to change pho"
+  },
+  {
+    "line": 1584,
+    "col": 18,
+    "text": "ðŸ“ž",
+    "hex": "00f0 0178 201c 017e",
+    "context": "ðŸ“ž {teacherProfile?.ph"
+  },
+  {
+    "line": 1589,
+    "col": 32,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "Edwardian Academy â€” {new Date().toLocal"
+  },
+  {
+    "line": 1645,
+    "col": 31,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "Today's Schedule â€” {today}"
+  },
+  {
+    "line": 1664,
+    "col": 53,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "sId?.gradeLevel ? ` â€” ${entry.classId.gra"
+  },
+  {
+    "line": 1664,
+    "col": 115,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "lassId?.section ? ` â€” ${entry.classId.sec"
+  },
+  {
+    "line": 1670,
+    "col": 40,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "{entry.startTime} â€” {entry.endTime}"
+  },
+  {
+    "line": 1731,
+    "col": 46,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "{entry.startTime} â€” {entry.endTime}"
+  },
+  {
+    "line": 1758,
+    "col": 3,
+    "text": "ðŸ‘¨â€ðŸ’¼",
+    "hex": "00f0 0178 2018 00a8 00e2 20ac 008d 00f0 0178 2019 00bc",
+    "context": "// ðŸ‘¨â€ðŸ’¼ STAFF DASHBOARD COM"
+  },
+  {
+    "line": 1864,
+    "col": 30,
+    "text": "â€”",
+    "hex": "00e2 20ac 201d",
+    "context": "Edwardian Academy â€” Staff Panel"
+  },
+  {
+    "line": 1871,
+    "col": 14,
+    "text": "â—",
+    "hex": "00e2 2014 008f",
+    "context": "â— Online"
+  },
+  {
+    "line": 1983,
+    "col": 3,
+    "text": "",
+    "hex": "008f",
+    "context": "//  MAIN DASHBOARD COMP"
+  },
+  {
+    "line": 2009,
+    "col": 5,
+    "text": "",
+    "hex": "008f",
+    "context": "//  ROLE-BASED GATEKEEP"
+  }
+]

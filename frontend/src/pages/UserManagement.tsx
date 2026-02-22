@@ -58,6 +58,11 @@ import {
   AlertCircle,
   CheckCircle2,
   Power,
+  Key,
+  Copy,
+  User as UserIcon,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -115,13 +120,16 @@ interface User {
   userId: string;
   username: string;
   fullName: string;
-  role: "OWNER" | "PARTNER" | "STAFF";
+  role: "OWNER" | "PARTNER" | "STAFF" | "TEACHER";
   permissions: string[];
   isActive: boolean;
   phone?: string;
   email?: string;
   createdAt: string;
   canBeDeleted: boolean;
+  teacherPassword?: string | null;
+  teacherUsername?: string | null;
+  teacherId?: string;
 }
 
 export default function UserManagement() {
@@ -756,104 +764,180 @@ export default function UserManagement() {
 
       {/* Edit User Modal */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5" />
-              Edit User
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Pencil className="h-5 w-5 text-primary" />
+              Edit User — {selectedUser?.fullName}
             </DialogTitle>
             <DialogDescription>
-              Update user information and permissions
+              Update user information, credentials, and permissions
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Full Name *</Label>
-                <Input
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Username</Label>
-                <Input value={formUsername} disabled className="bg-muted" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>New Password (leave blank to keep current)</Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Min 8 characters"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
+          <div className="space-y-6 py-2">
+            {/* Current Credentials Banner (for TEACHER users) */}
+            {selectedUser?.role === "TEACHER" && selectedUser?.teacherPassword && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Key className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm font-semibold text-amber-800">Current Login Credentials</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
+                    <UserIcon className="h-4 w-4 text-slate-400" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Username</p>
+                      <p className="text-sm font-mono font-semibold text-slate-900 truncate">{selectedUser?.username}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedUser?.username || "");
+                        toast.success("Username copied!");
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
+                    <Key className="h-4 w-4 text-slate-400" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Password</p>
+                      <p className="text-sm font-mono font-semibold text-slate-900 truncate">{selectedUser.teacherPassword}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedUser?.teacherPassword || "");
+                        toast.success("Password copied!");
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select
-                  value={formRole}
-                  onValueChange={setFormRole}
-                  disabled={selectedUser?.role === "OWNER"}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="STAFF">Staff</SelectItem>
-                    <SelectItem value="PARTNER">Partner</SelectItem>
-                    {selectedUser?.role === "OWNER" && (
-                      <SelectItem value="OWNER">Owner</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+            )}
+
+            {/* Personal Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b pb-2">
+                <UserIcon className="h-4 w-4" />
+                Personal Information
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">Full Name *</Label>
+                  <Input
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="Enter full name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">Username</Label>
+                  <Input value={formUsername} disabled className="bg-slate-50 text-slate-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Phone
+                  </Label>
+                  <Input
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="e.g., 0333-1234567"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                    <Mail className="h-3 w-3" /> Email
+                  </Label>
+                  <Input
+                    type="email"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    placeholder="e.g., user@example.com"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input
-                  value={formPhone}
-                  onChange={(e) => setFormPhone(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
-                />
+            {/* Security Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b pb-2">
+                <Shield className="h-4 w-4" />
+                Security & Role
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Leave blank to keep current"
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full w-10"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Min 8 characters. Only fills if you want to change it.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600">Role</Label>
+                  <Select
+                    value={formRole}
+                    onValueChange={setFormRole}
+                    disabled={selectedUser?.role === "OWNER" || selectedUser?.role === "TEACHER"}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="STAFF">Staff</SelectItem>
+                      <SelectItem value="PARTNER">Partner</SelectItem>
+                      <SelectItem value="TEACHER">Teacher</SelectItem>
+                      {selectedUser?.role === "OWNER" && (
+                        <SelectItem value="OWNER">Owner</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {selectedUser?.role === "TEACHER" && (
+                    <p className="text-[10px] text-slate-400">Teacher role is managed from Teachers page</p>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Permissions (only for non-OWNER) */}
+            {/* Permissions Section */}
             {selectedUser?.role !== "OWNER" && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="flex items-center gap-2">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                     <Shield className="h-4 w-4" />
                     Sidebar Permissions
-                  </Label>
+                  </h3>
                   <Button
                     type="button"
                     variant="outline"
@@ -866,11 +950,11 @@ export default function UserManagement() {
                     Select All
                   </Button>
                 </div>
-                <div className="border rounded-lg p-4 bg-muted/30">
+                <div className="border rounded-xl p-4 bg-slate-50/50">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {PERMISSION_GROUPS.map((group) => (
                       <div key={group.title} className="space-y-2">
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                           {group.title}
                         </h4>
                         {group.permissions.map((perm) => (
@@ -898,11 +982,14 @@ export default function UserManagement() {
                     ))}
                   </div>
                 </div>
+                <p className="text-[10px] text-slate-400">
+                  Permissions control which sidebar tabs this user can access
+                </p>
               </div>
             )}
 
             {selectedUser?.role === "OWNER" && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
                 <div className="flex items-center gap-2 text-yellow-800">
                   <Crown className="h-5 w-5" />
                   <span className="font-semibold">Owner Account</span>
@@ -914,7 +1001,7 @@ export default function UserManagement() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setEditModalOpen(false)}>
               Cancel
             </Button>

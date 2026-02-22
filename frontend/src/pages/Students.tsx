@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -42,7 +42,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { studentApi, sessionApi } from "@/lib/api";
+import { studentApi, sessionApi, classApi, timetableApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 // Import CRUD Modals
@@ -90,6 +90,12 @@ const Students = () => {
   // TASK 4: Peshawar Session Filter
   const [sessionFilter, setSessionFilter] = useState("all");
 
+  // Time Slot Filter
+  const [timeFilter, setTimeFilter] = useState("all");
+
+  // Teacher Filter
+  const [teacherFilter, setTeacherFilter] = useState("all");
+
   // Modal states
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
@@ -112,6 +118,49 @@ const Students = () => {
 
   const sessions = sessionsData?.data || [];
 
+  // Fetch all classes for dynamic class filter dropdown
+  const { data: classesData } = useQuery({
+    queryKey: ["classes-filter"],
+    queryFn: () => classApi.getAll(),
+  });
+
+  const classes = classesData?.data || [];
+
+  // Fetch timetable entries for time slot filter
+  const { data: timetableData } = useQuery({
+    queryKey: ["timetable-slots"],
+    queryFn: () => timetableApi.getAll(),
+    retry: 1,
+  });
+
+  // Fetch all teachers for teacher filter dropdown
+  const { data: teachersData } = useQuery({
+    queryKey: ["teachers-filter"],
+    queryFn: () => teacherApi.getAll(),
+  });
+
+  const teachers = teachersData?.data || [];
+
+  // Extract unique, sorted time slots from timetable entries
+  const timeSlots = useMemo(() => {
+    const entries = timetableData?.data || [];
+    const uniqueTimes = [...new Set(entries.map((e: any) => e.startTime).filter(Boolean))] as string[];
+    // Sort chronologically by converting to minutes
+    return uniqueTimes.sort((a, b) => {
+      const toMin = (t: string) => {
+        const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!m) return 0;
+        let h = parseInt(m[1]);
+        const min = parseInt(m[2]);
+        const p = m[3].toUpperCase();
+        if (p === "PM" && h !== 12) h += 12;
+        if (p === "AM" && h === 12) h = 0;
+        return h * 60 + min;
+      };
+      return toMin(a) - toMin(b);
+    });
+  }, [timetableData]);
+
   // Fetch students with React Query - include session filter
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [
@@ -121,6 +170,8 @@ const Students = () => {
         group: groupFilter,
         search: searchTerm,
         session: sessionFilter,
+        time: timeFilter,
+        teacher: teacherFilter,
       },
     ],
     queryFn: () =>
@@ -129,6 +180,8 @@ const Students = () => {
         group: groupFilter !== "all" ? groupFilter : undefined,
         search: searchTerm || undefined,
         sessionRef: sessionFilter !== "all" ? sessionFilter : undefined,
+        time: timeFilter !== "all" ? timeFilter : undefined,
+        teacher: teacherFilter !== "all" ? teacherFilter : undefined,
       }),
   });
 
@@ -363,17 +416,16 @@ const Students = () => {
           </Select>
 
           <Select value={classFilter} onValueChange={setClassFilter}>
-            <SelectTrigger className="w-[150px] bg-background">
+            <SelectTrigger className="w-[180px] bg-background">
               <SelectValue placeholder="All Classes" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Classes</SelectItem>
-              <SelectItem value="9th Grade">9th Grade</SelectItem>
-              <SelectItem value="10th Grade">10th Grade</SelectItem>
-              <SelectItem value="11th Grade">11th Grade</SelectItem>
-              <SelectItem value="12th Grade">12th Grade</SelectItem>
-              <SelectItem value="MDCAT Prep">MDCAT Prep</SelectItem>
-              <SelectItem value="ECAT Prep">ECAT Prep</SelectItem>
+              {classes.map((cls: any) => (
+                <SelectItem key={cls._id} value={cls.classTitle}>
+                  {cls.classTitle}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -385,6 +437,36 @@ const Students = () => {
               <SelectItem value="all">All Groups</SelectItem>
               <SelectItem value="Pre-Medical">Pre-Medical</SelectItem>
               <SelectItem value="Pre-Engineering">Pre-Engineering</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Time Slot Filter - Derived from Timetable entries */}
+          <Select value={timeFilter} onValueChange={setTimeFilter}>
+            <SelectTrigger className="w-[160px] bg-background">
+              <SelectValue placeholder="All Time Slots" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Time Slots</SelectItem>
+              {timeSlots.map((slot: string) => (
+                <SelectItem key={slot} value={slot}>
+                  {slot}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Teacher Filter - Dynamic from teachers */}
+          <Select value={teacherFilter} onValueChange={setTeacherFilter}>
+            <SelectTrigger className="w-[170px] bg-background">
+              <SelectValue placeholder="All Teachers" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Teachers</SelectItem>
+              {teachers.map((t: any) => (
+                <SelectItem key={t._id} value={t._id}>
+                  {t.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

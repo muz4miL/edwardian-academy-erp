@@ -456,9 +456,133 @@ function ExpenseReport({ onBack }: { onBack: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════
+// PARTNER SETTLEMENT REPORT
+// ═══════════════════════════════════════════════════════
+function PartnerSettlementReport({ onBack }: { onBack: () => void }) {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["report", "partner-settlements"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/finance/partner/settlements`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load settlements");
+      return res.json();
+    },
+  });
+
+  const settlements = data?.data || [];
+  const summary = data?.summary || [];
+
+  const completedTotal = summary.find((s: any) => s._id === "COMPLETED")?.total || 0;
+  const completedCount = summary.find((s: any) => s._id === "COMPLETED")?.count || 0;
+  const pendingTotal = summary.find((s: any) => s._id === "PENDING")?.total || 0;
+  const pendingCount = summary.find((s: any) => s._id === "PENDING")?.count || 0;
+  const grandTotal = settlements.reduce((s: number, st: any) => s + (st.amount || 0), 0);
+
+  // Group by partner
+  const byPartner: Record<string, { name: string; total: number; completed: number; pending: number; count: number }> = {};
+  settlements.forEach((s: any) => {
+    const pid = s.partnerId?._id || "unknown";
+    const name = s.partnerId?.fullName || s.partnerName || "Unknown";
+    if (!byPartner[pid]) byPartner[pid] = { name, total: 0, completed: 0, pending: 0, count: 0 };
+    byPartner[pid].total += s.amount || 0;
+    byPartner[pid].count++;
+    if (s.status === "COMPLETED") byPartner[pid].completed += s.amount || 0;
+    if (s.status === "PENDING") byPartner[pid].pending += s.amount || 0;
+  });
+
+  const handleCSV = () => {
+    const headers = ["Date", "Partner", "Amount (PKR)", "Method", "Status", "Notes", "Confirmed By"];
+    const rows = settlements.map((s: any) => [
+      formatDate(s.date || s.createdAt),
+      s.partnerId?.fullName || s.partnerName || "",
+      String(s.amount || 0),
+      s.method || "",
+      s.status || "",
+      s.notes || "",
+      s.recordedBy?.fullName || "",
+    ]);
+    downloadCSV("partner-settlement-report", headers, rows);
+    toast.success("CSV downloaded");
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back to Reports</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCcw className="mr-1.5 h-4 w-4" /> Refresh</Button>
+          <Button variant="outline" size="sm" onClick={handleCSV}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export CSV</Button>
+          <Button size="sm" onClick={() => printContent("Partner Settlement Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print / Save PDF</Button>
+        </div>
+      </div>
+
+      <div ref={printRef}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy - Partner Settlement Report</h1>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())} - {settlements.length} settlements</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Settled</p><p className="text-2xl font-bold text-emerald-700 mt-1">{formatCurrency(completedTotal)}</p><p className="text-xs text-muted-foreground mt-1">{completedCount} confirmed</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Pending</p><p className="text-2xl font-bold text-amber-700 mt-1">{formatCurrency(pendingTotal)}</p><p className="text-xs text-muted-foreground mt-1">{pendingCount} awaiting confirmation</p></CardContent></Card>
+          <Card className="border-l-4 border-blue-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold text-blue-700 mt-1">{formatCurrency(grandTotal)}</p></CardContent></Card>
+          <Card className="border-l-4 border-violet-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Partners</p><p className="text-2xl font-bold text-violet-700 mt-1">{Object.keys(byPartner).length}</p></CardContent></Card>
+        </div>
+
+        {Object.keys(byPartner).length > 0 && (
+          <Card className="mt-6">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-violet-600" />Partner Breakdown</CardTitle></CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Partner</TableHead><TableHead className="text-center">Settlements</TableHead><TableHead className="text-right">Confirmed</TableHead><TableHead className="text-right">Pending</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {Object.entries(byPartner).sort((a, b) => b[1].total - a[1].total).map(([id, info]) => (
+                    <TableRow key={id}>
+                      <TableCell className="font-medium">{info.name}</TableCell>
+                      <TableCell className="text-center"><Badge variant="outline">{info.count}</Badge></TableCell>
+                      <TableCell className="text-right font-medium text-emerald-700">{formatCurrency(info.completed)}</TableCell>
+                      <TableCell className="text-right font-medium text-amber-600">{formatCurrency(info.pending)}</TableCell>
+                      <TableCell className="text-right font-bold">{formatCurrency(info.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="mt-6">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Receipt className="h-5 w-5 text-emerald-600" />All Settlements</CardTitle></CardHeader>
+          <CardContent className="p-0"><div className="max-h-[500px] overflow-auto">
+            <Table>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Partner</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {settlements.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No settlements recorded yet</TableCell></TableRow>
+                ) : settlements.map((s: any) => (
+                  <TableRow key={s._id}>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(s.date || s.createdAt)}</TableCell>
+                    <TableCell className="font-medium">{s.partnerId?.fullName || s.partnerName || "Unknown"}</TableCell>
+                    <TableCell><Badge variant="outline">{s.method || "CASH"}</Badge></TableCell>
+                    <TableCell><Badge variant={s.status === "COMPLETED" ? "default" : s.status === "PENDING" ? "secondary" : "destructive"}>{s.status}</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{s.notes || "-"}</TableCell>
+                    <TableCell className="text-right font-bold text-emerald-700">{formatCurrency(s.amount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div></CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // MAIN REPORTS PAGE
 // ═══════════════════════════════════════════════════════
-type ActiveReport = null | "financial" | "teachers" | "students" | "expenses";
+type ActiveReport = null | "financial" | "teachers" | "students" | "expenses" | "settlements";
 
 export default function Reports() {
   const [activeReport, setActiveReport] = useState<ActiveReport>(null);
@@ -469,14 +593,12 @@ export default function Reports() {
   if (activeReport === "teachers") return <DashboardLayout title="Teacher Payment Report"><TeacherPaymentReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
   if (activeReport === "students") return <DashboardLayout title="Student Report"><StudentReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
   if (activeReport === "expenses") return <DashboardLayout title="Expense Report"><ExpenseReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
+  if (activeReport === "settlements") return <DashboardLayout title="Partner Settlement Report"><PartnerSettlementReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
 
   const reportCards = [
     { title: "Financial Report", description: "Revenue vs expenses breakdown by category with net profit, CSV export, and printable format", icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", action: () => setShowPeriodPicker(true) },
     { title: "Teacher Payment Report", description: "All teacher salaries, wallet credits, payouts, and outstanding balances", icon: GraduationCap, color: "text-blue-600", bgColor: "bg-blue-100", action: () => setActiveReport("teachers") },
     { title: "Expense Report", description: "Complete expense log with category breakdown and vendor details", icon: Receipt, color: "text-red-600", bgColor: "bg-red-100", action: () => setActiveReport("expenses") },
-    { title: "Student Report", description: "Enrollment stats, fee amounts, class distribution, and contact info", icon: Users, color: "text-violet-600", bgColor: "bg-violet-100", action: () => setActiveReport("students") },
-    { title: "Attendance Report", description: "Student gate scan attendance analytics — view in Gate Scanner", icon: Calendar, color: "text-amber-600", bgColor: "bg-amber-100", action: () => { window.location.href = "/gatekeeper"; } },
-    { title: "Asset Registry Report", description: "Investment assets, depreciation tracking, and current valuations", icon: Package, color: "text-teal-600", bgColor: "bg-teal-100", action: () => { window.location.href = "/finance?tab=assets"; } },
   ];
 
   return (

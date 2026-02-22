@@ -3,6 +3,8 @@ const router = express.Router();
 const Expense = require("../models/Expense");
 const Notification = require("../models/Notification");
 const Transaction = require("../models/Transaction");
+const Configuration = require("../models/Configuration");
+const User = require("../models/User");
 const { protect } = require("../middleware/authMiddleware");
 
 // @route   GET /api/expenses
@@ -83,7 +85,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // @route   POST /api/expenses
-// @desc    Create new expense (single-owner model — no partner splits)
+// @desc    Create new expense with automatic partner split
 // @access  Protected
 router.post("/", protect, async (req, res) => {
   try {
@@ -108,6 +110,32 @@ router.post("/", protect, async (req, res) => {
 
     const parsedAmount = parseFloat(amount);
 
+    // --- Partner Expense Split Logic ---
+    // Read configuration for split percentages and partner IDs
+    let config = await Configuration.findOne();
+    const splitRatio = config?.expenseSplit || { waqar: 40, zahid: 30, saud: 30 };
+    const partnerIds = config?.partnerIds || {};
+
+    // Build shares array with each partner's calculated debt
+    const partnerKeys = ["waqar", "zahid", "saud"];
+    const partnerLabels = { waqar: "Sir Waqar", zahid: "Dr. Zahid", saud: "Sir Saud" };
+    const shares = [];
+
+    for (const key of partnerKeys) {
+      const pct = splitRatio[key] || 0;
+      if (pct <= 0) continue;
+      const shareAmount = Math.round((parsedAmount * pct) / 100);
+      shares.push({
+        partner: partnerIds[key] || null,
+        partnerName: partnerLabels[key],
+        partnerKey: key,
+        percentage: pct,
+        amount: shareAmount,
+        status: "UNPAID",
+        repaymentStatus: "PENDING",
+      });
+    }
+
     const expense = await Expense.create({
       title,
       category,
@@ -120,23 +148,36 @@ router.post("/", protect, async (req, res) => {
       status: "pending",
       paidByType: "ACADEMY_CASH",
       paidBy: req.user._id,
+      splitRatio,
+      shares,
+      hasPartnerDebt: shares.length > 0,
     });
 
+    // Create main EXPENSE transaction
     await Transaction.create({
       type: "EXPENSE",
       category,
       amount: parsedAmount,
-      description: `Expense: ${title}${description ? ` — ${description}` : ""}`,
+      description: `Expense: ${title}${description ? ` - ${description}` : ""}`,
       date: expense.expenseDate || new Date(),
       collectedBy: req.user._id,
       status: "VERIFIED",
     });
 
-    // Optional: notify owner
+    // Update each partner's expenseDebt on User document
+    for (const share of shares) {
+      if (share.partner) {
+        await User.findByIdAndUpdate(share.partner, {
+          $inc: { expenseDebt: share.amount, debtToOwner: share.amount },
+        });
+      }
+    }
+
+    // Notify owner about the expense
     try {
       await Notification.create({
         recipient: req.user._id,
-        message: `Expense recorded: "${title}" — PKR ${parsedAmount.toLocaleString()}`,
+        message: `Expense recorded: "${title}" - PKR ${parsedAmount.toLocaleString()} (split: ${shares.map(s => `${s.partnerName} ${s.percentage}%`).join(", ")})`,
         type: "FINANCE",
       });
     } catch (_) {
@@ -145,7 +186,7 @@ router.post("/", protect, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Expense created successfully",
+      message: "Expense created with partner split",
       data: expense,
     });
   } catch (error) {

@@ -49,6 +49,11 @@ const TeacherSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Store plain password for admin display (same pattern as Student model)
+    plainPassword: {
+      type: String,
+      trim: true,
+    },
 
     // Teacher Balance (Earnings Wallet)
     balance: {

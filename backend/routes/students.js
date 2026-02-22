@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const Student = require("../models/Student");
+const Timetable = require("../models/Timetable");
+const Class = require("../models/Class");
 const { protect } = require("../middleware/authMiddleware");
 const { handlePhotoUpload } = require("../middleware/upload");
 const {
@@ -144,37 +146,82 @@ router.get("/:id/placeholder-avatar", async (req, res) => {
 // @access  Public
 router.get("/", async (req, res) => {
   try {
-    const { class: className, group, status, search, sessionRef } = req.query;
+    const { class: className, group, status, search, sessionRef, time, teacher } = req.query;
 
-    // Build query object
-    let query = {};
+    // Build query using $and array for clean composability
+    const conditions = [];
 
     if (className && className !== "all") {
-      // Support partial class name matching (e.g., "9th" matches "9th Grade - Medical")
-      query.class = { $regex: className, $options: "i" };
+      conditions.push({ class: { $regex: className, $options: "i" } });
     }
 
     if (group && group !== "all") {
-      query.group = group;
+      conditions.push({ group });
     }
 
     if (status) {
-      query.status = status;
+      conditions.push({ status });
     }
 
     if (search) {
-      query.$or = [
-        { studentName: { $regex: search, $options: "i" } },
-        { fatherName: { $regex: search, $options: "i" } },
-        { studentId: { $regex: search, $options: "i" } },
-      ];
+      conditions.push({
+        $or: [
+          { studentName: { $regex: search, $options: "i" } },
+          { fatherName: { $regex: search, $options: "i" } },
+          { studentId: { $regex: search, $options: "i" } },
+        ],
+      });
     }
 
-    // TASK 4: Peshawar Session Filter
     if (sessionRef && sessionRef !== "all") {
-      query.sessionRef = sessionRef;
+      conditions.push({ sessionRef });
     }
 
+    // Time-based filter: Find students whose classes have timetable entries at this time
+    if (time && time !== "all") {
+      const timetableEntries = await Timetable.find({
+        startTime: time,
+        status: "active",
+      });
+
+      if (timetableEntries.length === 0) {
+        return res.json({ success: true, count: 0, data: [] });
+      }
+
+      const classIds = [...new Set(timetableEntries.map((t) => t.classId))];
+      const matchingClasses = await Class.find({ _id: { $in: classIds } });
+      const classNames = matchingClasses.map((c) => c.classTitle);
+
+      conditions.push({
+        $or: [
+          { class: { $in: classNames } },
+          { classRef: { $in: classIds } },
+        ],
+      });
+    }
+
+    // Teacher filter: Find students in classes where this teacher teaches
+    if (teacher && teacher !== "all") {
+      const teacherClasses = await Class.find({
+        "subjectTeachers.teacherId": teacher,
+      });
+
+      if (teacherClasses.length === 0) {
+        return res.json({ success: true, count: 0, data: [] });
+      }
+
+      const teacherClassIds = teacherClasses.map((c) => c._id);
+      const teacherClassNames = teacherClasses.map((c) => c.classTitle);
+
+      conditions.push({
+        $or: [
+          { class: { $in: teacherClassNames } },
+          { classRef: { $in: teacherClassIds } },
+        ],
+      });
+    }
+
+    const query = conditions.length > 0 ? { $and: conditions } : {};
     const students = await Student.find(query).sort({ createdAt: -1 });
 
     res.json({

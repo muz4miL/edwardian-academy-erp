@@ -202,12 +202,14 @@ export const settingsApi = {
 // Student API Endpoints
 export const studentApi = {
     // Get all students
-    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string }) => {
+    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string; time?: string; teacher?: string }) => {
         const queryParams = new URLSearchParams();
         if (filters?.class) queryParams.append('class', filters.class);
         if (filters?.group) queryParams.append('group', filters.group);
         if (filters?.search) queryParams.append('search', filters.search);
         if (filters?.sessionRef) queryParams.append('sessionRef', filters.sessionRef);
+        if (filters?.time) queryParams.append('time', filters.time);
+        if (filters?.teacher) queryParams.append('teacher', filters.teacher);
 
         const url = `${API_BASE_URL}/students${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await fetch(url);

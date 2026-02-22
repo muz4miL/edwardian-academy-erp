@@ -326,6 +326,7 @@ const Teachers = () => {
               <TableRow className="bg-secondary hover:bg-secondary">
                 <TableHead className="font-semibold">Teacher</TableHead>
                 <TableHead className="font-semibold">Subject</TableHead>
+                <TableHead className="font-semibold">Role</TableHead>
                 <TableHead className="font-semibold">Contact</TableHead>
                 <TableHead className="font-semibold">Joining Date</TableHead>
                 <TableHead className="font-semibold">Compensation</TableHead>
@@ -368,6 +369,22 @@ const Teachers = () => {
                     <span className="rounded-full bg-primary-light px-3 py-1 text-sm font-medium text-primary">
                       {capitalizeSubject(teacher.subject)}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const userRole = teacher.userId?.role || 'TEACHER';
+                      const roleStyles: Record<string, string> = {
+                        OWNER: 'bg-amber-100 text-amber-700 border-amber-200',
+                        PARTNER: 'bg-purple-100 text-purple-700 border-purple-200',
+                        TEACHER: 'bg-blue-100 text-blue-700 border-blue-200',
+                        STAFF: 'bg-gray-100 text-gray-700 border-gray-200',
+                      };
+                      return (
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${roleStyles[userRole] || roleStyles.TEACHER}`}>
+                          {userRole.charAt(0) + userRole.slice(1).toLowerCase()}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">

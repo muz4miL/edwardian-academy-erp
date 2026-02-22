@@ -104,7 +104,7 @@ router.get(
 // @route   POST /api/finance/close-day
 // @desc    Close the day and lock floating cash into verified balance
 // @access  Protected (OWNER, STAFF)
-router.post("/close-day", protect, restrictTo("OWNER", "STAFF"), closeDay);
+router.post("/close-day", protect, restrictTo("OWNER", "STAFF", "PARTNER"), closeDay);
 
 // @route   POST /api/finance/record-transaction
 // @desc    Record a new income or expense transaction
@@ -162,7 +162,311 @@ router.get(
 router.get("/payout-history/:userId", protect, getPayoutHistory);
 
 // ------------------------------------------------------------------
-// FINANCE RECORD CRUD (FinanceRecord model — used by frontend)
+// PARTNER FINANCIAL ENDPOINTS
+// ------------------------------------------------------------------
+
+const Expense = require("../models/Expense");
+const Transaction = require("../models/Transaction");
+const Notification = require("../models/Notification");
+const Settlement = require("../models/Settlement");
+const User = require("../models/User");
+const Configuration = require("../models/Configuration");
+
+// @route   GET /api/finance/partner/dashboard
+// @desc    Partner-specific financial dashboard stats
+// @access  Protected (PARTNER, OWNER)
+router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    // Determine partner key from Configuration
+    const config = await Configuration.findOne();
+    let partnerKey = null;
+    if (config?.partnerIds) {
+      for (const [key, id] of Object.entries(config.partnerIds)) {
+        if (id && id.toString() === userId.toString()) {
+          partnerKey = key;
+          break;
+        }
+      }
+    }
+
+    // Get expense shares for this partner
+    const unpaidExpenses = await Expense.find({
+      "shares.partner": userId,
+      "shares.status": "UNPAID",
+    }).sort({ expenseDate: -1 });
+
+    let totalDebt = 0;
+    const debtDetails = [];
+    unpaidExpenses.forEach(exp => {
+      const myShare = exp.shares.find(s => s.partner?.toString() === userId.toString() && s.status === "UNPAID");
+      if (myShare) {
+        totalDebt += myShare.amount;
+        debtDetails.push({
+          expenseId: exp._id,
+          title: exp.title,
+          category: exp.category,
+          totalAmount: exp.amount,
+          myShare: myShare.amount,
+          myPercentage: myShare.percentage,
+          expenseDate: exp.expenseDate,
+          status: myShare.repaymentStatus,
+        });
+      }
+    });
+
+    // Get settlements (payments partner has made)
+    const settlements = await Settlement.find({ partnerId: userId, status: "COMPLETED" });
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+
+    res.json({
+      success: true,
+      data: {
+        partnerKey,
+        partnerName: user?.fullName || "Partner",
+        expenseDebt: user?.expenseDebt || 0,
+        debtToOwner: user?.debtToOwner || 0,
+        totalSettled,
+        floatingCash: user?.walletBalance?.floating || 0,
+        verifiedCash: user?.walletBalance?.verified || 0,
+        debtDetails,
+        splitPercentage: partnerKey ? (config?.expenseSplit?.[partnerKey] || 0) : 0,
+      },
+    });
+  } catch (error) {
+    console.error("Partner dashboard error:", error);
+    res.status(500).json({ success: false, message: "Error fetching partner dashboard", error: error.message });
+  }
+});
+
+// @route   GET /api/finance/partner/ledger
+// @desc    Get partner's complete financial ledger (their transactions + expense shares)
+// @access  Protected (PARTNER, OWNER)
+router.get("/partner/ledger", protect, restrictTo("PARTNER", "OWNER"), async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // Get transactions collected by or related to this partner
+    const transactions = await Transaction.find({
+      $or: [
+        { collectedBy: userId },
+        { recipientPartner: userId },
+      ],
+    }).sort({ date: -1 }).limit(200);
+
+    // Get expense shares for this partner
+    const expenses = await Expense.find({
+      "shares.partner": userId,
+    }).sort({ expenseDate: -1 }).limit(200);
+
+    // Build unified ledger
+    const ledger = [];
+
+    transactions.forEach(t => {
+      ledger.push({
+        _id: t._id,
+        date: t.date || t.createdAt,
+        type: t.type,
+        category: t.category,
+        description: t.description,
+        amount: t.amount,
+        status: t.status,
+        source: "transaction",
+      });
+    });
+
+    expenses.forEach(exp => {
+      const myShare = exp.shares.find(s => s.partner?.toString() === userId.toString());
+      if (myShare) {
+        ledger.push({
+          _id: exp._id,
+          date: exp.expenseDate,
+          type: "EXPENSE_SHARE",
+          category: exp.category,
+          description: `${exp.title} (${myShare.percentage}% share)`,
+          amount: myShare.amount,
+          status: myShare.status,
+          repaymentStatus: myShare.repaymentStatus,
+          source: "expense_share",
+        });
+      }
+    });
+
+    // Get settlements
+    const settlements = await Settlement.find({ partnerId: userId }).sort({ date: -1 });
+    settlements.forEach(s => {
+      ledger.push({
+        _id: s._id,
+        date: s.date,
+        type: "SETTLEMENT",
+        category: "Expense Settlement",
+        description: s.notes || "Debt repayment to owner",
+        amount: s.amount,
+        status: s.status,
+        source: "settlement",
+      });
+    });
+
+    // Sort by date descending
+    ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    res.json({ success: true, data: ledger });
+  } catch (error) {
+    console.error("Partner ledger error:", error);
+    res.status(500).json({ success: false, message: "Error fetching partner ledger", error: error.message });
+  }
+});
+
+// @route   POST /api/finance/partner/request-payment
+// @desc    Partner requests payment (creates settlement + notifies owner)
+// @access  Protected (PARTNER)
+router.post("/partner/request-payment", protect, restrictTo("PARTNER"), async (req, res) => {
+  try {
+    const { amount, notes } = req.body;
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Please enter a valid payment amount" });
+    }
+
+    const currentDebt = user?.expenseDebt || 0;
+    if (amount > currentDebt) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment amount (PKR ${amount}) exceeds your outstanding debt (PKR ${currentDebt})`,
+      });
+    }
+
+    // Create settlement record
+    const settlement = await Settlement.create({
+      partnerId: userId,
+      partnerName: user.fullName,
+      amount: parseFloat(amount),
+      method: "CASH",
+      recordedBy: userId,
+      notes: notes || `Payment request by ${user.fullName}`,
+      status: "PENDING",
+    });
+
+    // Create a DEBT transaction to track this
+    await Transaction.create({
+      type: "DEBT",
+      category: "ExpenseShare",
+      stream: "PARTNER_EXPENSE_DEBT",
+      amount: parseFloat(amount),
+      description: `Expense debt payment by ${user.fullName}`,
+      date: new Date(),
+      collectedBy: userId,
+      status: "FLOATING",
+    });
+
+    // Reduce the partner's expense debt
+    await User.findByIdAndUpdate(userId, {
+      $inc: { expenseDebt: -parseFloat(amount), debtToOwner: -parseFloat(amount) },
+    });
+
+    // Notify all OWNER users
+    const owners = await User.find({ role: "OWNER", isActive: true });
+    for (const owner of owners) {
+      await Notification.create({
+        recipient: owner._id,
+        recipientRole: "OWNER",
+        message: `${user.fullName} has submitted a debt payment of PKR ${parseFloat(amount).toLocaleString()}. Settlement ID: ${settlement._id}`,
+        type: "FINANCE",
+        relatedId: settlement._id.toString(),
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Payment of PKR ${parseFloat(amount).toLocaleString()} recorded successfully. Owner has been notified.`,
+      data: settlement,
+    });
+  } catch (error) {
+    console.error("Partner payment request error:", error);
+    res.status(500).json({ success: false, message: "Error processing payment request", error: error.message });
+  }
+});
+
+// @route   GET /api/finance/partner/settlements
+// @desc    Get all settlements for the current partner (or all for OWNER)
+// @access  Protected (PARTNER, OWNER)
+router.get("/partner/settlements", protect, restrictTo("PARTNER", "OWNER"), async (req, res) => {
+  try {
+    let query = {};
+    if (req.user.role === "PARTNER") {
+      query.partnerId = req.user._id;
+    }
+    // OWNER sees all settlements
+
+    const settlements = await Settlement.find(query)
+      .populate("partnerId", "fullName username")
+      .populate("recordedBy", "fullName")
+      .sort({ date: -1 });
+
+    // Also get summary stats
+    const summary = await Settlement.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: "$status",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    res.json({ success: true, data: settlements, summary });
+  } catch (error) {
+    console.error("Settlements fetch error:", error);
+    res.status(500).json({ success: false, message: "Error fetching settlements", error: error.message });
+  }
+});
+
+// @route   PATCH /api/finance/partner/settlements/:id/confirm
+// @desc    Owner confirms a pending settlement
+// @access  Protected (OWNER)
+router.patch("/partner/settlements/:id/confirm", protect, restrictTo("OWNER"), async (req, res) => {
+  try {
+    const settlement = await Settlement.findById(req.params.id);
+    if (!settlement) {
+      return res.status(404).json({ success: false, message: "Settlement not found" });
+    }
+    if (settlement.status !== "PENDING") {
+      return res.status(400).json({ success: false, message: "Settlement is not in PENDING status" });
+    }
+
+    settlement.status = "COMPLETED";
+    settlement.recordedBy = req.user._id;
+    await settlement.save();
+
+    // Mark the DEBT transaction as VERIFIED
+    await Transaction.updateOne(
+      { type: "DEBT", category: "ExpenseShare", collectedBy: settlement.partnerId, status: "FLOATING" },
+      { $set: { status: "VERIFIED" } }
+    );
+
+    // Notify the partner
+    await Notification.create({
+      recipient: settlement.partnerId,
+      recipientRole: "PARTNER",
+      message: `Your payment of PKR ${settlement.amount.toLocaleString()} has been confirmed by ${req.user.fullName}.`,
+      type: "FINANCE",
+      relatedId: settlement._id.toString(),
+    });
+
+    res.json({ success: true, message: "Settlement confirmed", data: settlement });
+  } catch (error) {
+    console.error("Settlement confirm error:", error);
+    res.status(500).json({ success: false, message: "Error confirming settlement", error: error.message });
+  }
+});
+
+// ------------------------------------------------------------------
+// FINANCE RECORD CRUD (FinanceRecord model - used by frontend)
 // ------------------------------------------------------------------
 
 // @route   GET /api/finance

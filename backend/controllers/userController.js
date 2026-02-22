@@ -44,10 +44,26 @@ exports.getAllUsers = async (req, res) => {
 
     const users = await User.find().select("-password").sort({ createdAt: -1 });
 
+    // For TEACHER users, attach their plainPassword from Teacher model
+    const Teacher = require("../models/Teacher");
+    const usersData = await Promise.all(
+      users.map(async (u) => {
+        const userData = u.toObject();
+        if (u.role === "TEACHER" && u.teacherId) {
+          const teacher = await Teacher.findById(u.teacherId).select("plainPassword username");
+          if (teacher) {
+            userData.teacherPassword = teacher.plainPassword || null;
+            userData.teacherUsername = teacher.username || null;
+          }
+        }
+        return userData;
+      })
+    );
+
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users,
+      count: usersData.length,
+      data: usersData,
     });
   } catch (error) {
     console.error("❌ Error fetching users:", error);
@@ -227,6 +243,12 @@ exports.updateUser = async (req, res) => {
     // Update password if provided
     if (password && password.length >= 8) {
       user.password = password; // Will be hashed by pre-save hook
+
+      // Sync plaintext password to Teacher model for admin display
+      if (user.teacherId) {
+        const Teacher = require("../models/Teacher");
+        await Teacher.findByIdAndUpdate(user.teacherId, { plainPassword: password });
+      }
     }
 
     await user.save();

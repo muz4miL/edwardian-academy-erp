@@ -376,7 +376,7 @@ export interface StudentPDFData {
   discountAmount?: number;
   feeStatus: string;
   admissionDate?: string | Date;
-  subjects?: Array<{ name: string; fee: number }>;
+  subjects?: Array<{ name: string; fee: number; teacherName?: string }>;
 }
 
 export interface ReceiptPDFConfig {
@@ -553,7 +553,9 @@ export const ReceiptPDF = ({
                     {student.subjects.map((s, idx) => (
                       <View key={idx} style={styles.subjectItem}>
                         <Text style={styles.subjectBullet}>•</Text>
-                        <Text style={styles.subjectName}>{s.name}</Text>
+                        <Text style={styles.subjectName}>
+                          {s.name}{s.teacherName ? ` (${s.teacherName})` : ''}
+                        </Text>
                       </View>
                     ))}
                   </View>

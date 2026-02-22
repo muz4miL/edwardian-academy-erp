@@ -233,7 +233,7 @@ userSchema.methods.getPublicProfile = function () {
     permissions = ["dashboard", "lectures"];
   }
 
-  return {
+  const profile = {
     userId: this.userId,
     username: this.username,
     fullName: this.fullName,
@@ -249,6 +249,13 @@ userSchema.methods.getPublicProfile = function () {
     lastLogin: this.lastLogin,
     profileImage: this.profileImage,
   };
+
+  // Include teacherId for TEACHER role so dashboard can fetch teacher profile
+  if (this.role === "TEACHER" && this.teacherId) {
+    profile.teacherId = this.teacherId;
+  }
+
+  return profile;
 };
 
 module.exports = mongoose.model("User", userSchema);
