@@ -188,8 +188,20 @@ exports.createTeacher = async (req, res) => {
     }
 
     // Generate unique userId for the User model
+    // Find the highest existing TCH number to avoid collisions when users have been deleted
+    const lastTchUser = await User.findOne(
+      { userId: /^TCH\d+$/ },
+      { userId: 1 },
+    ).sort({ userId: -1 });
+    let nextTchNum = 1;
+    if (lastTchUser) {
+      const lastNum = parseInt(lastTchUser.userId.replace("TCH", ""), 10);
+      nextTchNum = lastNum + 1;
+    }
+    // Also check total count as a safety floor
     const userCount = await User.countDocuments();
-    const userId = `TCH${String(userCount + 1).padStart(4, "0")}`;
+    nextTchNum = Math.max(nextTchNum, userCount + 1);
+    const userId = `TCH${String(nextTchNum).padStart(4, "0")}`;
 
     console.log("🔑 Generated credentials:", {
       username,

@@ -1,3 +1,72 @@
+import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  AlertCircle,
+  Wallet,
+  DollarSign,
+  FileText,
+  HandCoins,
+  ClipboardCheck,
+  Loader2,
+  CreditCard,
+  CheckCircle2,
+  Clock,
+  BookOpen,
+  CalendarDays,
+  MapPin,
+  PieChart,
+  ArrowUpRight,
+  ArrowDownRight,
+  TrendingDown,
+  Briefcase,
+  Lock,
+  Camera,
+} from "lucide-react";
+
+// API Base URL - Auto-detect Codespaces
+const getApiBaseUrl = () => {
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname.includes(".app.github.dev")
+  ) {
+    const hostname = window.location.hostname;
+    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, "");
+    return `https://${codespaceBase}-5000.app.github.dev/api`;
+  }
+  return "http://localhost:5000/api";
+};
+const API_BASE_URL = getApiBaseUrl();
+
 // ========================================
 //  PARTNER DASHBOARD COMPONENT
 // ========================================
@@ -707,3 +776,5 @@ const PartnerDashboard = () => {
     </DashboardLayout>
   );
 };
+
+export default PartnerDashboard;
