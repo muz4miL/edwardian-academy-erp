@@ -173,23 +173,35 @@ const User = require("../models/User");
 const Configuration = require("../models/Configuration");
 
 // @route   GET /api/finance/partner/dashboard
-// @desc    Partner-specific financial dashboard stats
+// @desc    Partner-specific financial dashboard stats (includes teacher credits)
 // @access  Protected (PARTNER, OWNER)
 router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async (req, res) => {
   try {
     const userId = req.user._id;
     const user = await User.findById(userId);
+    const Teacher = require("../models/Teacher");
+    const TeacherPayment = require("../models/TeacherPayment");
 
-    // Determine partner key from Configuration
+    // Determine partner's split percentage from config
     const config = await Configuration.findOne();
-    let partnerKey = null;
-    if (config?.partnerIds) {
-      for (const [key, id] of Object.entries(config.partnerIds)) {
-        if (id && id.toString() === userId.toString()) {
-          partnerKey = key;
-          break;
+    let splitPercentage = 0;
+
+    // Check dynamic expenseShares first
+    if (config?.expenseShares && config.expenseShares.length > 0) {
+      const myShare = config.expenseShares.find(s => s.userId?.toString() === userId.toString());
+      if (myShare) splitPercentage = myShare.percentage || 0;
+    } else {
+      // Legacy: check partnerIds mapping
+      let partnerKey = null;
+      if (config?.partnerIds) {
+        for (const [key, id] of Object.entries(config.partnerIds)) {
+          if (id && id.toString() === userId.toString()) {
+            partnerKey = key;
+            break;
+          }
         }
       }
+      if (partnerKey) splitPercentage = config?.expenseSplit?.[partnerKey] || 0;
     }
 
     // Get expense shares for this partner
@@ -221,10 +233,35 @@ router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async 
     const settlements = await Settlement.find({ partnerId: userId, status: "COMPLETED" });
     const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
 
+    // Teacher credit data (if partner is also a teacher)
+    let teacherCredits = null;
+    if (user?.teacherId) {
+      const teacher = await Teacher.findById(user.teacherId).select("name subject balance totalPaid compensation");
+      if (teacher) {
+        const balance = teacher.balance || {};
+        teacherCredits = {
+          teacherId: teacher._id,
+          subject: teacher.subject,
+          floating: balance.floating || 0,
+          verified: balance.verified || 0,
+          pending: balance.pending || 0,
+          totalCredits: (balance.floating || 0) + (balance.verified || 0) + (balance.pending || 0),
+          totalPaid: teacher.totalPaid || 0,
+          compensationType: teacher.compensation?.type || "percentage",
+        };
+
+        // Get recent payout history
+        const payouts = await TeacherPayment.find({ teacherId: teacher._id })
+          .sort({ paymentDate: -1 })
+          .limit(20)
+          .lean();
+        teacherCredits.payoutHistory = payouts;
+      }
+    }
+
     res.json({
       success: true,
       data: {
-        partnerKey,
         partnerName: user?.fullName || "Partner",
         expenseDebt: user?.expenseDebt || 0,
         debtToOwner: user?.debtToOwner || 0,
@@ -232,7 +269,8 @@ router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async 
         floatingCash: user?.walletBalance?.floating || 0,
         verifiedCash: user?.walletBalance?.verified || 0,
         debtDetails,
-        splitPercentage: partnerKey ? (config?.expenseSplit?.[partnerKey] || 0) : 0,
+        splitPercentage,
+        teacherCredits,
       },
     });
   } catch (error) {
@@ -388,6 +426,245 @@ router.post("/partner/request-payment", protect, restrictTo("PARTNER"), async (r
   } catch (error) {
     console.error("Partner payment request error:", error);
     res.status(500).json({ success: false, message: "Error processing payment request", error: error.message });
+  }
+});
+
+// @route   GET /api/finance/partner/all-debts
+// @desc    Get all partners' outstanding debts (Owner view)
+// @access  Protected (OWNER)
+router.get("/partner/all-debts", protect, restrictTo("OWNER"), async (req, res) => {
+  try {
+    const config = await Configuration.findOne();
+
+    // Build partners list from dynamic expenseShares or legacy partnerIds
+    const partnerEntries = [];
+    if (config?.expenseShares && config.expenseShares.length > 0) {
+      for (const share of config.expenseShares) {
+        if (!share.userId) continue;
+        partnerEntries.push({
+          userId: share.userId,
+          fullName: share.fullName,
+          splitPercentage: share.percentage || 0,
+        });
+      }
+    } else {
+      // Legacy fallback
+      const partnerIds = config?.partnerIds || {};
+      const expenseSplit = config?.expenseSplit || {};
+      for (const [key, userId] of Object.entries(partnerIds)) {
+        if (!userId) continue;
+        const user = await User.findById(userId).select("fullName");
+        partnerEntries.push({
+          userId,
+          fullName: user?.fullName || key,
+          splitPercentage: expenseSplit[key] || 0,
+        });
+      }
+    }
+
+    const partnerDebts = [];
+    for (const entry of partnerEntries) {
+      const user = await User.findById(entry.userId).select("fullName role expenseDebt debtToOwner teacherId");
+      if (!user) continue;
+
+      // Get unpaid expense shares
+      const unpaidExpenses = await Expense.find({
+        "shares.partner": entry.userId,
+        "shares.status": "UNPAID",
+      }).sort({ expenseDate: -1 });
+
+      let totalDebt = 0;
+      const debtDetails = [];
+      unpaidExpenses.forEach(exp => {
+        const myShare = exp.shares.find(s => s.partner?.toString() === entry.userId.toString() && s.status === "UNPAID");
+        if (myShare) {
+          totalDebt += myShare.amount;
+          debtDetails.push({
+            expenseId: exp._id,
+            title: exp.title,
+            category: exp.category,
+            totalAmount: exp.amount,
+            myShare: myShare.amount,
+            myPercentage: myShare.percentage,
+            expenseDate: exp.expenseDate,
+            status: myShare.repaymentStatus,
+          });
+        }
+      });
+
+      // Get settlement history
+      const settlements = await Settlement.find({ partnerId: entry.userId, status: "COMPLETED" });
+      const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
+
+      const pendingSettlements = await Settlement.find({ partnerId: entry.userId, status: "PENDING" });
+      const totalPending = pendingSettlements.reduce((sum, s) => sum + s.amount, 0);
+
+      partnerDebts.push({
+        userId: entry.userId,
+        fullName: user.fullName,
+        role: user.role,
+        splitPercentage: entry.splitPercentage,
+        expenseDebt: user.expenseDebt || 0,
+        debtToOwner: user.debtToOwner || 0,
+        totalSettled,
+        totalPending,
+        debtDetails,
+      });
+    }
+
+    res.json({ success: true, data: partnerDebts });
+  } catch (error) {
+    console.error("All partner debts error:", error);
+    res.status(500).json({ success: false, message: "Error fetching partner debts", error: error.message });
+  }
+});
+
+// @route   POST /api/finance/partner/record-settlement
+// @desc    Owner records a settlement (partner paid their share)
+// @access  Protected (OWNER)
+router.post("/partner/record-settlement", protect, restrictTo("OWNER"), async (req, res) => {
+  try {
+    const { partnerId, amount, notes, method } = req.body;
+
+    if (!partnerId || !amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Partner ID and valid amount are required" });
+    }
+
+    const partner = await User.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const currentDebt = partner.expenseDebt || 0;
+    if (amount > currentDebt) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment amount (PKR ${amount}) exceeds partner's outstanding debt (PKR ${currentDebt})`,
+      });
+    }
+
+    // Create settlement record (COMPLETED since owner is recording it directly)
+    const settlement = await Settlement.create({
+      partnerId: partnerId,
+      partnerName: partner.fullName,
+      amount: parseFloat(amount),
+      method: method || "CASH",
+      recordedBy: req.user._id,
+      notes: notes || `Settlement recorded by ${req.user.fullName}`,
+      status: "COMPLETED",
+    });
+
+    // Reduce the partner's expense debt
+    await User.findByIdAndUpdate(partnerId, {
+      $inc: { expenseDebt: -parseFloat(amount), debtToOwner: -parseFloat(amount) },
+    });
+
+    // Notify the partner
+    await Notification.create({
+      recipient: partnerId,
+      recipientRole: partner.role,
+      message: `Settlement of PKR ${parseFloat(amount).toLocaleString()} has been recorded by ${req.user.fullName}.`,
+      type: "FINANCE",
+      relatedId: settlement._id.toString(),
+    });
+
+    res.json({
+      success: true,
+      message: `Settlement of PKR ${parseFloat(amount).toLocaleString()} recorded for ${partner.fullName}`,
+      data: settlement,
+    });
+  } catch (error) {
+    console.error("Record settlement error:", error);
+    res.status(500).json({ success: false, message: "Error recording settlement", error: error.message });
+  }
+});
+
+// @route   POST /api/finance/partner/recalculate-splits
+// @desc    Recalculate expense splits for a given month (fixes expenses with null partner IDs)
+// @access  Protected (OWNER)
+router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (req, res) => {
+  try {
+    const { month, year } = req.body;
+    const targetMonth = month || new Date().getMonth() + 1; // 1-12
+    const targetYear = year || new Date().getFullYear();
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    const config = await Configuration.findOne();
+    if (!config?.expenseShares || config.expenseShares.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No expense shares configured. Go to Configuration and set up partner expense splits first.",
+      });
+    }
+
+    // Find all expenses in the month
+    const expenses = await Expense.find({
+      expenseDate: { $gte: startDate, $lte: endDate },
+    });
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let totalDebtAssigned = 0;
+
+    for (const expense of expenses) {
+      // Check if this expense needs recalculation (shares have null partner IDs)
+      const needsRecalc = expense.shares.some(s => !s.partner) || expense.shares.length === 0;
+
+      if (!needsRecalc) {
+        skippedCount++;
+        continue;
+      }
+
+      // First, reverse any previous partial debts from this expense (cleanup)
+      for (const oldShare of expense.shares) {
+        if (oldShare.partner && oldShare.status === "UNPAID") {
+          await User.findByIdAndUpdate(oldShare.partner, {
+            $inc: { expenseDebt: -oldShare.amount, debtToOwner: -oldShare.amount },
+          });
+        }
+      }
+
+      // Recalculate shares using current config
+      const newShares = [];
+      for (const share of config.expenseShares) {
+        const pct = share.percentage || 0;
+        if (pct <= 0 || !share.userId) continue;
+        const shareAmount = Math.round((expense.amount * pct) / 100);
+        newShares.push({
+          partner: share.userId,
+          partnerName: share.fullName || "Partner",
+          partnerKey: null,
+          percentage: pct,
+          amount: shareAmount,
+          status: "UNPAID",
+          repaymentStatus: "PENDING",
+        });
+
+        // Update user debt
+        await User.findByIdAndUpdate(share.userId, {
+          $inc: { expenseDebt: shareAmount, debtToOwner: shareAmount },
+        });
+        totalDebtAssigned += shareAmount;
+      }
+
+      expense.shares = newShares;
+      expense.hasPartnerDebt = newShares.length > 0;
+      await expense.save();
+      updatedCount++;
+    }
+
+    const monthName = new Date(targetYear, targetMonth - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+
+    res.json({
+      success: true,
+      message: `${monthName}: ${updatedCount} expenses recalculated, ${skippedCount} already had partners. PKR ${totalDebtAssigned.toLocaleString()} total debt assigned.`,
+      data: { updatedCount, skippedCount, totalDebtAssigned, month: monthName },
+    });
+  } catch (error) {
+    console.error("Recalculate splits error:", error);
+    res.status(500).json({ success: false, message: "Error recalculating splits", error: error.message });
   }
 });
 

@@ -940,15 +940,13 @@ const OwnerDashboard = () => {
 // ========================================
 const PartnerDashboard = () => {
   const { user, checkAuth } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "ledger" | "expenses" | "timetable">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "expenses" | "earnings" | "timetable">("overview");
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Financial data
   const [partnerStats, setPartnerStats] = useState<any>(null);
-  const [ledger, setLedger] = useState<any[]>([]);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
 
   // Teacher-like data
   const [teacherProfile, setTeacherProfile] = useState<any>(null);
@@ -962,18 +960,13 @@ const PartnerDashboard = () => {
   const [paymentNotes, setPaymentNotes] = useState("");
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // Close day
-  const [isClosing, setIsClosing] = useState(false);
-  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [floatingCash, setFloatingCash] = useState(0);
-
   const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
   const capitalizeSubject = (s: string) => {
     const map: Record<string, string> = {
       biology: "Biology", chemistry: "Chemistry", physics: "Physics",
       math: "Mathematics", english: "English", urdu: "Urdu",
-      islamiat: "Islamiat", computer: "Computer Science",
+      islamiat: "Islamiat", computer: "Computer Science", zoology: "Zoology", botany: "Botany",
     };
     return map[s?.toLowerCase()] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : "N/A");
   };
@@ -983,18 +976,11 @@ const PartnerDashboard = () => {
     try {
       setLoading(true);
 
-      // Fetch partner financial stats
+      // Fetch partner financial stats (includes teacher credits now)
       const statsRes = await fetch(`${API_BASE_URL}/finance/partner/dashboard`, { credentials: "include" });
       const statsData = await statsRes.json();
       if (statsData.success) {
         setPartnerStats(statsData.data);
-      }
-
-      // Fetch floating cash from general dashboard stats
-      const dashRes = await fetch(`${API_BASE_URL}/finance/dashboard-stats`, { credentials: "include" });
-      const dashData = await dashRes.json();
-      if (dashData.success) {
-        setFloatingCash(dashData.data?.floatingCash || 0);
       }
 
       // Fetch teacher profile if partnerId links to teacher
@@ -1022,27 +1008,9 @@ const PartnerDashboard = () => {
     }
   };
 
-  // Fetch financial ledger
-  const fetchLedger = async () => {
-    try {
-      setLedgerLoading(true);
-      const res = await fetch(`${API_BASE_URL}/finance/partner/ledger`, { credentials: "include" });
-      const data = await res.json();
-      if (data.success) setLedger(data.data || []);
-    } catch (err) {
-      console.error("Error fetching ledger:", err);
-    } finally {
-      setLedgerLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchPartnerData();
   }, [user]);
-
-  useEffect(() => {
-    if (activeTab === "ledger") fetchLedger();
-  }, [activeTab]);
 
   // Profile image upload
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1092,38 +1060,6 @@ const PartnerDashboard = () => {
     }
   };
 
-  // Close day handler
-  const handleCloseDay = () => {
-    if (floatingCash === 0) {
-      toast({ title: "Nothing to close", description: "No floating cash available.", variant: "destructive" });
-      return;
-    }
-    setCloseConfirmOpen(true);
-  };
-
-  const confirmCloseDay = async () => {
-    try {
-      setIsClosing(true);
-      setError(null);
-      const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: `Daily closing by ${user?.fullName}` }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMessage(data.message || "Day closed successfully!");
-        await fetchPartnerData();
-      } else {
-        setError(data.message || "Failed to close day");
-      }
-    } catch (err) {
-      setError("Network error. Please try again.");
-    } finally {
-      setIsClosing(false);
-      setCloseConfirmOpen(false);
-    }
-  };
-
   // Payment request handler
   const handleRequestPayment = async () => {
     const amt = parseInt(paymentAmount) || 0;
@@ -1155,6 +1091,7 @@ const PartnerDashboard = () => {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const todayClasses = timetable.filter((t: any) => t.day === today);
   const currentImage = teacherProfile?.profileImage || user?.profileImage;
+  const tc = partnerStats?.teacherCredits;
 
   const groupedByDay = timetable.reduce((acc: any, entry: any) => {
     if (!acc[entry.day]) acc[entry.day] = [];
@@ -1204,7 +1141,7 @@ const PartnerDashboard = () => {
             </h1>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 text-xs font-medium border border-yellow-500/30">
-                <Briefcase className="h-3.5 w-3.5" /> Partner
+                <Briefcase className="h-3.5 w-3.5" /> {user?.role || "Partner"}
               </span>
               {teacherProfile?.subject && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-500/30">
@@ -1246,10 +1183,10 @@ const PartnerDashboard = () => {
 
       {/* Tab Navigation */}
       <div className="mt-6 flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
-        {(["overview", "ledger", "expenses", "timetable"] as const).map(tab => (
+        {(["overview", "expenses", "earnings", "timetable"] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
-            {tab === "overview" ? "Overview" : tab === "ledger" ? "Financial Ledger" : tab === "expenses" ? "My Expenses" : "Timetable"}
+            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "earnings" ? "Teacher Earnings" : "Timetable"}
           </button>
         ))}
       </div>
@@ -1259,27 +1196,11 @@ const PartnerDashboard = () => {
         <div className="mt-6 space-y-6">
           {/* KPI Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Floating Cash */}
-            <div className="rounded-2xl bg-white p-5 shadow-lg border-l-4 border-orange-500">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Cash in Hand</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">PKR {floatingCash > 0 ? Math.round(floatingCash / 1000) : 0}K</p>
-                  <p className="text-xs text-orange-600 font-medium mt-1">Needs End of Day Closing</p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow">
-                  <Wallet className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-
             {/* Expense Debt */}
             <div className={`rounded-2xl p-5 shadow-lg border-l-4 ${(partnerStats?.expenseDebt || 0) > 0 ? "bg-red-50 border-red-500" : "bg-white border-green-500"}`}>
               <div className="flex items-start justify-between">
                 <div>
-                  <p className={`text-sm font-medium ${(partnerStats?.expenseDebt || 0) > 0 ? "text-red-700" : "text-slate-600"}`}>
-                    Expense Payable
-                  </p>
+                  <p className={`text-sm font-medium ${(partnerStats?.expenseDebt || 0) > 0 ? "text-red-700" : "text-slate-600"}`}>Expense Payable</p>
                   <p className={`text-3xl font-bold mt-1 ${(partnerStats?.expenseDebt || 0) > 0 ? "text-red-600" : "text-slate-900"}`}>
                     PKR {(partnerStats?.expenseDebt || 0).toLocaleString()}
                   </p>
@@ -1312,6 +1233,22 @@ const PartnerDashboard = () => {
               </div>
             </div>
 
+            {/* Teacher Credits */}
+            {tc && (
+              <div className="rounded-2xl bg-white p-5 shadow-lg border-l-4 border-emerald-500">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-600">Teacher Credits</p>
+                    <p className="text-3xl font-bold text-emerald-700 mt-1">PKR {(tc.totalCredits || 0).toLocaleString()}</p>
+                    <p className="text-xs text-slate-500 mt-1">Unpaid earnings</p>
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow">
+                    <Wallet className="h-6 w-6" />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Today's Classes */}
             <div className="rounded-2xl bg-white p-5 shadow-lg border-l-4 border-purple-500">
               <div className="flex items-start justify-between">
@@ -1326,32 +1263,6 @@ const PartnerDashboard = () => {
               </div>
             </div>
           </div>
-
-          {/* Quick Actions */}
-          <Card className="border-slate-200 bg-white shadow-lg">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <ClipboardCheck className="h-5 w-5 text-blue-600" /> Quick Actions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button size="lg" onClick={handleCloseDay} disabled={isClosing}
-                  className="h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow">
-                  <DollarSign className="mr-2 h-5 w-5" /> {isClosing ? "Closing..." : "End of Day Closing"}
-                </Button>
-                {(partnerStats?.expenseDebt || 0) > 0 && (
-                  <Button size="lg" variant="outline" onClick={() => setPaymentModalOpen(true)}
-                    className="h-12 border-red-300 text-red-700 hover:bg-red-50 font-semibold">
-                    <CreditCard className="mr-2 h-5 w-5" /> Pay Expense Debt
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 mt-3">
-                Floating cash: <span className="font-semibold text-orange-600">PKR {floatingCash.toLocaleString()}</span>
-              </p>
-            </CardContent>
-          </Card>
 
           {/* Expense Debt Breakdown */}
           {partnerStats?.debtDetails && partnerStats.debtDetails.length > 0 && (
@@ -1383,6 +1294,40 @@ const PartnerDashboard = () => {
             </Card>
           )}
 
+          {/* Teacher Earnings Summary (if partner is also teacher) */}
+          {tc && (
+            <Card className="border-emerald-200 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg text-emerald-800">
+                  <Wallet className="h-5 w-5" /> Teacher Earnings Summary
+                </CardTitle>
+                <CardDescription>
+                  Your teaching credits for {capitalizeSubject(tc.subject || "")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
+                    <p className="text-xs text-orange-600 font-medium">Floating</p>
+                    <p className="text-lg font-bold text-orange-700">PKR {(tc.floating || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                    <p className="text-xs text-green-600 font-medium">Verified</p>
+                    <p className="text-lg font-bold text-green-700">PKR {(tc.verified || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <p className="text-xs text-blue-600 font-medium">Pending</p>
+                    <p className="text-lg font-bold text-blue-700">PKR {(tc.pending || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <p className="text-xs text-emerald-600 font-medium">Total Paid</p>
+                    <p className="text-lg font-bold text-emerald-700">PKR {(tc.totalPaid || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Today's Schedule Preview */}
           {todayClasses.length > 0 && (
             <Card className="border-slate-200 shadow-lg">
@@ -1407,72 +1352,6 @@ const PartnerDashboard = () => {
               </CardContent>
             </Card>
           )}
-        </div>
-      )}
-
-      {/* ======= FINANCIAL LEDGER TAB ======= */}
-      {activeTab === "ledger" && (
-        <div className="mt-6">
-          <Card className="border-slate-200 shadow-lg">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="h-5 w-5 text-blue-600" /> Financial Ledger
-              </CardTitle>
-              <CardDescription>All your financial transactions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {ledgerLoading ? (
-                <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-              ) : ledger.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-                  <p className="text-sm text-slate-500">No transactions yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {ledger.map((entry: any) => (
-                    <div key={entry._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-white shadow-sm ${
-                          entry.source === "expense_share" ? "bg-red-500" :
-                          entry.source === "settlement" ? "bg-emerald-500" :
-                          entry.type === "INCOME" || entry.type === "CREDIT" ? "bg-green-500" :
-                          entry.type === "EXPENSE" ? "bg-red-500" :
-                          "bg-blue-500"
-                        }`}>
-                          {entry.source === "expense_share" ? <TrendingDown className="h-4 w-4" /> :
-                           entry.source === "settlement" ? <ArrowUpRight className="h-4 w-4" /> :
-                           entry.type === "INCOME" || entry.type === "CREDIT" ? <ArrowUpRight className="h-4 w-4" /> :
-                           <ArrowDownRight className="h-4 w-4" />}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">{entry.description || entry.category}</p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(entry.date).toLocaleDateString()} - {entry.type}
-                            {entry.repaymentStatus ? ` (${entry.repaymentStatus})` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-sm font-bold ${
-                          entry.source === "settlement" ? "text-emerald-600" :
-                          entry.source === "expense_share" ? "text-red-600" :
-                          entry.type === "INCOME" || entry.type === "CREDIT" ? "text-green-600" :
-                          "text-red-600"
-                        }`}>
-                          {entry.source === "settlement" || entry.type === "INCOME" || entry.type === "CREDIT" ? "+" : "-"}
-                          PKR {entry.amount?.toLocaleString()}
-                        </p>
-                        <p className={`text-xs ${entry.status === "VERIFIED" || entry.status === "COMPLETED" || entry.status === "PAID" ? "text-green-500" : "text-orange-500"}`}>
-                          {entry.status}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -1535,6 +1414,104 @@ const PartnerDashboard = () => {
         </div>
       )}
 
+      {/* ======= TEACHER EARNINGS TAB ======= */}
+      {activeTab === "earnings" && (
+        <div className="mt-6 space-y-6">
+          {tc ? (
+            <>
+              {/* Current Balance Card */}
+              <Card className="border-emerald-200 shadow-lg">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg text-emerald-800">
+                    <Wallet className="h-5 w-5" /> Current Balance
+                  </CardTitle>
+                  <CardDescription>
+                    Teaching credits for {capitalizeSubject(tc.subject || "")} ({tc.compensationType})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
+                      <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider">Floating</p>
+                      <p className="text-2xl font-bold text-orange-700 mt-1">PKR {(tc.floating || 0).toLocaleString()}</p>
+                      <p className="text-xs text-orange-500 mt-1">Today's unverified</p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                      <p className="text-xs text-green-600 font-semibold uppercase tracking-wider">Verified</p>
+                      <p className="text-2xl font-bold text-green-700 mt-1">PKR {(tc.verified || 0).toLocaleString()}</p>
+                      <p className="text-xs text-green-500 mt-1">Ready for payout</p>
+                    </div>
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                      <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">Pending</p>
+                      <p className="text-2xl font-bold text-blue-700 mt-1">PKR {(tc.pending || 0).toLocaleString()}</p>
+                      <p className="text-xs text-blue-500 mt-1">Awaiting processing</p>
+                    </div>
+                    <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Total Paid</p>
+                      <p className="text-2xl font-bold text-emerald-700 mt-1">PKR {(tc.totalPaid || 0).toLocaleString()}</p>
+                      <p className="text-xs text-emerald-500 mt-1">Lifetime payouts</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Payout History */}
+              <Card className="border-slate-200 shadow-lg">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5 text-blue-600" /> Payout History
+                  </CardTitle>
+                  <CardDescription>Your teacher salary payouts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!tc.payoutHistory || tc.payoutHistory.length === 0 ? (
+                    <div className="text-center py-12">
+                      <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                      <p className="text-sm text-slate-500">No payouts recorded yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                      {tc.payoutHistory.map((p: any) => (
+                        <div key={p._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
+                              <ArrowUpRight className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">
+                                {p.voucherId || "Payout"}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {new Date(p.paymentDate || p.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                                {p.month && p.year ? ` — ${p.month} ${p.year}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-emerald-600">+PKR {(p.amountPaid || 0).toLocaleString()}</p>
+                            <p className={`text-xs ${p.status === "paid" ? "text-green-500" : "text-orange-500"}`}>{p.status}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="border-slate-200 shadow-lg">
+              <CardContent className="py-12">
+                <div className="text-center text-slate-500">
+                  <GraduationCap className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm font-medium">No Teacher Record Linked</p>
+                  <p className="text-xs mt-1">Your account is not linked to a teacher profile.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {/* ======= TIMETABLE TAB ======= */}
       {activeTab === "timetable" && (
         <div className="mt-6">
@@ -1580,32 +1557,6 @@ const PartnerDashboard = () => {
           </Card>
         </div>
       )}
-
-      {/* Close Day Dialog */}
-      <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <AlertDialogContent className="max-w-md border-2 border-blue-100 shadow-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Lock className="h-5 w-5 text-blue-600" /> Daily Closing
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="text-slate-600 py-3">
-                <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 mb-4">
-                  <p className="text-xs uppercase tracking-widest font-bold text-blue-700 mb-1">Cash to be Reported</p>
-                  <p className="text-3xl font-black text-blue-950">PKR {floatingCash.toLocaleString()}</p>
-                </div>
-                <p>Lock this amount into verified balance?</p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="h-10">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCloseDay} className="h-10 bg-blue-600 hover:bg-blue-700 text-white font-semibold">
-              Verify & Close
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Payment Request Modal */}
       <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>

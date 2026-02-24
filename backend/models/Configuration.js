@@ -23,11 +23,21 @@ const configurationSchema = new mongoose.Schema(
     },
 
     // Card 3: Dynamic Expense Split (Money OUT) - must total 100%
+    // Legacy hardcoded split (kept for backward compatibility)
     expenseSplit: {
       waqar: { type: Number, default: 40, min: 0, max: 100 },
       zahid: { type: Number, default: 30, min: 0, max: 100 },
       saud: { type: Number, default: 30, min: 0, max: 100 },
     },
+
+    // NEW: Dynamic expense shares array (auto-detected from OWNER+PARTNER users)
+    expenseShares: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        fullName: { type: String },
+        percentage: { type: Number, default: 0, min: 0, max: 100 },
+      },
+    ],
 
     // ========================================
     // WAQAR'S PROTOCOL: Dual-Pool Revenue Splits
@@ -117,10 +127,19 @@ const configurationSchema = new mongoose.Schema(
 
 // Pre-save validation: expenseSplit must total 100%
 configurationSchema.pre("save", function (next) {
-  const total =
-    this.expenseSplit.waqar + this.expenseSplit.zahid + this.expenseSplit.saud;
-  if (total !== 100) {
-    return next(new Error(`Expense split must total 100%, got ${total}%`));
+  // If dynamic expenseShares exist and have entries, validate those
+  if (this.expenseShares && this.expenseShares.length > 0) {
+    const dynamicTotal = this.expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
+    if (dynamicTotal !== 100) {
+      return next(new Error(`Expense shares must total 100%, got ${dynamicTotal}%`));
+    }
+  } else {
+    // Fall back to legacy validation
+    const total =
+      this.expenseSplit.waqar + this.expenseSplit.zahid + this.expenseSplit.saud;
+    if (total !== 100) {
+      return next(new Error(`Expense split must total 100%, got ${total}%`));
+    }
   }
 
   // Tuition Pool distribution must total 100%

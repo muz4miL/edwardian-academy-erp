@@ -9,7 +9,6 @@ import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -60,18 +59,8 @@ const Configuration = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  // --- Card 1: Global Staff Split (Revenue IN) ---
-  const [teacherShare, setTeacherShare] = useState(70);
-  const [academyShare, setAcademyShare] = useState(30);
-  const [salaryError, setSalaryError] = useState("");
-
-  // --- Card 2: Partner 100% Rule ---
-  const [partner100Rule, setPartner100Rule] = useState(true);
-
-  // --- Card 3: Dynamic Expense Split (Money OUT) ---
-  const [waqarShare, setWaqarShare] = useState(40);
-  const [zahidShare, setZahidShare] = useState(30);
-  const [saudShare, setSaudShare] = useState(30);
+  // --- Dynamic Expense Split (fetched from PARTNER/OWNER users) ---
+  const [expenseShares, setExpenseShares] = useState<Array<{ userId: string; fullName: string; subject: string | null; percentage: number }>>([]);
   const [splitError, setSplitError] = useState("");
 
   // --- Card 6: Academy Pool Distribution (Income IN) ---
@@ -156,22 +145,6 @@ const Configuration = () => {
         if (result.success && result.data) {
           const data = result.data;
 
-          // Card 1: Staff Split
-          if (data.salaryConfig) {
-            setTeacherShare(data.salaryConfig.teacherShare ?? 70);
-            setAcademyShare(data.salaryConfig.academyShare ?? 30);
-          }
-
-          // Card 2: Partner 100% Rule
-          setPartner100Rule(data.partner100Rule ?? true);
-
-          // Card 3: Expense Split
-          if (data.expenseSplit) {
-            setWaqarShare(data.expenseSplit.waqar ?? 40);
-            setZahidShare(data.expenseSplit.zahid ?? 30);
-            setSaudShare(data.expenseSplit.saud ?? 30);
-          }
-
           // Card 6: Pool Distribution (Legacy)
           if (data.poolDistribution) {
             setPoolWaqarShare(data.poolDistribution.waqar ?? 40);
@@ -222,20 +195,61 @@ const Configuration = () => {
       }
     };
 
+    // Fetch partners + their current shares from backend
+    const fetchPartners = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/config/partners`, { credentials: "include" });
+        const result = await res.json();
+        if (result.success && result.data) {
+          const partners = result.data as Array<{ userId: string; fullName: string; role: string; subject: string | null }>;
+          const currentShares = result.currentShares || [];
+
+          // Build expenseShares: merge partners list with saved percentages
+          const shares = partners.map((p: any) => {
+            const saved = currentShares.find((s: any) => s.userId?.toString() === p.userId);
+            return {
+              userId: p.userId,
+              fullName: p.fullName,
+              subject: p.subject,
+              percentage: saved ? saved.percentage : 0,
+            };
+          });
+
+          // If no saved shares, distribute equally
+          if (currentShares.length === 0 && shares.length > 0) {
+            const equalShare = Math.floor(100 / shares.length);
+            const remainder = 100 - equalShare * shares.length;
+            shares.forEach((s: any, i: number) => {
+              s.percentage = equalShare + (i === 0 ? remainder : 0);
+            });
+          }
+
+          setExpenseShares(shares);
+        }
+      } catch {
+        /* use empty */
+      }
+    };
+
     if (user) {
       fetchSettings();
+      fetchPartners();
     }
   }, [user, toast]);
 
   // --- Validate Expense Split (must total 100%) ---
   useEffect(() => {
-    const total = waqarShare + zahidShare + saudShare;
+    if (expenseShares.length === 0) {
+      setSplitError("No partners found. Add partners in the Teachers section first.");
+      return;
+    }
+    const total = expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
     if (total !== 100) {
       setSplitError(`Total must be 100%. Current: ${total}%`);
     } else {
       setSplitError("");
     }
-  }, [waqarShare, zahidShare, saudShare]);
+  }, [expenseShares]);
 
   // --- Validate Pool Distribution (must total 100%) ---
   useEffect(() => {
@@ -267,16 +281,6 @@ const Configuration = () => {
     }
   }, [eteaPoolWaqar, eteaPoolZahid, eteaPoolSaud]);
 
-  // --- Validate Salary Split (must total 100%) ---
-  useEffect(() => {
-    const total = teacherShare + academyShare;
-    if (total !== 100) {
-      setSalaryError(`Total must be 100%. Current: ${total}%`);
-    } else {
-      setSalaryError("");
-    }
-  }, [teacherShare, academyShare]);
-
   // --- Fetch Sessions for Session Rate Master ---
   useEffect(() => {
     const fetchSessions = async () => {
@@ -303,42 +307,48 @@ const Configuration = () => {
     fetchSessions();
   }, [user]);
 
+  // --- Build settings data for saving ---
+  const buildSettingsData = (subjects?: Array<{ name: string; fee: number }>) => {
+    return {
+      // Dynamic expense shares (new system)
+      expenseShares: expenseShares.map(s => ({
+        userId: s.userId,
+        fullName: s.fullName,
+        percentage: s.percentage,
+      })),
+      poolDistribution: {
+        waqar: poolWaqarShare,
+        zahid: poolZahidShare,
+        saud: poolSaudShare,
+      },
+      tuitionPoolSplit: {
+        waqar: tuitionPoolWaqar,
+        zahid: tuitionPoolZahid,
+        saud: tuitionPoolSaud,
+      },
+      eteaPoolSplit: {
+        waqar: eteaPoolWaqar,
+        zahid: eteaPoolZahid,
+        saud: eteaPoolSaud,
+      },
+      eteaConfig: {
+        perStudentCommission: eteaCommission,
+        englishFixedSalary: englishFixedSalary,
+      },
+      academyName,
+      academyAddress,
+      academyPhone,
+      defaultSubjectFees: subjects || defaultSubjectFees,
+      sessionPrices,
+    };
+  };
+
   // --- Instant Save Helper ---
   const saveConfigToBackend = async (
     subjects: Array<{ name: string; fee: number }>,
   ) => {
     try {
-      const settingsData = {
-        salaryConfig: { teacherShare, academyShare },
-        partner100Rule,
-        expenseSplit: { waqar: waqarShare, zahid: zahidShare, saud: saudShare },
-        poolDistribution: {
-          waqar: poolWaqarShare,
-          zahid: poolZahidShare,
-          saud: poolSaudShare,
-        },
-        // Waqar's Protocol: Dual Pool Splits
-        tuitionPoolSplit: {
-          waqar: tuitionPoolWaqar,
-          zahid: tuitionPoolZahid,
-          saud: tuitionPoolSaud,
-        },
-        eteaPoolSplit: {
-          waqar: eteaPoolWaqar,
-          zahid: eteaPoolZahid,
-          saud: eteaPoolSaud,
-        },
-        eteaConfig: {
-          perStudentCommission: eteaCommission,
-          englishFixedSalary: englishFixedSalary,
-        },
-        academyName,
-        academyAddress,
-        academyPhone,
-        defaultSubjectFees: subjects,
-        // Waqar Protocol v2: Session-Based Pricing
-        sessionPrices,
-      };
+      const settingsData = buildSettingsData(subjects);
 
       const response = await fetch(`${API_BASE_URL}/api/config`, {
         method: "POST",
@@ -378,13 +388,16 @@ const Configuration = () => {
 
   // --- Save Settings Handler ---
   const handleSaveSettings = async () => {
-    if (waqarShare + zahidShare + saudShare !== 100) {
-      toast({
-        title: "Validation Error",
-        description: "Expense splits must total 100%",
-        variant: "destructive",
-      });
-      return;
+    if (expenseShares.length > 0) {
+      const total = expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
+      if (total !== 100) {
+        toast({
+          title: "Validation Error",
+          description: `Expense splits must total 100%. Current: ${total}%`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     if (poolWaqarShare + poolZahidShare + poolSaudShare !== 100) {
@@ -396,7 +409,6 @@ const Configuration = () => {
       return;
     }
 
-    // Validate Waqar's Protocol splits
     if (tuitionPoolWaqar + tuitionPoolZahid + tuitionPoolSaud !== 100) {
       toast({
         title: "Validation Error",
@@ -415,49 +427,10 @@ const Configuration = () => {
       return;
     }
 
-    if (teacherShare + academyShare !== 100) {
-      toast({
-        title: "Validation Error",
-        description: "Staff splits must total 100%",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       setIsSaving(true);
 
-      const settingsData = {
-        salaryConfig: { teacherShare, academyShare },
-        partner100Rule,
-        expenseSplit: { waqar: waqarShare, zahid: zahidShare, saud: saudShare },
-        poolDistribution: {
-          waqar: poolWaqarShare,
-          zahid: poolZahidShare,
-          saud: poolSaudShare,
-        },
-        // Waqar's Protocol: Dual Pool Splits
-        tuitionPoolSplit: {
-          waqar: tuitionPoolWaqar,
-          zahid: tuitionPoolZahid,
-          saud: tuitionPoolSaud,
-        },
-        eteaPoolSplit: {
-          waqar: eteaPoolWaqar,
-          zahid: eteaPoolZahid,
-          saud: eteaPoolSaud,
-        },
-        eteaConfig: {
-          perStudentCommission: eteaCommission,
-          englishFixedSalary: englishFixedSalary,
-        },
-        academyName,
-        academyAddress,
-        academyPhone,
-        defaultSubjectFees,
-        // Waqar Protocol v2: Session-Based Pricing
-        sessionPrices,
-      };
+      const settingsData = buildSettingsData();
 
       const response = await fetch(`${API_BASE_URL}/api/config`, {
         method: "POST",
@@ -551,141 +524,7 @@ const Configuration = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* ========== CARD 1: Global Staff Split ========== */}
-              <Card className="shadow-md">
-                <CardHeader className="pb-4 border-b">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
-                      <Users className="h-5 w-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">
-                        Global Staff Split
-                      </CardTitle>
-                      <CardDescription>
-                        Revenue IN - Non-partner teachers
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold">
-                        Teacher Share
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={teacherShare}
-                          onChange={(e) =>
-                            setTeacherShare(Number(e.target.value) || 0)
-                          }
-                          className="h-12 text-lg font-bold pr-8"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-semibold">
-                        Academy Share
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={academyShare}
-                          onChange={(e) =>
-                            setAcademyShare(Number(e.target.value) || 0)
-                          }
-                          className="h-12 text-lg font-bold pr-8"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {salaryError ? (
-                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2 text-sm text-red-700">
-                      <AlertCircle className="h-4 w-4" />
-                      {salaryError}
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-sm text-emerald-700">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Total: 100%
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* ========== CARD 2: Partner Revenue Rule ========== */}
-              <Card className="shadow-md">
-                <CardHeader className="pb-4 border-b">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-                      <Crown className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">
-                        Partner Revenue Rule
-                      </CardTitle>
-                      <CardDescription>
-                        100% retention for partners
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                  <div
-                    className={cn(
-                      "p-4 rounded-lg border-2 transition-all cursor-pointer",
-                      partner100Rule
-                        ? "bg-amber-50 border-amber-300"
-                        : "bg-gray-50 border-gray-200",
-                    )}
-                    onClick={() => setPartner100Rule(!partner100Rule)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold">Partners Receive 100%</p>
-                        <p className="text-sm text-gray-500">
-                          Bypass standard split for partner subjects
-                        </p>
-                      </div>
-                      <Switch
-                        checked={partner100Rule}
-                        onCheckedChange={setPartner100Rule}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                    <div className="p-2 bg-gray-50 rounded border">
-                      <p className="font-semibold">Sir Waqar</p>
-                      <p className="text-xs text-gray-500">Chemistry</p>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded border">
-                      <p className="font-semibold">Dr. Zahid</p>
-                      <p className="text-xs text-gray-500">Zoology</p>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded border">
-                      <p className="font-semibold">Sir Saud</p>
-                      <p className="text-xs text-gray-500">Physics</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* ========== CARD 3: Expense Split (COMPACT) ========== */}
+              {/* ========== CARD 3: Expense Split (DYNAMIC) ========== */}
               <Card className="shadow-md">
                 <CardHeader className="pb-4 border-b">
                   <div className="flex items-center gap-3">
@@ -694,84 +533,68 @@ const Configuration = () => {
                     </div>
                     <div>
                       <CardTitle className="text-lg">Expense Split</CardTitle>
-                      <CardDescription>Money OUT distribution</CardDescription>
+                      <CardDescription>Money OUT distribution among partners</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-blue-600">
-                        Sir Waqar
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={waqarShare}
-                          onChange={(e) =>
-                            setWaqarShare(Number(e.target.value) || 0)
-                          }
-                          className="h-10 pr-6 text-sm font-bold"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-emerald-600">
-                        Dr. Zahid
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={zahidShare}
-                          onChange={(e) =>
-                            setZahidShare(Number(e.target.value) || 0)
-                          }
-                          className="h-10 pr-6 text-sm font-bold"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold text-purple-600">
-                        Sir Saud
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={saudShare}
-                          onChange={(e) =>
-                            setSaudShare(Number(e.target.value) || 0)
-                          }
-                          className="h-10 pr-6 text-sm font-bold"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {splitError ? (
-                    <div className="mt-3 p-2 rounded bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
-                      <AlertCircle className="h-3 w-3" />
-                      {splitError}
+                  {expenseShares.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Users className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm">No partners found.</p>
+                      <p className="text-xs">Add partners in the Teachers section first.</p>
                     </div>
                   ) : (
-                    <div className="mt-3 p-2 rounded bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center gap-2">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Total: 100%
-                    </div>
+                    <>
+                      <div className={`grid grid-cols-${Math.min(expenseShares.length, 3)} gap-3`}>
+                        {expenseShares.map((share, idx) => {
+                          const colors = ["blue", "emerald", "purple", "amber", "cyan", "rose"];
+                          const color = colors[idx % colors.length];
+                          return (
+                            <div key={share.userId} className="space-y-1">
+                              <Label className={`text-xs font-semibold text-${color}-600`}>
+                                {share.fullName}
+                              </Label>
+                              {share.subject && (
+                                <p className="text-[10px] text-gray-400 -mt-0.5">
+                                  {share.subject.charAt(0).toUpperCase() + share.subject.slice(1)}
+                                </p>
+                              )}
+                              <div className="relative">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={share.percentage}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value) || 0;
+                                    setExpenseShares(prev =>
+                                      prev.map((s, i) => i === idx ? { ...s, percentage: val } : s)
+                                    );
+                                  }}
+                                  className="h-10 pr-6 text-sm font-bold"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                                  %
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {splitError ? (
+                        <div className="mt-3 p-2 rounded bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                          <AlertCircle className="h-3 w-3" />
+                          {splitError}
+                        </div>
+                      ) : (
+                        <div className="mt-3 p-2 rounded bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center gap-2">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Total: 100%
+                        </div>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -795,7 +618,7 @@ const Configuration = () => {
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs font-semibold text-blue-600">
-                        Sir Waqar
+                        {expenseShares[0]?.fullName || "Partner 1"}
                       </Label>
                       <div className="relative">
                         <Input
@@ -815,7 +638,7 @@ const Configuration = () => {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs font-semibold text-emerald-600">
-                        Dr. Zahid
+                        {expenseShares[1]?.fullName || "Partner 2"}
                       </Label>
                       <div className="relative">
                         <Input
@@ -835,7 +658,7 @@ const Configuration = () => {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs font-semibold text-purple-600">
-                        Sir Saud
+                        {expenseShares[2]?.fullName || "Partner 3"}
                       </Label>
                       <div className="relative">
                         <Input
@@ -906,7 +729,7 @@ const Configuration = () => {
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-blue-600">
-                            Waqar
+                            {expenseShares[0]?.fullName?.split(" ").pop() || "P1"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -926,7 +749,7 @@ const Configuration = () => {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-emerald-600">
-                            Zahid
+                            {expenseShares[1]?.fullName?.split(" ").pop() || "P2"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -946,7 +769,7 @@ const Configuration = () => {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-purple-600">
-                            Saud
+                            {expenseShares[2]?.fullName?.split(" ").pop() || "P3"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -996,7 +819,7 @@ const Configuration = () => {
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-blue-600">
-                            Waqar
+                            {expenseShares[0]?.fullName?.split(" ").pop() || "P1"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -1016,7 +839,7 @@ const Configuration = () => {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-emerald-600">
-                            Zahid
+                            {expenseShares[1]?.fullName?.split(" ").pop() || "P2"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -1036,7 +859,7 @@ const Configuration = () => {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs font-semibold text-purple-600">
-                            Saud
+                            {expenseShares[2]?.fullName?.split(" ").pop() || "P3"}
                           </Label>
                           <div className="relative">
                             <Input
@@ -1108,7 +931,7 @@ const Configuration = () => {
                         </span>
                         <span>
                           <strong>Expenses:</strong> Waqar pays → Split{" "}
-                          {waqarShare}/{zahidShare}/{saudShare} → Partner debt
+                          {expenseShares.map(s => s.percentage).join("/")} → Partner debt
                           created
                         </span>
                       </div>
@@ -1504,11 +1327,11 @@ const Configuration = () => {
                 size="lg"
                 onClick={handleSaveSettings}
                 disabled={
-                  isSaving || !!splitError || !!salaryError || !!poolSplitError
+                  isSaving || !!splitError || !!poolSplitError
                 }
                 className={cn(
                   "h-12 px-8",
-                  splitError || salaryError || poolSplitError
+                  splitError || poolSplitError
                     ? "bg-gray-400"
                     : "bg-slate-900 hover:bg-slate-800",
                 )}

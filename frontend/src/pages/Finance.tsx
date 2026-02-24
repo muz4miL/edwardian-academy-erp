@@ -47,6 +47,8 @@ import {
   Loader2,
   CreditCard,
   Search,
+  HandCoins,
+  Calculator,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -689,6 +691,7 @@ const AssetRegistry = () => {
 const DailyExpenses = () => {
   const queryClient = useQueryClient();
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+  const [isSplitting, setIsSplitting] = useState(false);
 
   // Form state
   const [expenseTitle, setExpenseTitle] = useState("");
@@ -781,6 +784,38 @@ const DailyExpenses = () => {
     });
   };
 
+  // Month-end: recalculate splits for expenses missing partner assignments
+  const handleRecalculateSplits = async () => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    if (!window.confirm(`Recalculate expense splits for ${month}/${year}? This will assign partner shares to any un-split expenses this month.`)) return;
+
+    setIsSplitting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/finance/partner/recalculate-splits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ month, year }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        toast.success("Splits Recalculated", {
+          description: `${result.updatedCount} expense(s) updated. Total debt assigned: PKR ${result.totalDebtAssigned?.toLocaleString() || 0}`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["expenses"] });
+        queryClient.invalidateQueries({ queryKey: ["partner-all-debts"] });
+      } else {
+        throw new Error(result.message || "Failed to recalculate");
+      }
+    } catch (err: any) {
+      toast.error("Recalculation Failed", { description: err.message });
+    } finally {
+      setIsSplitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -794,13 +829,28 @@ const DailyExpenses = () => {
               Track and record all academy expenses in real-time
             </CardDescription>
           </div>
-          <Button
-            onClick={() => setShowExpenseDialog(true)}
-            className="bg-red-600 hover:bg-red-700 shadow-lg"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Record Expense
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleRecalculateSplits}
+              disabled={isSplitting}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              {isSplitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Calculator className="mr-2 h-4 w-4" />
+              )}
+              Split Month Expenses
+            </Button>
+            <Button
+              onClick={() => setShowExpenseDialog(true)}
+              className="bg-red-600 hover:bg-red-700 shadow-lg"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Record Expense
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -1381,6 +1431,330 @@ const StudentCollections = () => {
   );
 };
 
+// ==================== PARTNER SETTLEMENTS COMPONENT (OWNER ONLY) ====================
+const PartnerSettlements = () => {
+  const queryClient = useQueryClient();
+  const [showSettlementDialog, setShowSettlementDialog] = useState(false);
+  const [selectedPartner, setSelectedPartner] = useState<any>(null);
+  const [settlementAmount, setSettlementAmount] = useState("");
+  const [settlementNotes, setSettlementNotes] = useState("");
+  const [settlementMethod, setSettlementMethod] = useState("CASH");
+
+  // Fetch all partner debts
+  const { data: debtsData, isLoading: debtsLoading } = useQuery({
+    queryKey: ["partner-all-debts"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/finance/partner/all-debts`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load partner debts");
+      return res.json();
+    },
+  });
+
+  // Fetch all settlements
+  const { data: settlementsData, isLoading: settlementsLoading } = useQuery({
+    queryKey: ["partner-settlements"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/finance/partner/settlements`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load settlements");
+      return res.json();
+    },
+  });
+
+  const partnerDebts = debtsData?.data || [];
+  const settlements = settlementsData?.data || [];
+
+  // Record settlement mutation
+  const recordSettlementMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch(`${API_BASE_URL}/api/finance/partner/record-settlement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to record settlement");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["partner-all-debts"] });
+      queryClient.invalidateQueries({ queryKey: ["partner-settlements"] });
+      toast.success("Settlement Recorded", {
+        description: data.message || "Settlement has been recorded.",
+      });
+      setShowSettlementDialog(false);
+      setSelectedPartner(null);
+      setSettlementAmount("");
+      setSettlementNotes("");
+      setSettlementMethod("CASH");
+    },
+    onError: (error: any) => {
+      toast.error("Settlement Failed", {
+        description: error.message || "An error occurred.",
+      });
+    },
+  });
+
+  // Confirm pending settlement mutation
+  const confirmSettlementMutation = useMutation({
+    mutationFn: async (settlementId: string) => {
+      const res = await fetch(`${API_BASE_URL}/api/finance/partner/settlements/${settlementId}/confirm`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to confirm");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["partner-all-debts"] });
+      queryClient.invalidateQueries({ queryKey: ["partner-settlements"] });
+      toast.success("Settlement Confirmed");
+    },
+    onError: (error: any) => {
+      toast.error("Confirmation Failed", { description: error.message });
+    },
+  });
+
+  const handleRecordSettlement = () => {
+    if (!selectedPartner || !settlementAmount || Number(settlementAmount) <= 0) {
+      toast.error("Please select a partner and enter a valid amount");
+      return;
+    }
+    recordSettlementMutation.mutate({
+      partnerId: selectedPartner.userId,
+      amount: Number(settlementAmount),
+      notes: settlementNotes || undefined,
+      method: settlementMethod,
+    });
+  };
+
+  const totalOverallDebt = partnerDebts.reduce((sum: number, p: any) => sum + (p.expenseDebt || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Partner Debt Overview Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {debtsLoading ? (
+          <div className="col-span-full flex justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : partnerDebts.length === 0 ? (
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            No partners configured in expense split
+          </div>
+        ) : (
+          partnerDebts.map((partner: any) => (
+            <Card key={partner.partnerKey} className={`shadow-lg border-l-4 ${partner.expenseDebt > 0 ? "border-red-500" : "border-green-500"}`}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">{partner.fullName}</CardTitle>
+                    <CardDescription>{partner.splitPercentage}% expense share - {partner.role}</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Outstanding Debt</span>
+                    <span className={`font-bold ${partner.expenseDebt > 0 ? "text-red-600" : "text-green-600"}`}>
+                      PKR {(partner.expenseDebt || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Pending Approval</span>
+                    <span className="font-medium text-orange-600">PKR {(partner.totalPending || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Settled</span>
+                    <span className="font-medium text-blue-600">PKR {(partner.totalSettled || 0).toLocaleString()}</span>
+                  </div>
+                  {partner.expenseDebt > 0 && (
+                    <Button
+                      size="sm"
+                      className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => {
+                        setSelectedPartner(partner);
+                        setShowSettlementDialog(true);
+                      }}
+                    >
+                      <CreditCard className="h-4 w-4 mr-1" /> Record Payment
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Total Outstanding */}
+      {totalOverallDebt > 0 && (
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-800">Total Outstanding from All Partners</p>
+                <p className="text-xs text-red-600">Amount owed to owner across all expense splits</p>
+              </div>
+              <p className="text-2xl font-bold text-red-700">PKR {totalOverallDebt.toLocaleString()}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Settlement History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5 text-blue-600" />
+            Settlement History
+          </CardTitle>
+          <CardDescription>All expense debt payments from partners</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {settlementsLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : settlements.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Receipt className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p>No settlements recorded yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-secondary hover:bg-secondary">
+                  <TableHead className="font-semibold">Date</TableHead>
+                  <TableHead className="font-semibold">Partner</TableHead>
+                  <TableHead className="font-semibold text-right">Amount (PKR)</TableHead>
+                  <TableHead className="font-semibold">Method</TableHead>
+                  <TableHead className="font-semibold">Status</TableHead>
+                  <TableHead className="font-semibold">Notes</TableHead>
+                  <TableHead className="font-semibold">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {settlements.map((s: any) => (
+                  <TableRow key={s._id}>
+                    <TableCell className="text-sm">
+                      {new Date(s.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                    </TableCell>
+                    <TableCell className="font-medium">{s.partnerName || s.partnerId?.fullName || "—"}</TableCell>
+                    <TableCell className="text-right font-bold text-emerald-600">
+                      {Number(s.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{s.method}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`text-xs ${s.status === "COMPLETED" ? "bg-green-100 text-green-700" : s.status === "PENDING" ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-700"}`}>
+                        {s.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{s.notes || "—"}</TableCell>
+                    <TableCell>
+                      {s.status === "PENDING" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs border-green-300 text-green-700 hover:bg-green-50"
+                          disabled={confirmSettlementMutation.isPending}
+                          onClick={() => confirmSettlementMutation.mutate(s._id)}
+                        >
+                          Confirm
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Record Settlement Dialog */}
+      <Dialog open={showSettlementDialog} onOpenChange={setShowSettlementDialog}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-emerald-600" />
+              Record Settlement
+            </DialogTitle>
+            <DialogDescription>
+              Record a payment received from {selectedPartner?.fullName || "partner"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-slate-50 p-4 rounded-xl border">
+              <p className="text-xs uppercase tracking-widest font-bold text-slate-500 mb-1">Partner</p>
+              <p className="text-lg font-bold">{selectedPartner?.fullName}</p>
+              <p className="text-sm text-red-600 font-medium">
+                Outstanding: PKR {(selectedPartner?.expenseDebt || 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Payment Amount (PKR) *</Label>
+              <Input
+                type="number"
+                placeholder="Enter amount"
+                value={settlementAmount}
+                onChange={(e) => setSettlementAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <Select value={settlementMethod} onValueChange={setSettlementMethod}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Input
+                placeholder="e.g. Monthly settlement"
+                value={settlementNotes}
+                onChange={(e) => setSettlementNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSettlementDialog(false)}>Cancel</Button>
+            <Button
+              onClick={handleRecordSettlement}
+              disabled={recordSettlementMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {recordSettlementMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</>
+              ) : (
+                "Record Settlement"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
 // ==================== MAIN FINANCE COMPONENT ====================
 const Finance = () => {
   // Get tab from URL params
@@ -1415,7 +1789,7 @@ const Finance = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 max-w-3xl">
+          <TabsList className="grid w-full grid-cols-5 max-w-4xl">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -1427,6 +1801,10 @@ const Finance = () => {
             <TabsTrigger value="expenses" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Daily Expenses
+            </TabsTrigger>
+            <TabsTrigger value="settlements" className="flex items-center gap-2">
+              <HandCoins className="h-4 w-4" />
+              Settlements
             </TabsTrigger>
             <TabsTrigger value="assets" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
@@ -1444,6 +1822,10 @@ const Finance = () => {
 
           <TabsContent value="expenses" className="mt-6">
             <DailyExpenses />
+          </TabsContent>
+
+          <TabsContent value="settlements" className="mt-6">
+            <PartnerSettlements />
           </TabsContent>
 
           <TabsContent value="assets" className="mt-6">

@@ -110,30 +110,51 @@ router.post("/", protect, async (req, res) => {
 
     const parsedAmount = parseFloat(amount);
 
-    // --- Partner Expense Split Logic ---
-    // Read configuration for split percentages and partner IDs
+    // --- Dynamic Partner Expense Split Logic ---
+    // Read configuration for expense shares
     let config = await Configuration.findOne();
-    const splitRatio = config?.expenseSplit || { waqar: 40, zahid: 30, saud: 30 };
-    const partnerIds = config?.partnerIds || {};
-
-    // Build shares array with each partner's calculated debt
-    const partnerKeys = ["waqar", "zahid", "saud"];
-    const partnerLabels = { waqar: "Sir Waqar", zahid: "Dr. Zahid", saud: "Sir Saud" };
     const shares = [];
+    const splitRatioForRecord = {};
 
-    for (const key of partnerKeys) {
-      const pct = splitRatio[key] || 0;
-      if (pct <= 0) continue;
-      const shareAmount = Math.round((parsedAmount * pct) / 100);
-      shares.push({
-        partner: partnerIds[key] || null,
-        partnerName: partnerLabels[key],
-        partnerKey: key,
-        percentage: pct,
-        amount: shareAmount,
-        status: "UNPAID",
-        repaymentStatus: "PENDING",
-      });
+    // Use dynamic expenseShares if available, otherwise fall back to legacy
+    if (config?.expenseShares && config.expenseShares.length > 0) {
+      for (const share of config.expenseShares) {
+        const pct = share.percentage || 0;
+        if (pct <= 0 || !share.userId) continue;
+        const shareAmount = Math.round((parsedAmount * pct) / 100);
+        shares.push({
+          partner: share.userId,
+          partnerName: share.fullName || "Partner",
+          partnerKey: null, // No hardcoded key in dynamic mode
+          percentage: pct,
+          amount: shareAmount,
+          status: "UNPAID",
+          repaymentStatus: "PENDING",
+        });
+        splitRatioForRecord[share.userId.toString()] = pct;
+      }
+    } else {
+      // Legacy fallback: hardcoded waqar/zahid/saud keys
+      const splitRatio = config?.expenseSplit || { waqar: 40, zahid: 30, saud: 30 };
+      const partnerIds = config?.partnerIds || {};
+      const partnerKeys = ["waqar", "zahid", "saud"];
+      const partnerLabels = { waqar: "Sir Waqar", zahid: "Dr. Zahid", saud: "Sir Saud" };
+
+      for (const key of partnerKeys) {
+        const pct = splitRatio[key] || 0;
+        if (pct <= 0) continue;
+        const shareAmount = Math.round((parsedAmount * pct) / 100);
+        shares.push({
+          partner: partnerIds[key] || null,
+          partnerName: partnerLabels[key],
+          partnerKey: key,
+          percentage: pct,
+          amount: shareAmount,
+          status: "UNPAID",
+          repaymentStatus: "PENDING",
+        });
+      }
+      Object.assign(splitRatioForRecord, splitRatio);
     }
 
     const expense = await Expense.create({
@@ -148,7 +169,7 @@ router.post("/", protect, async (req, res) => {
       status: "pending",
       paidByType: "ACADEMY_CASH",
       paidBy: req.user._id,
-      splitRatio,
+      splitRatio: splitRatioForRecord,
       shares,
       hasPartnerDebt: shares.length > 0,
     });
