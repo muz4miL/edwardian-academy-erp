@@ -63,12 +63,12 @@ interface PublicConfig {
 
 // Icon mapping for highlights
 const iconMap: Record<string, React.ReactNode> = {
-  GraduationCap: <GraduationCap className="h-8 w-8" />,
-  BookOpen: <BookOpen className="h-8 w-8" />,
-  Users: <Users className="h-8 w-8" />,
-  Trophy: <Trophy className="h-8 w-8" />,
-  Star: <Star className="h-8 w-8" />,
-  Award: <Award className="h-8 w-8" />,
+  GraduationCap: <GraduationCap className="h-6 w-6" />,
+  BookOpen: <BookOpen className="h-6 w-6" />,
+  Users: <Users className="h-6 w-6" />,
+  Trophy: <Trophy className="h-6 w-6" />,
+  Star: <Star className="h-6 w-6" />,
+  Award: <Award className="h-6 w-6" />,
 };
 
 // Motion Variants
@@ -172,10 +172,10 @@ function InquiryForm() {
         animate={{ opacity: 1, scale: 1 }}
         className="max-w-md mx-auto text-center py-12"
       >
-        <div className="h-20 w-20 mx-auto mb-6 rounded-3xl bg-brand-primary text-white flex items-center justify-center shadow-2xl shadow-brand-primary/20">
-          <CheckCircle2 className="h-10 w-10" />
+        <div className="h-14 w-14 mx-auto mb-4 rounded-2xl bg-brand-primary text-white flex items-center justify-center shadow-xl shadow-brand-primary/20">
+          <CheckCircle2 className="h-7 w-7" />
         </div>
-        <h3 className="text-2xl font-black text-brand-primary mb-2 uppercase tracking-tighter">Thank You!</h3>
+        <h3 className="text-lg font-black text-brand-primary mb-2 uppercase tracking-tighter">Thank You!</h3>
         <p className="text-slate-500 font-medium">
           Our team will contact you shortly to assist with your inquiry.
         </p>
@@ -186,9 +186,9 @@ function InquiryForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6"
+      className="space-y-4"
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="inquiry-name" className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-1">
             Full Name *
@@ -198,7 +198,7 @@ function InquiryForm() {
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
+            className="h-10 rounded-xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold text-sm"
             required
           />
         </div>
@@ -215,7 +215,7 @@ function InquiryForm() {
             placeholder="03XX-XXXXXXX"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
+            className="h-10 rounded-xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold text-sm"
             required
           />
         </div>
@@ -231,7 +231,7 @@ function InquiryForm() {
           placeholder="your.email@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-14 rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold"
+          className="h-10 rounded-xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold text-sm"
         />
       </div>
 
@@ -247,7 +247,7 @@ function InquiryForm() {
           placeholder="How can we help you?"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          className="rounded-2xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold min-h-[120px] resize-none"
+          className="rounded-xl border-slate-200 bg-white/50 focus:bg-white focus:ring-brand-primary transition-all text-brand-primary font-bold min-h-[80px] resize-none text-sm"
           required
         />
       </div>
@@ -255,16 +255,16 @@ function InquiryForm() {
       <Button
         type="submit"
         disabled={inquiryMutation.isPending}
-        className="w-full h-16 bg-brand-primary hover:bg-brand-primary/90 text-white text-lg font-black uppercase tracking-widest rounded-full transition-all shadow-xl shadow-brand-primary/20"
+        className="w-full h-11 bg-brand-primary hover:bg-brand-primary/90 text-white text-sm font-black uppercase tracking-widest rounded-full transition-all shadow-lg shadow-brand-primary/20"
       >
         {inquiryMutation.isPending ? (
           <>
-            <Loader2 className="h-6 w-6 mr-3 animate-spin" />
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             Sending...
           </>
         ) : (
           <>
-            <Send className="h-5 w-5 mr-3" />
+            <Send className="h-4 w-4 mr-2" />
             Send Message
           </>
         )}
@@ -350,32 +350,32 @@ export default function PublicLanding() {
       {/* Top Navigation Bar */}
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-2xl border-b border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.03)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-24">
+          <div className="flex justify-between items-center h-16">
             {/* Logo with Dynamic Title */}
             <motion.div 
               whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-4 cursor-pointer"
+              className="flex items-center gap-3 cursor-pointer"
             >
               <img
                 src="/logo.png"
                 alt="Edwardian Academy"
-                className="h-14 w-14 object-contain"
+                className="h-10 w-10 object-contain"
               />
               <div className="flex flex-col">
-                <span className="text-2xl font-serif font-black tracking-tight text-brand-primary leading-none">
+                <span className="text-lg font-serif font-black tracking-tight text-brand-primary leading-none">
                   {config?.heroSection?.title?.split("'")[0] || "Edwardian"}
                 </span>
-                <span className="text-sm font-bold tracking-[0.4em] text-brand-gold uppercase">
+                <span className="text-[10px] font-bold tracking-[0.4em] text-brand-gold uppercase">
                   Academy
                 </span>
               </div>
             </motion.div>
 
             {/* Primary Action Buttons */}
-            <div className="hidden md:flex items-center gap-8">
+            <div className="hidden md:flex items-center gap-4">
               <Link to="/register">
                 <motion.div {...ripple}>
-                  <Button className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-10 h-12 transition-all shadow-xl shadow-brand-gold/20 font-bold tracking-wide">
+                  <Button className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-6 h-9 text-sm transition-all shadow-lg shadow-brand-gold/20 font-bold tracking-wide">
                     Apply Now
                   </Button>
                 </motion.div>
@@ -384,7 +384,7 @@ export default function PublicLanding() {
                 <motion.div {...ripple}>
                   <Button
                     variant="outline"
-                    className="border-brand-primary/20 text-brand-primary hover:bg-brand-primary hover:text-white rounded-full px-10 h-12 transition-all font-bold tracking-wide bg-white/50 backdrop-blur-sm"
+                    className="border-brand-primary/20 text-brand-primary hover:bg-brand-primary hover:text-white rounded-full px-6 h-9 text-sm transition-all font-bold tracking-wide bg-white/50 backdrop-blur-sm"
                   >
                     Student Portal
                   </Button>
@@ -403,13 +403,13 @@ export default function PublicLanding() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden liquid-mesh">
+      <section className="relative pt-10 pb-16 overflow-hidden liquid-mesh">
         <div className="absolute inset-0 bg-brand-primary/40 backdrop-blur-[2px]" />
         <div className="absolute top-0 right-0 w-1/3 h-full bg-white/5 -skew-x-12 transform origin-top-right backdrop-blur-3xl" />
         
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="max-w-2xl text-left">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div className="max-w-xl text-left">
               {/* Admission Status Badge */}
               {config?.admissionStatus && (
                 <motion.div
@@ -418,7 +418,7 @@ export default function PublicLanding() {
                   transition={{ duration: 0.8, type: "spring" }}
                 >
                   <Badge
-                    className={`mb-6 text-xs font-bold uppercase tracking-[0.2em] px-5 py-2 rounded-full backdrop-blur-xl border ${
+                    className={`mb-4 text-[10px] font-bold uppercase tracking-[0.15em] px-4 py-1.5 rounded-full backdrop-blur-xl border ${
                       config.admissionStatus.isOpen
                         ? "bg-emerald-400/10 text-emerald-300 border-emerald-400/20"
                         : "bg-red-400/10 text-red-300 border-red-400/20"
@@ -435,7 +435,7 @@ export default function PublicLanding() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 1, type: "spring", stiffness: 50 }}
-                className="text-5xl sm:text-6xl lg:text-7xl font-serif font-black text-white mb-8 leading-[1.1] tracking-tight"
+                className="text-3xl sm:text-4xl lg:text-5xl font-serif font-black text-white mb-5 leading-[1.1] tracking-tight"
               >
                 {config?.heroSection?.title || "The Edwardian Academy"}
               </motion.h1>
@@ -444,7 +444,7 @@ export default function PublicLanding() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 1, delay: 0.1, type: "spring", stiffness: 50 }}
-                className="text-xl text-slate-200/80 mb-10 leading-relaxed font-medium max-w-xl"
+                className="text-base text-slate-200/80 mb-6 leading-relaxed font-medium max-w-lg"
               >
                 {config?.heroSection?.subtitle ||
                   "Advancing Knowledge. Transforming Lives."}
@@ -455,7 +455,7 @@ export default function PublicLanding() {
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 1, delay: 0.2, type: "spring", stiffness: 50 }}
-                  className="text-sm font-bold uppercase tracking-[0.3em] text-brand-gold mb-8"
+                  className="text-xs font-bold uppercase tracking-[0.25em] text-brand-gold mb-5"
                 >
                   {config.heroSection.tagline}
                 </motion.p>
@@ -465,12 +465,12 @@ export default function PublicLanding() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 1, delay: 0.3, type: "spring", stiffness: 50 }}
-                className="flex flex-wrap gap-5"
+                className="flex flex-wrap gap-4"
               >
                 <motion.div {...ripple}>
                   <Button
-                    size="lg"
-                    className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-12 h-16 text-base font-bold shadow-2xl shadow-brand-gold/20"
+                    size="default"
+                    className="bg-brand-gold hover:bg-brand-gold/90 text-white rounded-full px-8 h-11 text-sm font-bold shadow-xl shadow-brand-gold/20"
                     onClick={() =>
                       (window.location.href = `tel:${config?.contactInfo?.mobile}`)
                     }
@@ -481,9 +481,9 @@ export default function PublicLanding() {
                 </motion.div>
                 <motion.div {...ripple}>
                   <Button
-                    size="lg"
+                    size="default"
                     variant="outline"
-                    className="border-white/20 text-white hover:bg-white/10 rounded-full px-12 h-16 text-base font-bold bg-white/5 backdrop-blur-md"
+                    className="border-white/20 text-white hover:bg-white/10 rounded-full px-8 h-11 text-sm font-bold bg-white/5 backdrop-blur-md"
                     onClick={() =>
                       window.open(config?.contactInfo?.facebook, "_blank")
                     }
@@ -500,12 +500,12 @@ export default function PublicLanding() {
                 initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{ duration: 1.2, type: "spring" }}
-                className="relative z-10 rounded-[3rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.3)] border-[12px] border-white/5 backdrop-blur-3xl"
+                className="relative z-10 rounded-[2rem] overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.3)] border-[8px] border-white/5 backdrop-blur-3xl"
               >
                 <img 
                   src="edwardian.png" 
                   alt="Academy Life" 
-                  className="w-full h-[600px] object-cover mix-blend-overlay opacity-90"
+                  className="w-full h-[380px] object-cover mix-blend-overlay opacity-90"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-brand-primary/80 to-transparent" />
               </motion.div>
@@ -525,18 +525,18 @@ export default function PublicLanding() {
 
       {/* Announcements Section */}
       {config?.announcements && config.announcements.length > 0 && (
-        <section className="bg-white py-12 border-y border-slate-100">
+        <section className="bg-white py-5 border-y border-slate-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="flex-shrink-0 flex items-center gap-3">
-                <div className="w-12 h-12 bg-brand-primary rounded-2xl flex items-center justify-center shadow-lg shadow-brand-primary/20">
-                  <Megaphone className="h-6 w-6 text-white" />
+            <div className="flex flex-col md:flex-row items-center gap-5">
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <div className="w-9 h-9 bg-brand-primary rounded-xl flex items-center justify-center shadow-md shadow-brand-primary/20">
+                  <Megaphone className="h-4 w-4 text-white" />
                 </div>
-                <h2 className="text-xl font-black text-brand-primary uppercase tracking-tighter">
+                <h2 className="text-sm font-black text-brand-primary uppercase tracking-tighter">
                   Notice<br />Board
                 </h2>
               </div>
-              <div className="flex-1 overflow-hidden relative h-12 flex items-center">
+              <div className="flex-1 overflow-hidden relative h-10 flex items-center">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={currentAnnouncement}
@@ -546,7 +546,7 @@ export default function PublicLanding() {
                     transition={{ duration: 0.5 }}
                     className="absolute inset-0 flex items-center"
                   >
-                    <p className="text-lg font-medium text-slate-700 truncate">
+                    <p className="text-sm font-medium text-slate-700 truncate">
                       {config.announcements[currentAnnouncement].text}
                     </p>
                   </motion.div>
@@ -569,22 +569,22 @@ export default function PublicLanding() {
       )}
 
       {/* Featured Subjects Section */}
-      <section className="py-32 bg-brand-secondary">
+      <section className="py-16 bg-brand-secondary">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div 
             {...waterfall}
-            className="text-center mb-20"
+            className="text-center mb-10"
           >
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+            <h2 className="text-2xl md:text-3xl font-serif font-black text-brand-primary mb-4 tracking-tight">
               Academic Programs
             </h2>
-            <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
-            <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+            <div className="w-16 h-1 bg-brand-gold mx-auto rounded-full mb-4" />
+            <p className="text-sm text-slate-500 max-w-xl mx-auto font-medium">
               Explore our specialized tuition tracks designed for board exam excellence.
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {(config?.featuredSubjects || ["Chemistry", "Physics", "Biology", "Mathematics"]).map((subject, idx) => (
               <motion.div
                 key={subject}
@@ -592,20 +592,20 @@ export default function PublicLanding() {
                 transition={{ ...waterfall.whileInView.transition, delay: idx * 0.1 }}
                 className="group cursor-pointer"
               >
-                <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)] group-hover:-translate-y-3 group-hover:shadow-[0_40px_80px_rgba(0,0,0,0.1)] transition-all duration-500 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-brand-gold/5 rounded-bl-[4rem] -mr-8 -mt-8 group-hover:bg-brand-gold/10 transition-colors" />
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-[0_10px_30px_rgba(0,0,0,0.04)] group-hover:-translate-y-2 group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.08)] transition-all duration-500 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-brand-gold/5 rounded-bl-[2rem] -mr-4 -mt-4 group-hover:bg-brand-gold/10 transition-colors" />
                   
-                  <div className="w-20 h-20 bg-brand-secondary rounded-[1.5rem] flex items-center justify-center mb-8 group-hover:bg-brand-primary group-hover:scale-110 transition-all duration-500">
-                    <BookOpen className="h-10 w-10 text-brand-primary group-hover:text-white" />
+                  <div className="w-12 h-12 bg-brand-secondary rounded-xl flex items-center justify-center mb-4 group-hover:bg-brand-primary group-hover:scale-110 transition-all duration-500">
+                    <BookOpen className="h-6 w-6 text-brand-primary group-hover:text-white" />
                   </div>
-                  <h3 className="text-2xl font-black text-brand-primary mb-4">
+                  <h3 className="text-base font-black text-brand-primary mb-2">
                     {subject}
                   </h3>
-                  <p className="text-slate-500 text-sm leading-relaxed font-medium mb-8">
+                  <p className="text-slate-500 text-xs leading-relaxed font-medium mb-4">
                     Comprehensive syllabus coverage with expert guidance and testing.
                   </p>
-                  <Link to="/register" className="flex items-center text-brand-gold font-bold group-hover:gap-3 transition-all tracking-wide">
-                    Enroll Now <ChevronRight className="h-5 w-5" />
+                  <Link to="/register" className="flex items-center text-sm text-brand-gold font-bold group-hover:gap-2 transition-all tracking-wide">
+                    Enroll Now <ChevronRight className="h-4 w-4" />
                   </Link>
                 </div>
               </motion.div>
@@ -616,23 +616,23 @@ export default function PublicLanding() {
 
       {/* Why Choose Us - Highlights */}
       {config?.highlights && config.highlights.length > 0 && (
-        <section className="py-32 px-4 bg-white relative overflow-hidden">
+        <section className="py-16 px-4 bg-white relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full bg-slate-50/50 -z-10" />
           <div className="max-w-7xl mx-auto">
             <motion.div
               {...waterfall}
-              className="text-center mb-20"
+              className="text-center mb-10"
             >
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+              <h2 className="text-2xl md:text-3xl font-serif font-black text-brand-primary mb-4 tracking-tight">
                 Why Edwardian's?
               </h2>
-              <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
-              <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+              <div className="w-16 h-1 bg-brand-gold mx-auto rounded-full mb-4" />
+              <p className="text-sm text-slate-500 max-w-xl mx-auto font-medium">
                 We combine traditional academic excellence with modern interactive learning systems.
               </p>
             </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {config.highlights.map((highlight, index) => (
                 <motion.div
                   key={index}
@@ -640,12 +640,12 @@ export default function PublicLanding() {
                   transition={{ ...waterfall.whileInView.transition, delay: index * 0.1 }}
                   className="text-center group"
                 >
-                  <div className="w-24 h-24 mx-auto mb-8 rounded-[2rem] bg-brand-secondary flex items-center justify-center shadow-lg group-hover:bg-brand-primary group-hover:rotate-6 group-hover:scale-110 transition-all duration-500">
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-brand-secondary flex items-center justify-center shadow-md group-hover:bg-brand-primary group-hover:rotate-6 group-hover:scale-110 transition-all duration-500">
                     <div className="text-brand-primary group-hover:text-white transition-colors">
-                      {iconMap[highlight.icon] || <Sparkles className="h-10 w-10" />}
+                      {iconMap[highlight.icon] || <Sparkles className="h-6 w-6" />}
                     </div>
                   </div>
-                  <h3 className="text-2xl font-black text-brand-primary mb-4 tracking-tight">
+                  <h3 className="text-base font-black text-brand-primary mb-2 tracking-tight">
                     {highlight.title}
                   </h3>
                   <p className="text-slate-500 text-sm leading-relaxed font-medium">
@@ -658,105 +658,124 @@ export default function PublicLanding() {
         </section>
       )}
 
-      {/* Faculty Section */}
-      <section className="py-32 px-4 bg-brand-secondary relative overflow-hidden" id="faculty">
+      {/* Faculty Carousel Section */}
+      <section className="py-16 bg-brand-secondary relative overflow-hidden" id="faculty">
+        <style>{`
+          @keyframes scroll-left {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+          .faculty-carousel {
+            animation: scroll-left 25s linear infinite;
+          }
+          .faculty-carousel:hover {
+            animation-play-state: paused;
+          }
+        `}</style>
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white to-transparent opacity-50" />
-        <div className="max-w-7xl mx-auto relative z-10">
+        <div className="relative z-10">
           <motion.div
             {...waterfall}
-            className="text-center mb-20"
+            className="text-center mb-10 px-4"
           >
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif font-black text-brand-primary mb-6 tracking-tight">
+            <h2 className="text-2xl md:text-3xl font-serif font-black text-brand-primary mb-4 tracking-tight">
               Expert Faculty
             </h2>
-            <div className="w-24 h-1.5 bg-brand-gold mx-auto rounded-full mb-8" />
-            <p className="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
+            <div className="w-16 h-1 bg-brand-gold mx-auto rounded-full mb-4" />
+            <p className="text-sm text-slate-500 max-w-xl mx-auto font-medium">
               Learn from the region's most experienced professors and subject matter experts.
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {config?.faculty?.map((professor, index) => (
-              <motion.div
-                key={index}
-                {...waterfall}
-                transition={{ ...waterfall.whileInView.transition, delay: index * 0.1 }}
-              >
-                <div className={`group relative bg-white rounded-[3rem] p-10 text-center border transition-all duration-500 hover:-translate-y-3 ${
-                  professor.isPartner 
-                    ? "border-brand-gold/30 shadow-[0_20px_50px_rgba(180,83,9,0.1)]" 
-                    : "border-slate-100 shadow-[0_20px_50px_rgba(0,0,0,0.05)]"
-                }`}>
-                  <div className="relative inline-block mb-8">
-                    <div className="w-32 h-32 mx-auto rounded-full bg-slate-50 flex items-center justify-center text-4xl font-black text-brand-primary shadow-inner border-[6px] border-white overflow-hidden group-hover:scale-105 transition-transform duration-500">
-                      {professor.name?.charAt(0)?.toUpperCase() || "?"}
+          {/* Gradient fade edges */}
+          <div className="relative">
+            <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-brand-secondary to-transparent z-10 pointer-events-none" />
+            <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-brand-secondary to-transparent z-10 pointer-events-none" />
+            
+            <div className="overflow-hidden">
+              <div className="faculty-carousel flex gap-5 w-max py-4">
+                {[...(config?.faculty || []), ...(config?.faculty || [])].map((professor, index) => (
+                  <div
+                    key={index}
+                    className="flex-shrink-0 w-[220px]"
+                  >
+                    <div className={`group relative bg-white rounded-2xl p-6 text-center border transition-all duration-500 hover:-translate-y-2 hover:shadow-xl ${
+                      professor.isPartner 
+                        ? "border-brand-gold/30 shadow-[0_8px_24px_rgba(180,83,9,0.08)]" 
+                        : "border-slate-100 shadow-[0_8px_24px_rgba(0,0,0,0.04)]"
+                    }`}>
+                      <div className="relative inline-block mb-4">
+                        <div className="w-16 h-16 mx-auto rounded-full bg-slate-50 flex items-center justify-center text-xl font-black text-brand-primary shadow-inner border-[3px] border-white overflow-hidden group-hover:scale-110 transition-transform duration-500">
+                          {professor.name?.charAt(0)?.toUpperCase() || "?"}
+                        </div>
+                        {professor.isPartner && (
+                          <motion.div 
+                            animate={{ rotate: [0, 10, -10, 0] }}
+                            transition={{ duration: 4, repeat: Infinity }}
+                            className="absolute -top-1 -right-1 bg-brand-gold text-white p-1.5 rounded-full shadow-md"
+                          >
+                            <Crown className="h-3 w-3" />
+                          </motion.div>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-black text-brand-primary mb-1 truncate">
+                        {professor.name}
+                      </h3>
+                      <p className="text-[10px] font-bold text-brand-gold uppercase tracking-[0.15em] mb-3">
+                        {professor.subject}
+                      </p>
+                      {professor.isPartner && (
+                        <Badge className="bg-brand-gold/10 text-brand-gold border-brand-gold/20 hover:bg-brand-gold/20 transition-colors px-2.5 py-0.5 rounded-full text-[9px]">
+                          Partner
+                        </Badge>
+                      )}
                     </div>
-                    {professor.isPartner && (
-                      <motion.div 
-                        animate={{ rotate: [0, 10, -10, 0] }}
-                        transition={{ duration: 4, repeat: Infinity }}
-                        className="absolute -top-1 -right-1 bg-brand-gold text-white p-2.5 rounded-full shadow-lg"
-                      >
-                        <Crown className="h-5 w-5" />
-                      </motion.div>
-                    )}
                   </div>
-                  <h3 className="text-2xl font-black text-brand-primary mb-2">
-                    {professor.name}
-                  </h3>
-                  <p className="text-sm font-bold text-brand-gold uppercase tracking-[0.2em] mb-6">
-                    {professor.subject}
-                  </p>
-                  {professor.isPartner && (
-                    <Badge className="bg-brand-gold/10 text-brand-gold border-brand-gold/20 hover:bg-brand-gold/20 transition-colors px-4 py-1.5 rounded-full">
-                      Academy Partner
-                    </Badge>
-                  )}
-                </div>
-              </motion.div>
-            ))}
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Contact & Inquiry Section */}
-      <section className="py-32 px-4 bg-white" id="contact">
+      <section className="py-16 px-4 bg-white" id="contact">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <motion.div {...waterfall}>
-              <h2 className="text-4xl md:text-6xl font-serif font-black text-brand-primary mb-10 tracking-tight leading-[1.1]">
+              <h2 className="text-2xl md:text-3xl font-serif font-black text-brand-primary mb-6 tracking-tight leading-[1.1]">
                 Have a Question? <br /><span className="text-brand-gold italic">Get in Touch.</span>
               </h2>
-              <p className="text-xl text-slate-500 mb-12 font-medium leading-relaxed">
+              <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed">
                 Our admissions team is ready to help you plan your academic journey. Send us a message and we'll respond within 24 hours.
               </p>
               
-              <div className="space-y-10">
-                <div className="flex items-start gap-8 group">
-                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
-                    <Phone className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+              <div className="space-y-6">
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 bg-brand-secondary rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <Phone className="h-4 w-4 text-brand-primary group-hover:text-white transition-colors" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Call Us</p>
-                    <p className="text-2xl font-black text-brand-primary">{config?.contactInfo?.mobile || "0300-0000000"}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Call Us</p>
+                    <p className="text-base font-black text-brand-primary">{config?.contactInfo?.mobile || "0300-0000000"}</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-8 group">
-                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
-                    <Mail className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 bg-brand-secondary rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <Mail className="h-4 w-4 text-brand-primary group-hover:text-white transition-colors" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Email Us</p>
-                    <p className="text-2xl font-black text-brand-primary">{config?.contactInfo?.email || "academy@example.com"}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Email Us</p>
+                    <p className="text-base font-black text-brand-primary">{config?.contactInfo?.email || "academy@example.com"}</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-8 group">
-                  <div className="w-16 h-16 bg-brand-secondary rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
-                    <MapPin className="h-7 w-7 text-brand-primary group-hover:text-white transition-colors" />
+                <div className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 bg-brand-secondary rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-brand-primary group-hover:rotate-6 transition-all duration-500">
+                    <MapPin className="h-4 w-4 text-brand-primary group-hover:text-white transition-colors" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Visit Us</p>
-                    <p className="text-xl font-black text-brand-primary max-w-sm">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Visit Us</p>
+                    <p className="text-sm font-black text-brand-primary max-w-xs">
                       {config?.contactInfo?.address || "University Road, Peshawar"}
                     </p>
                   </div>
@@ -766,10 +785,10 @@ export default function PublicLanding() {
 
             <motion.div 
               {...waterfall}
-              className="bg-brand-secondary p-10 md:p-16 rounded-[4rem] shadow-[0_40px_100px_rgba(0,0,0,0.08)] relative overflow-hidden"
+              className="bg-brand-secondary p-8 md:p-10 rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.06)] relative overflow-hidden"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-gold/5 rounded-bl-[5rem]" />
-              <h3 className="text-3xl font-serif font-black text-brand-primary mb-10">Send an Inquiry</h3>
+              <div className="absolute top-0 right-0 w-24 h-24 bg-brand-gold/5 rounded-bl-[3rem]" />
+              <h3 className="text-xl font-serif font-black text-brand-primary mb-6">Send an Inquiry</h3>
               <InquiryForm />
             </motion.div>
           </div>
@@ -777,38 +796,38 @@ export default function PublicLanding() {
       </section>
 
       {/* Institutional Footer */}
-      <footer className="bg-brand-primary text-white pt-32 pb-16 relative overflow-hidden">
+      <footer className="bg-brand-primary text-white pt-16 pb-10 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-gold/50 to-transparent" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16 mb-24">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
             <div className="col-span-1 lg:col-span-1">
-              <div className="flex items-center gap-4 mb-10">
-                <img src="/logo.png" alt="Logo" className="h-14 w-14 brightness-0 invert opacity-90" />
+              <div className="flex items-center gap-3 mb-6">
+                <img src="/logo.png" alt="Logo" className="h-10 w-10 brightness-0 invert opacity-90" />
                 <div className="flex flex-col">
-                  <span className="text-2xl font-serif font-black tracking-tight">EDWARDIAN</span>
-                  <span className="text-sm font-bold tracking-[0.4em] text-brand-gold">ACADEMY</span>
+                  <span className="text-lg font-serif font-black tracking-tight">EDWARDIAN</span>
+                  <span className="text-[10px] font-bold tracking-[0.4em] text-brand-gold">ACADEMY</span>
                 </div>
               </div>
-              <p className="text-slate-400 font-medium leading-relaxed mb-10 text-lg">
+              <p className="text-slate-400 font-medium leading-relaxed mb-6 text-sm">
                 Advancing knowledge and transforming lives through excellence in education since 2017.
               </p>
-              <div className="flex gap-5">
+              <div className="flex gap-3">
                 {[Facebook, Twitter, Instagram, Youtube].map((Icon, i) => (
                   <motion.a 
                     key={i} 
                     href="#" 
-                    whileHover={{ y: -5, scale: 1.1 }}
-                    className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-brand-gold hover:text-white transition-all border border-white/5 hover:border-brand-gold"
+                    whileHover={{ y: -3, scale: 1.1 }}
+                    className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-brand-gold hover:text-white transition-all border border-white/5 hover:border-brand-gold"
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4 w-4" />
                   </motion.a>
                 ))}
               </div>
             </div>
 
             <div>
-              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Programs</h4>
-              <ul className="space-y-5 text-slate-400 font-medium text-lg">
+              <h4 className="text-xs font-bold mb-6 uppercase tracking-[0.25em] text-brand-gold">Programs</h4>
+              <ul className="space-y-3 text-slate-400 font-medium text-sm">
                 <li><Link to="/register" className="hover:text-brand-gold transition-colors">F.Sc Pre-Medical</Link></li>
                 <li><Link to="/register" className="hover:text-brand-gold transition-colors">F.Sc Pre-Engineering</Link></li>
                 <li><Link to="/register" className="hover:text-brand-gold transition-colors">Computer Science</Link></li>
@@ -817,8 +836,8 @@ export default function PublicLanding() {
             </div>
 
             <div>
-              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Quick Links</h4>
-              <ul className="space-y-5 text-slate-400 font-medium text-lg">
+              <h4 className="text-xs font-bold mb-6 uppercase tracking-[0.25em] text-brand-gold">Quick Links</h4>
+              <ul className="space-y-3 text-slate-400 font-medium text-sm">
                 <li><Link to="/student-portal" className="hover:text-brand-gold transition-colors">Student Portal</Link></li>
                 <li><Link to="/register" className="hover:text-brand-gold transition-colors">Online Admission</Link></li>
                 <li><a href="#faculty" className="hover:text-brand-gold transition-colors">Our Faculty</a></li>
@@ -827,18 +846,18 @@ export default function PublicLanding() {
             </div>
 
             <div>
-              <h4 className="text-sm font-bold mb-10 uppercase tracking-[0.3em] text-brand-gold">Newsletter</h4>
-              <p className="text-slate-400 text-base font-medium mb-8">Subscribe to get updates on admissions and academic calendars.</p>
-              <div className="flex gap-3">
-                <Input className="h-14 bg-white/5 border-white/10 rounded-2xl px-6 text-white placeholder:text-slate-500 focus:ring-brand-gold focus:border-brand-gold" placeholder="Email Address" />
-                <Button className="h-14 bg-brand-gold hover:bg-brand-gold/90 rounded-2xl px-8 shadow-lg shadow-brand-gold/20">
-                  <Send className="h-5 w-5" />
+              <h4 className="text-xs font-bold mb-6 uppercase tracking-[0.25em] text-brand-gold">Newsletter</h4>
+              <p className="text-slate-400 text-xs font-medium mb-4">Subscribe to get updates on admissions and academic calendars.</p>
+              <div className="flex gap-2">
+                <Input className="h-10 bg-white/5 border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-slate-500 focus:ring-brand-gold focus:border-brand-gold" placeholder="Email Address" />
+                <Button className="h-10 bg-brand-gold hover:bg-brand-gold/90 rounded-xl px-5 shadow-md shadow-brand-gold/20">
+                  <Send className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </div>
           
-          <div className="pt-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-sm font-bold text-slate-500 uppercase tracking-[0.2em]">
+          <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-bold text-slate-500 uppercase tracking-[0.15em]">
             <p>© {new Date().getFullYear()} The Edwardian Academy. All Rights Reserved.</p>
             <div className="flex gap-10">
               <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
