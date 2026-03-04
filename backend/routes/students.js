@@ -3,6 +3,11 @@ const router = express.Router();
 const Student = require("../models/Student");
 const Timetable = require("../models/Timetable");
 const Class = require("../models/Class");
+const FeeRecord = require("../models/FeeRecord");
+const Transaction = require("../models/Transaction");
+const Notification = require("../models/Notification");
+const User = require("../models/User");
+const Configuration = require("../models/Configuration");
 const { protect } = require("../middleware/authMiddleware");
 const { handlePhotoUpload } = require("../middleware/upload");
 const {
@@ -266,7 +271,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // @route   POST /api/students
-// @desc    Create a new student
+// @desc    Create a new student with full financial sync
 // @access  Public
 router.post("/", async (req, res) => {
   try {
@@ -307,16 +312,20 @@ router.post("/", async (req, res) => {
       sanitizedData.paidAmount = Number(sanitizedData.paidAmount);
       console.log("🔧 Cast paidAmount to Number:", sanitizedData.paidAmount);
     }
+    if (sanitizedData.sessionRate !== undefined) {
+      sanitizedData.sessionRate = Number(sanitizedData.sessionRate) || 0;
+    }
+    if (sanitizedData.discountAmount !== undefined) {
+      sanitizedData.discountAmount = Number(sanitizedData.discountAmount) || 0;
+    }
 
-    // ✨ TASK 3: CONTROLLER SAFETY - Never let frontend send studentId
-    // Delete it from the request to let the pre-save hook handle it
+    // ✨ CONTROLLER SAFETY - Never let frontend send studentId
     if (sanitizedData.studentId !== undefined) {
       delete sanitizedData.studentId;
       console.log("🔧 Removed studentId from request (will be auto-generated)");
     }
 
     // ✨ SYSTEM BRIDGE: Auto-generate login credentials for direct admissions
-    // Password formula: first 4 chars of name (lowercase) + last 4 digits of phone
     if (!sanitizedData.password && (sanitizedData.parentCell || sanitizedData.studentCell)) {
       const phone = sanitizedData.parentCell || sanitizedData.studentCell || "";
       const phoneDigits = phone.replace(/\D/g, "").slice(-4);
@@ -331,9 +340,52 @@ router.post("/", async (req, res) => {
       console.log("🔐 Auto-generated login credentials for student");
     }
 
-    // Default to Active status for direct admissions (not pending approval)
+    // Default to Active status for direct admissions
     if (!sanitizedData.studentStatus) {
       sanitizedData.studentStatus = "Active";
+    }
+
+    // Auto-attach class teacher if missing
+    if (sanitizedData.classRef) {
+      try {
+        const classDoc = await Class.findById(sanitizedData.classRef)
+          .select("assignedTeacher teacherName")
+          .lean();
+        if (classDoc && !sanitizedData.assignedTeacher) {
+          sanitizedData.assignedTeacher = classDoc.assignedTeacher;
+          sanitizedData.assignedTeacherName = classDoc.teacherName;
+        }
+      } catch (e) {
+        console.log("Class lookup skipped:", e.message);
+      }
+    }
+
+    // If session rate not provided, try to fetch from config
+    if (sanitizedData.sessionRef && !sanitizedData.sessionRate) {
+      try {
+        const config = await Configuration.findOne().lean();
+        const sessionPrice = config?.sessionPrices?.find(
+          (sp) => sp.sessionId?.toString() === sanitizedData.sessionRef.toString(),
+        );
+        if (sessionPrice?.price) {
+          sanitizedData.sessionRate = Number(sessionPrice.price) || 0;
+        }
+      } catch (e) {
+        console.log("Session rate lookup skipped:", e.message);
+      }
+    }
+
+    // Calculate discount if missing and session rate is present
+    if (
+      sanitizedData.sessionRate &&
+      sanitizedData.sessionRate > 0 &&
+      (sanitizedData.discountAmount === undefined || sanitizedData.discountAmount === 0)
+    ) {
+      const netTotal = Number(sanitizedData.totalFee) || 0;
+      sanitizedData.discountAmount = Math.max(
+        0,
+        Number(sanitizedData.sessionRate) - netTotal,
+      );
     }
 
     console.log("\n✅ Sanitized Data:", JSON.stringify(sanitizedData, null, 2));
@@ -347,6 +399,104 @@ router.post("/", async (req, res) => {
       savedStudent.studentId,
     );
     console.log("✅ Fee Status:", savedStudent.feeStatus);
+
+    // =====================================================================
+    // FINANCE SYNC: Record admission payment into finance ledger
+    // =====================================================================
+    const paidAmount = Number(savedStudent.paidAmount) || 0;
+    if (paidAmount > 0) {
+      const monthLabel = new Date().toLocaleString("en-US", {
+        month: "long",
+        year: "numeric",
+      });
+
+      // Create FeeRecord for the admission payment
+      let feeRecord = null;
+      try {
+        feeRecord = await FeeRecord.create({
+          student: savedStudent._id,
+          studentName: savedStudent.studentName,
+          class: savedStudent.classRef || undefined,
+          className: savedStudent.class || "N/A",
+          subject: "Session Admission",
+          amount: paidAmount,
+          discountAmount: savedStudent.discountAmount || 0,
+          sessionRate: savedStudent.sessionRate || 0,
+          month: monthLabel,
+          status: "PAID",
+          collectedBy: req.user?._id || undefined,
+          collectedByName: req.user?.fullName || "Staff",
+          paymentMethod: "CASH",
+          notes: "Admission payment",
+        });
+        console.log("💰 FeeRecord created:", feeRecord.receiptNumber);
+      } catch (feeErr) {
+        console.log("FeeRecord creation skipped:", feeErr.message);
+      }
+
+      // Create Transaction for the admission income
+      try {
+        await Transaction.create({
+          type: "INCOME",
+          category: "Tuition",
+          amount: paidAmount,
+          description: `Admission fee: ${savedStudent.studentName} (${savedStudent.studentId}) — ${savedStudent.class || "N/A"}`,
+          date: new Date(),
+          collectedBy: req.user?._id || undefined,
+          status: "FLOATING",
+          studentId: savedStudent._id,
+        });
+        console.log("📊 Transaction recorded: INCOME PKR", paidAmount);
+      } catch (txErr) {
+        console.log("Transaction creation skipped:", txErr.message);
+      }
+
+      // Notify owner about admission payment
+      try {
+        const owner = await User.findOne({ role: "OWNER" });
+        if (owner) {
+          await Notification.create({
+            recipient: owner._id,
+            recipientRole: "OWNER",
+            message: `💰 NEW ADMISSION: ${savedStudent.studentName} (${savedStudent.studentId}) enrolled in ${savedStudent.class || "N/A"}. Fee: PKR ${paidAmount.toLocaleString()} received.`,
+            type: "FINANCE",
+            relatedId: feeRecord?._id?.toString() || savedStudent._id.toString(),
+          });
+          console.log("🔔 Owner notification sent for admission payment");
+        }
+      } catch (notifErr) {
+        console.log("Admission notification skipped:", notifErr.message);
+      }
+
+      // Update collector's totalCash if applicable
+      if (req.user?._id) {
+        try {
+          const collector = await User.findById(req.user._id);
+          if (collector) {
+            collector.totalCash = (collector.totalCash || 0) + paidAmount;
+            await collector.save();
+          }
+        } catch (e) {
+          console.log("TotalCash update skipped:", e.message);
+        }
+      }
+    } else {
+      // No payment — still notify owner about the new admission
+      try {
+        const owner = await User.findOne({ role: "OWNER" });
+        if (owner) {
+          await Notification.create({
+            recipient: owner._id,
+            recipientRole: "OWNER",
+            message: `📋 NEW ADMISSION: ${savedStudent.studentName} (${savedStudent.studentId}) enrolled in ${savedStudent.class || "N/A"}. Fee: PKR ${(savedStudent.totalFee || 0).toLocaleString()} — Payment pending.`,
+            type: "SYSTEM",
+            relatedId: savedStudent._id.toString(),
+          });
+        }
+      } catch (notifErr) {
+        console.log("Admission notification skipped:", notifErr.message);
+      }
+    }
 
     // Include credentials in response for admin display
     const responseData = savedStudent.toObject();
@@ -434,28 +584,165 @@ router.put("/:id", async (req, res) => {
 });
 
 // @route   DELETE /api/students/:id
-// @desc    Delete a student
+// @desc    Withdraw a student (soft delete) with optional refund
 // @access  Public
 router.delete("/:id", async (req, res) => {
   try {
-    const deletedStudent = await Student.findByIdAndDelete(req.params.id);
+    const { refundAmount, refundReason } = req.body || {};
 
-    if (!deletedStudent) {
+    const student = await Student.findById(req.params.id);
+    if (!student) {
       return res.status(404).json({
         success: false,
         message: "Student not found",
       });
     }
 
+    // Already withdrawn?
+    if (student.studentStatus === "Withdrawn") {
+      return res.status(400).json({
+        success: false,
+        message: "Student is already withdrawn.",
+      });
+    }
+
+    const previousStatus = student.studentStatus;
+    const refundNum = Number(refundAmount) || 0;
+
+    // Validate refund
+    if (refundNum > 0 && refundNum > student.paidAmount) {
+      return res.status(400).json({
+        success: false,
+        message: `Refund amount (${refundNum}) cannot exceed amount paid (${student.paidAmount}).`,
+      });
+    }
+
+    // 1) Soft-delete: set status to Withdrawn
+    student.studentStatus = "Withdrawn";
+    student.status = "inactive";
+
+    // 2) Process refund if requested
+    let refundTransaction = null;
+    if (refundNum > 0) {
+      // Deduct from student's paid amount
+      student.paidAmount = Math.max(0, student.paidAmount - refundNum);
+
+      // Recalculate fee status
+      const totalFee = Number(student.totalFee) || 0;
+      const paidAmount = Number(student.paidAmount) || 0;
+      if (paidAmount >= totalFee && totalFee > 0) {
+        student.feeStatus = "paid";
+      } else if (paidAmount > 0 && paidAmount < totalFee) {
+        student.feeStatus = "partial";
+      } else {
+        student.feeStatus = "pending";
+      }
+
+      // Create REFUND transaction in the finance ledger
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const refundReceiptId = `REF-${student.studentId}-${dateStr}-${randomSuffix}`;
+
+      refundTransaction = await Transaction.create({
+        type: "REFUND",
+        category: "Refund",
+        amount: refundNum,
+        description: `Refund to ${student.studentName} (${student.studentId}) — ${refundReason || "Student withdrawn"}. Previous status: ${previousStatus}. Paid before refund: PKR ${(student.paidAmount + refundNum).toLocaleString()}`,
+        date: now,
+        collectedBy: req.user?._id || undefined,
+        status: "VERIFIED",
+        studentId: student._id,
+      });
+
+      // Mark related FeeRecords as REFUNDED if full refund
+      if (refundNum >= (student.paidAmount + refundNum)) {
+        // Full refund — mark all fee records
+        await FeeRecord.updateMany(
+          { student: student._id, status: "PAID" },
+          {
+            $set: {
+              status: "REFUNDED",
+              refundAmount: refundNum,
+              refundDate: now,
+              refundReason: refundReason || "Student withdrawn — full refund",
+            },
+          }
+        );
+      } else {
+        // Partial refund — record on the latest fee record
+        const latestFeeRecord = await FeeRecord.findOne({ student: student._id, status: "PAID" }).sort({ createdAt: -1 });
+        if (latestFeeRecord) {
+          latestFeeRecord.refundAmount = refundNum;
+          latestFeeRecord.refundDate = now;
+          latestFeeRecord.refundReason = refundReason || "Student withdrawn — partial refund";
+          await latestFeeRecord.save();
+        }
+      }
+
+      // Deduct refund from collector's totalCash (if applicable)
+      if (req.user?._id) {
+        try {
+          const collector = await User.findById(req.user._id);
+          if (collector) {
+            collector.totalCash = Math.max(0, (collector.totalCash || 0) - refundNum);
+            await collector.save();
+          }
+        } catch (e) {
+          console.log("TotalCash refund deduction skipped:", e.message);
+        }
+      }
+
+      // Send refund notification
+      try {
+        const owner = await User.findOne({ role: "OWNER" });
+        if (owner) {
+          await Notification.create({
+            recipient: owner._id,
+            recipientRole: "OWNER",
+            message: `🔴 REFUND: Student ${student.studentName} (${student.studentId}) withdrawn. Refund of PKR ${refundNum.toLocaleString()} processed. Reason: ${refundReason || "N/A"}`,
+            type: "FINANCE",
+            relatedId: refundTransaction._id.toString(),
+          });
+        }
+      } catch (notifErr) {
+        console.log("Refund notification skipped:", notifErr.message);
+      }
+    } else {
+      // No refund — just withdrawal notification
+      try {
+        const owner = await User.findOne({ role: "OWNER" });
+        if (owner) {
+          await Notification.create({
+            recipient: owner._id,
+            recipientRole: "OWNER",
+            message: `🔴 WITHDRAWAL: Student ${student.studentName} (${student.studentId}) has been withdrawn. No refund issued. Total paid: PKR ${student.paidAmount.toLocaleString()}`,
+            type: "FINANCE",
+          });
+        }
+      } catch (notifErr) {
+        console.log("Withdrawal notification skipped:", notifErr.message);
+      }
+    }
+
+    await student.save();
+
     res.json({
       success: true,
-      message: "Student deleted successfully",
-      data: deletedStudent,
+      message: refundNum > 0
+        ? `${student.studentName} withdrawn. Refund of PKR ${refundNum.toLocaleString()} processed.`
+        : `${student.studentName} withdrawn successfully. No refund issued.`,
+      data: {
+        student,
+        refundTransaction,
+        refundAmount: refundNum,
+      },
     });
   } catch (error) {
+    console.error("Student Withdrawal Error:", error);
     res.status(500).json({
       success: false,
-      message: "Error deleting student",
+      message: "Error processing student withdrawal",
       error: error.message,
     });
   }

@@ -246,13 +246,20 @@ function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
   });
 
   const teachers = data?.data || [];
-  const totalBalance = teachers.reduce((s: number, t: any) => s + (t.walletBalance || 0), 0);
-  const totalCredited = teachers.reduce((s: number, t: any) => s + (t.totalCredited || 0), 0);
-  const totalDebited = teachers.reduce((s: number, t: any) => s + (t.totalDebited || 0), 0);
+  // walletBalance, totalCredited, totalDebited are computed by the backend
+  // Fallbacks: balance.pending / totalPaid for backward-compat
+  const totalBalance = teachers.reduce((s: number, t: any) => s + (t.walletBalance ?? t.balance?.pending ?? 0), 0);
+  const totalCredited = teachers.reduce((s: number, t: any) => s + (t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0))), 0);
+  const totalDebited = teachers.reduce((s: number, t: any) => s + (t.totalDebited ?? t.totalPaid ?? 0), 0);
 
   const handleCSV = () => {
-    const headers = ["Teacher ID", "Name", "Subject", "Status", "Wallet Balance", "Total Credited", "Total Debited"];
-    const rows = teachers.map((t: any) => [t.teacherId || "", t.name || "", t.subject || "", t.status || "", String(t.walletBalance ?? 0), String(t.totalCredited ?? 0), String(t.totalDebited ?? 0)]);
+    const headers = ["Teacher ID", "Name", "Subject", "Status", "Total Credited (PKR)", "Total Paid Out (PKR)", "Outstanding Balance (PKR)"];
+    const rows = teachers.map((t: any) => {
+      const walletBal = t.walletBalance ?? t.balance?.pending ?? 0;
+      const credited = t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0));
+      const debited = t.totalDebited ?? t.totalPaid ?? 0;
+      return [t.teacherId || "", t.name || "", t.subject || "", t.status || "", String(credited), String(debited), String(walletBal)];
+    });
     downloadCSV("teacher-payment-report", headers, rows);
     toast.success("CSV downloaded");
   };
@@ -284,17 +291,22 @@ function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
             <TableBody>
               {teachers.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No teachers found</TableCell></TableRow>
-              ) : teachers.map((t: any) => (
+              ) : teachers.map((t: any) => {
+                const walletBal = t.walletBalance ?? t.balance?.pending ?? 0;
+                const credited = t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0));
+                const debited = t.totalDebited ?? t.totalPaid ?? 0;
+                return (
                 <TableRow key={t._id}>
                   <TableCell className="font-mono text-xs">{t.teacherId}</TableCell>
                   <TableCell className="font-medium">{t.name}</TableCell>
                   <TableCell>{t.subject || "—"}</TableCell>
                   <TableCell><Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge></TableCell>
-                  <TableCell className="text-right text-emerald-700 font-medium">{formatCurrency(t.totalCredited || 0)}</TableCell>
-                  <TableCell className="text-right text-red-600 font-medium">{formatCurrency(t.totalDebited || 0)}</TableCell>
-                  <TableCell className="text-right font-bold">{formatCurrency(t.walletBalance || 0)}</TableCell>
+                  <TableCell className="text-right text-emerald-700 font-medium">{formatCurrency(credited)}</TableCell>
+                  <TableCell className="text-right text-red-600 font-medium">{formatCurrency(debited)}</TableCell>
+                  <TableCell className="text-right font-bold">{formatCurrency(walletBal)}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent></Card>

@@ -473,6 +473,11 @@ const Admissions = () => {
     mutationFn: studentApi.create,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      // Invalidate dashboard & finance queries so stats update immediately
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["finance"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       setSavedStudent(data.data);
 
       // Save session info for print slip

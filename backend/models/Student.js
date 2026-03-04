@@ -50,7 +50,7 @@ const studentSchema = new mongoose.Schema(
     // Enhanced status for student lifecycle
     studentStatus: {
       type: String,
-      enum: ["Active", "Pending", "Alumni", "Expelled", "Suspended"],
+      enum: ["Active", "Pending", "Alumni", "Expelled", "Suspended", "Withdrawn"],
       default: "Active",
     },
     // ID Card reprint tracking (anti-fraud)

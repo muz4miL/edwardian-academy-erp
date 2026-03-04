@@ -237,6 +237,7 @@ export const studentApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify(studentData),
         });
         const data = await response.json();
@@ -253,6 +254,7 @@ export const studentApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify(studentData),
         });
         const data = await response.json();
@@ -263,13 +265,33 @@ export const studentApi = {
     },
 
     // Delete student
-    delete: async (id: string) => {
+    delete: async (id: string, refundData?: { refundAmount?: number; refundReason?: string }) => {
         const response = await fetch(`${API_BASE_URL}/students/${id}`, {
             method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: refundData ? JSON.stringify(refundData) : undefined,
         });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to delete student');
+        }
+        return data;
+    },
+
+    // Withdraw student (soft delete) with optional refund
+    withdraw: async (id: string, payload?: { refundAmount?: number; refundReason?: string }) => {
+        const response = await fetch(`${API_BASE_URL}/students/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload || {}),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to withdraw student');
         }
         return data;
     },

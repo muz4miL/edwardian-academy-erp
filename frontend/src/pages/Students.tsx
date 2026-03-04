@@ -29,7 +29,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Eye,
   Edit,
   Trash2,
   UserPlus,
@@ -40,6 +39,7 @@ import {
   Receipt,
   CheckCircle,
   Printer,
+  UserMinus,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { studentApi, sessionApi, classApi, timetableApi, teacherApi } from "@/lib/api";
@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 // Import CRUD Modals
 import { ViewEditStudentModal } from "@/components/dashboard/ViewEditStudentModal";
-import { DeleteStudentDialog } from "@/components/dashboard/DeleteStudentDialog";
+import { WithdrawStudentDialog } from "@/components/dashboard/WithdrawStudentDialog";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
@@ -99,7 +99,7 @@ const Students = () => {
   // Modal states
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
 
   // Fee Collection Modal State
@@ -187,21 +187,27 @@ const Students = () => {
 
   const students = data?.data || [];
 
-  // Delete mutation
-  const deleteStudentMutation = useMutation({
-    mutationFn: studentApi.delete,
-    onSuccess: () => {
+  // Withdraw mutation (soft delete with optional refund)
+  const withdrawStudentMutation = useMutation({
+    mutationFn: ({ id, refundAmount, refundReason }: { id: string; refundAmount?: number; refundReason?: string }) =>
+      studentApi.withdraw(id, { refundAmount, refundReason }),
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      toast.success("Student Deleted", {
-        description: "Student record has been removed successfully",
-        duration: 3000,
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+      const refundMsg = data?.data?.refundAmount
+        ? ` — Refund of PKR ${Number(data.data.refundAmount).toLocaleString()} processed`
+        : "";
+      toast.success("Student Withdrawn", {
+        description: `Student has been withdrawn successfully${refundMsg}`,
+        duration: 4000,
       });
-      setIsDeleteDialogOpen(false);
+      setIsWithdrawDialogOpen(false);
       setSelectedStudent(null);
     },
     onError: (error: any) => {
-      toast.error("Delete Failed", {
-        description: error.message || "Failed to delete student",
+      toast.error("Withdrawal Failed", {
+        description: error.message || "Failed to withdraw student",
         duration: 4000,
       });
     },
@@ -263,32 +269,20 @@ const Students = () => {
   };
 
   // Handlers
-  const handleView = (student: any) => {
-    // Navigate to full Student Profile page
-    navigate(`/students/${student._id}`);
-  };
-
-  const handleQuickView = (student: any) => {
-    // Quick modal view (for backward compatibility)
-    setSelectedStudent(student);
-    setViewEditMode("view");
-    setIsViewEditModalOpen(true);
-  };
-
   const handleEdit = (student: any) => {
     setSelectedStudent(student);
     setViewEditMode("edit");
     setIsViewEditModalOpen(true);
   };
 
-  const handleDelete = (student: any) => {
+  const handleWithdraw = (student: any) => {
     setSelectedStudent(student);
-    setIsDeleteDialogOpen(true);
+    setIsWithdrawDialogOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmWithdraw = (refundAmount?: number, refundReason?: string) => {
     if (selectedStudent?._id) {
-      deleteStudentMutation.mutate(selectedStudent._id);
+      withdrawStudentMutation.mutate({ id: selectedStudent._id, refundAmount, refundReason });
     }
   };
 
@@ -657,31 +651,24 @@ const Students = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 hover:bg-sky-50 hover:text-sky-600"
-                              onClick={() => handleView(student)}
-                              title="View Details"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
                               className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
                               onClick={() => handleEdit(student)}
                               title="Edit Student"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
-                              onClick={() => handleDelete(student)}
-                              disabled={deleteStudentMutation.isPending}
-                              title="Delete Student"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {student.studentStatus !== "Withdrawn" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 hover:bg-amber-50 hover:text-amber-600"
+                                onClick={() => handleWithdraw(student)}
+                                disabled={withdrawStudentMutation.isPending}
+                                title="Withdraw Student"
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -717,13 +704,14 @@ const Students = () => {
         mode={viewEditMode}
       />
 
-      <DeleteStudentDialog
-        open={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
-        onConfirm={confirmDelete}
+      <WithdrawStudentDialog
+        open={isWithdrawDialogOpen}
+        onOpenChange={setIsWithdrawDialogOpen}
+        onConfirm={confirmWithdraw}
         studentName={selectedStudent?.studentName || ""}
         studentId={selectedStudent?.studentId || ""}
-        isDeleting={deleteStudentMutation.isPending}
+        paidAmount={selectedStudent?.paidAmount || 0}
+        isProcessing={withdrawStudentMutation.isPending}
       />
 
       {/* Fee Collection Modal */}

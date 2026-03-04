@@ -11,10 +11,22 @@ exports.getTeachers = async (req, res) => {
   try {
     const teachers = await Teacher.find().populate('userId', 'role').sort({ createdAt: -1 });
 
+    // Enrich with computed financial fields for reports & dashboard
+    const enriched = teachers.map((t) => {
+      const obj = t.toObject();
+      const pending = obj.balance?.pending || 0;
+      const totalPaid = obj.totalPaid || 0;
+      // totalCredited = all credits ever given (outstanding + already paid out)
+      obj.walletBalance = pending;
+      obj.totalCredited = pending + totalPaid;
+      obj.totalDebited = totalPaid;
+      return obj;
+    });
+
     res.status(200).json({
       success: true,
-      count: teachers.length,
-      data: teachers,
+      count: enriched.length,
+      data: enriched,
     });
   } catch (error) {
     console.error("❌ Error fetching teachers:", error);

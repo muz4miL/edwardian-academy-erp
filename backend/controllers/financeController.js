@@ -130,7 +130,8 @@ exports.getDashboardStats = async (req, res) => {
       Pending: 0,
       Alumni: 0,
       Expelled: 0,
-      Suspended: 0
+      Suspended: 0,
+      Withdrawn: 0,
     };
     statusBreakdownResult.forEach(item => {
       if (item._id && studentsByStatus.hasOwnProperty(item._id)) {
@@ -152,7 +153,20 @@ exports.getDashboardStats = async (req, res) => {
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const monthlyIncome = monthlyIncomeResult[0]?.total || 0;
+    const monthlyIncomeGross = monthlyIncomeResult[0]?.total || 0;
+
+    // Deduct refunds from monthly income
+    const monthlyRefundResult = await Transaction.aggregate([
+      {
+        $match: {
+          type: "REFUND",
+          date: { $gte: startOfMonth },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const monthlyRefunds = monthlyRefundResult[0]?.total || 0;
+    const monthlyIncome = monthlyIncomeGross - monthlyRefunds;
 
     // Monthly expenses
     const monthlyExpenseResult = await Transaction.aggregate([
@@ -166,7 +180,11 @@ exports.getDashboardStats = async (req, res) => {
       { $match: { type: "INCOME", date: { $gte: today, $lt: tomorrow } } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const todayIncome = todayIncomeResult[0]?.total || 0;
+    const todayRefundResult = await Transaction.aggregate([
+      { $match: { type: "REFUND", date: { $gte: today, $lt: tomorrow } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const todayIncome = (todayIncomeResult[0]?.total || 0) - (todayRefundResult[0]?.total || 0);
 
     // Floating (unverified) cash
     const floatingResult = await Transaction.aggregate([
@@ -1121,7 +1139,7 @@ exports.getAnalyticsDashboard = async (req, res) => {
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
 
-    const [todayRev, weeklyRev, monthlyRev] = await Promise.all([
+    const [todayRev, weeklyRev, monthlyRev, todayRefunds, weeklyRefunds, monthlyRefundsAmt] = await Promise.all([
       Transaction.aggregate([
         { $match: { type: "INCOME", date: { $gte: today, $lt: tmr } } },
         { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -1132,6 +1150,18 @@ exports.getAnalyticsDashboard = async (req, res) => {
       ]),
       Transaction.aggregate([
         { $match: { type: "INCOME", date: { $gte: startOfMonth } } },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: "REFUND", date: { $gte: today, $lt: tmr } } },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: "REFUND", date: { $gte: weekStart } } },
+        { $group: { _id: null, total: { $sum: "$amount" } } },
+      ]),
+      Transaction.aggregate([
+        { $match: { type: "REFUND", date: { $gte: startOfMonth } } },
         { $group: { _id: null, total: { $sum: "$amount" } } },
       ]),
     ]);
@@ -1147,9 +1177,9 @@ exports.getAnalyticsDashboard = async (req, res) => {
         feeCollection,
         expenseCategories,
         quickStats: {
-          todayRevenue: todayRev[0]?.total || 0,
-          weeklyRevenue: weeklyRev[0]?.total || 0,
-          monthlyRevenue: monthlyRev[0]?.total || 0,
+          todayRevenue: (todayRev[0]?.total || 0) - (todayRefunds[0]?.total || 0),
+          weeklyRevenue: (weeklyRev[0]?.total || 0) - (weeklyRefunds[0]?.total || 0),
+          monthlyRevenue: (monthlyRev[0]?.total || 0) - (monthlyRefundsAmt[0]?.total || 0),
           totalStudents,
           totalTeachers,
         },

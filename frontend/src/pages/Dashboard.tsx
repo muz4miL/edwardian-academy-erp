@@ -128,6 +128,15 @@ const OwnerDashboard = () => {
     poolRevenue: 0,
     floatingCash: 0,
     ownerNetRevenue: 0,
+    monthlyIncome: 0,
+    todayIncome: 0,
+    totalStudents: 0,
+    activeStudents: 0,
+    totalTeachers: 0,
+    totalExpected: 0,
+    totalCollected: 0,
+    totalPending: 0,
+    collectionRate: 0,
   });
 
   // Analytics data
@@ -328,6 +337,14 @@ const OwnerDashboard = () => {
       }
     };
     fetchData();
+
+    // Auto-refresh stats every 30 seconds for real-time sync
+    const pollInterval = setInterval(() => {
+      fetchStats();
+      fetchAnalytics();
+    }, 30000);
+
+    return () => clearInterval(pollInterval);
   }, []);
 
   const activeStudents = students.filter(
@@ -412,7 +429,7 @@ const OwnerDashboard = () => {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Net Revenue</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">
-                  PKR {(analytics?.quickStats?.monthlyRevenue || stats.ownerNetRevenue || 0).toLocaleString()}
+                  PKR {(analytics?.quickStats?.monthlyRevenue || stats.monthlyIncome || stats.ownerNetRevenue || 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">This month</p>
               </div>
@@ -427,7 +444,7 @@ const OwnerDashboard = () => {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Revenue</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">
-                  PKR {(analytics?.quickStats?.todayRevenue || 0).toLocaleString()}
+                  PKR {(analytics?.quickStats?.todayRevenue || stats.todayIncome || 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">Today so far</p>
               </div>
@@ -442,7 +459,7 @@ const OwnerDashboard = () => {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Students</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">
-                  {analytics?.quickStats?.totalStudents || activeStudents || 0}
+                  {analytics?.quickStats?.totalStudents || stats.totalStudents || students.length || 0}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">Enrolled</p>
               </div>

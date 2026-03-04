@@ -29,6 +29,7 @@ const transactionSchema = new mongoose.Schema(
         "Salaries",
         "Teacher Payout",
         "Teacher Salary",
+        "Teacher Credit",
         "Teacher Advance",
         "Teacher Share",
         "Academy Share",

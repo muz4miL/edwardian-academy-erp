@@ -354,8 +354,7 @@ const Teachers = () => {
                       )}
                       <div>
                         <p
-                          className="font-medium text-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
-                          onClick={() => handleView(teacher)}
+                          className="font-medium text-foreground"
                         >
                           {teacher.name}
                         </p>
@@ -456,29 +455,7 @@ const Teachers = () => {
                         <Wallet className="h-4 w-4" />
                       </Button>
 
-                      {/* View Button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary"
-                        onClick={() => handleView(teacher)}
-                        title="View Details"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      </Button>
+
 
                       {/* Edit Button */}
                       <Button
