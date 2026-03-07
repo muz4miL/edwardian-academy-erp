@@ -16,8 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
-import { GraduationCap, CheckCircle2, Loader2, Sparkles, ArrowRight, Phone, Mail, User, MapPin } from "lucide-react";
+import { GraduationCap, CheckCircle2, Loader2, ArrowRight, Phone, Mail, User, MapPin, Stethoscope, Wrench, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
@@ -53,6 +52,8 @@ export default function PublicRegister() {
     email: "",
     address: "",
     class: "", // Will store class _id
+    group: "", // Pre-Medical or Pre-Engineering
+    sessionRef: "", // Session _id
   });
 
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -70,6 +71,20 @@ export default function PublicRegister() {
 
   const classes = (classesData?.data || []).filter(
     (c: any) => c.status === "active",
+  );
+
+  // Fetch available sessions (active + upcoming)
+  const { data: sessionsData } = useQuery({
+    queryKey: ["public-sessions"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/sessions`);
+      if (!res.ok) throw new Error("Failed to fetch sessions");
+      return res.json();
+    },
+  });
+
+  const sessions = (sessionsData?.data || []).filter(
+    (s: any) => s.status === "active" || s.status === "upcoming",
   );
 
   // Registration mutation
@@ -104,7 +119,8 @@ export default function PublicRegister() {
       !formData.studentName ||
       !formData.fatherName ||
       !formData.parentCell ||
-      !formData.class
+      !formData.class ||
+      !formData.group
     ) {
       toast.error("Please fill all required fields");
       return;
@@ -114,7 +130,12 @@ export default function PublicRegister() {
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+      // Reset class when group changes (cascade)
+      ...(field === "group" ? { class: "" } : {}),
+    }));
   };
 
   // SUCCESS STATE
@@ -186,6 +207,8 @@ export default function PublicRegister() {
                     email: "",
                     address: "",
                     class: "",
+                    group: "",
+                    sessionRef: "",
                   });
                 }}
                 className="w-full h-14 bg-brand-primary hover:bg-brand-primary/90 text-white font-bold rounded-full transition-all shadow-xl shadow-brand-primary/20"
@@ -336,40 +359,119 @@ export default function PublicRegister() {
                 </div>
               </div>
 
+              {/* Academic Session */}
+              <div className="space-y-3 mb-12">
+                <Label className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2">
+                  Academic Session <span className="text-brand-gold">*</span>
+                </Label>
+                <div className="relative">
+                  <CalendarDays className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 z-10" />
+                  <Select
+                    value={formData.sessionRef}
+                    onValueChange={(value) => handleInputChange("sessionRef", value)}
+                  >
+                    <SelectTrigger className="h-16 pl-14 rounded-3xl border-white/10 bg-white/5 focus:bg-white/10 focus:ring-brand-gold transition-all text-white font-bold text-lg">
+                      <SelectValue placeholder="Select session" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-3xl border-white/10 bg-brand-primary/95 backdrop-blur-3xl text-white">
+                      {sessions.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-slate-400">No sessions available</div>
+                      ) : (
+                        sessions.map((session: any) => (
+                          <SelectItem
+                            key={session._id}
+                            value={session._id}
+                            className="h-14 focus:bg-white/10 rounded-2xl mx-2 my-1 font-medium text-white"
+                          >
+                            <span className="font-bold text-base">{session.sessionName}</span>
+                            {session.status === "active" && (
+                              <span className="ml-2 text-green-400 text-xs font-bold">(Current)</span>
+                            )}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Group Selection - Checkmark Cards */}
+              <div className="space-y-3 mb-12">
+                <Label className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2">
+                  Academic Stream <span className="text-brand-gold">*</span>
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { value: "Pre-Medical", label: "Pre-Medical", icon: Stethoscope, desc: "Biology · Chemistry · Physics" },
+                    { value: "Pre-Engineering", label: "Pre-Engineering", icon: Wrench, desc: "Maths · Chemistry · Physics" },
+                  ].map((opt) => {
+                    const isSelected = formData.group === opt.value;
+                    return (
+                      <motion.button
+                        key={opt.value}
+                        type="button"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleInputChange("group", opt.value)}
+                        className={`relative p-6 rounded-3xl border-2 transition-all duration-300 text-left ${
+                          isSelected
+                            ? "border-brand-gold bg-brand-gold/10 shadow-lg shadow-brand-gold/10"
+                            : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                        }`}
+                      >
+                        {isSelected && (
+                          <div className="absolute top-3 right-3 w-6 h-6 bg-brand-gold rounded-full flex items-center justify-center">
+                            <CheckCircle2 className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <opt.icon className={`h-8 w-8 mb-3 ${isSelected ? "text-brand-gold" : "text-slate-400"}`} />
+                        <p className={`font-black text-lg ${isSelected ? "text-brand-gold" : "text-white"}`}>{opt.label}</p>
+                        <p className="text-xs text-slate-400 mt-1 font-medium">{opt.desc}</p>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Class Selection - Filtered by group */}
               <div className="space-y-3 mb-16">
                 <Label className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2">
-                  Desired Academic Program <span className="text-brand-gold">*</span>
+                  Desired Class <span className="text-brand-gold">*</span>
                 </Label>
                 <div className="relative">
                   <GraduationCap className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 z-10" />
                   <Select
                     value={formData.class}
                     onValueChange={(value) => handleInputChange("class", value)}
+                    disabled={!formData.group}
                   >
                     <SelectTrigger className="h-16 pl-14 rounded-3xl border-white/10 bg-white/5 focus:bg-white/10 focus:ring-brand-gold transition-all text-white font-bold text-lg">
-                      <SelectValue placeholder="Select program" />
+                      <SelectValue placeholder={formData.group ? "Select class" : "Select academic stream first"} />
                     </SelectTrigger>
                     <SelectContent className="rounded-3xl border-white/10 bg-brand-primary/95 backdrop-blur-3xl text-white">
                       {isLoadingClasses ? (
-                        <div className="p-4 text-center text-sm text-slate-400">Loading programs...</div>
-                      ) : classes.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-slate-400">No active programs available</div>
-                      ) : (
-                        classes.map((cls: any) => (
-                          <SelectItem
-                            key={cls._id}
-                            value={cls._id}
-                            className="h-14 focus:bg-white/10 rounded-2xl mx-2 my-1 font-medium text-white"
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-bold text-base">{cls.classTitle || `${cls.gradeLevel} - ${cls.section}`}</span>
-                              {cls.scheduleDisplay && (
-                                <span className="text-[10px] text-brand-gold font-bold uppercase tracking-widest">{cls.scheduleDisplay}</span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
+                        <div className="p-4 text-center text-sm text-slate-400">Loading classes...</div>
+                      ) : (() => {
+                        const filtered = classes.filter((c: any) => c.group === formData.group);
+                        return filtered.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-slate-400">No classes for {formData.group}</div>
+                        ) : (
+                          filtered.map((cls: any) => (
+                            <SelectItem
+                              key={cls._id}
+                              value={cls._id}
+                              className="h-14 focus:bg-white/10 rounded-2xl mx-2 my-1 font-medium text-white"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-bold text-base">{cls.classTitle || `${cls.gradeLevel} - ${cls.section}`}</span>
+                                {cls.scheduleDisplay && (
+                                  <span className="text-[10px] text-brand-gold font-bold uppercase tracking-widest">{cls.scheduleDisplay}</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))
+                        );
+                      })()}
                     </SelectContent>
                   </Select>
                 </div>

@@ -117,9 +117,21 @@ exports.createStudent = async (req, res) => {
 // UPDATE student
 exports.updateStudent = async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+    const student = await Student.findById(req.params.id);
+
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
+    }
+
+    Object.assign(student, req.body);
+
+    const paidAmount = Number(student.paidAmount) || 0;
+    const totalFee = Number(student.totalFee) || 0;
+    student.feeStatus = calculateFeeStatus(paidAmount, totalFee).toLowerCase();
+
+    await student.save();
     res.json({ success: true, data: student });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

@@ -77,6 +77,7 @@ exports.publicRegister = async (req, res) => {
       class: classId,
       group,
       subjects,
+      sessionRef: clientSessionRef,
     } = req.body;
 
     // Validation (group is now optional)
@@ -88,11 +89,16 @@ exports.publicRegister = async (req, res) => {
       });
     }
 
+    // Normalize inputs for duplicate checking
+    const normalizedName = studentName.trim().replace(/\s+/g, " ");
+    const normalizedPhone = parentCell.trim().replace(/[^0-9]/g, "");
+    const escapedName = normalizedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     // Check for duplicate registration - Allow siblings (same phone, different name)
     // Only block if EXACT SAME student name + phone combination exists
     const existingStudent = await Student.findOne({
-      parentCell,
-      studentName: { $regex: new RegExp(`^${studentName.trim()}$`, "i") }, // Case-insensitive match
+      parentCell: { $regex: new RegExp(`^\\D*${normalizedPhone}\\D*$`) },
+      studentName: { $regex: new RegExp(`^${escapedName}$`, "i") },
       studentStatus: { $in: ["Active", "Pending"] },
     });
 
@@ -138,8 +144,12 @@ exports.publicRegister = async (req, res) => {
       }
     }
 
-    // Get active session
-    const activeSession = await Session.findOne({ isActive: true }).lean();
+    // Get session: prefer student-selected, fallback to active session
+    let sessionId = clientSessionRef || null;
+    if (!sessionId) {
+      const activeSession = await Session.findOne({ status: "active" }).lean();
+      sessionId = activeSession?._id || null;
+    }
 
     // Create student with Pending status (NO PASSWORD YET - Generated on approval)
     const student = await Student.create({
@@ -160,7 +170,7 @@ exports.publicRegister = async (req, res) => {
       status: "inactive", // Not active until approved
       password: undefined, // NO PASSWORD - Admin generates on approval
       classRef,
-      sessionRef: activeSession?._id,
+      sessionRef: sessionId,
     });
 
     console.log(
@@ -375,7 +385,7 @@ exports.approveRegistration = async (req, res) => {
 // @access  Protected (OWNER, OPERATOR)
 exports.rejectRegistration = async (req, res) => {
   try {
-    const { reason } = req.body;
+    const reason = req.body?.reason;
     const student = await Student.findById(req.params.id);
 
     if (!student) {

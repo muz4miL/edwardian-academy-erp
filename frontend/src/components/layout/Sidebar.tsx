@@ -41,6 +41,12 @@ const navItems = [
     path: "/admissions",
     permission: "admissions",
   },
+  {
+    icon: ClipboardCheck,
+    label: "Front Desk",
+    path: "/front-desk",
+    permission: "frontdesk",
+  },
   { icon: Users, label: "Students", path: "/students", permission: "students" },
   {
     icon: GraduationCap,
@@ -85,12 +91,6 @@ const navItems = [
     label: "Attendance",
     path: "/attendance",
     permission: "attendance",
-  },
-  {
-    icon: ClipboardCheck,
-    label: "Front Desk",
-    path: "/front-desk",
-    permission: "frontdesk",
   },
   {
     icon: Settings,

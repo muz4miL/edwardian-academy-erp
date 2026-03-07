@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { HeaderBanner } from "@/components/dashboard/HeaderBanner";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,9 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,8 +25,6 @@ import { Switch } from "@/components/ui/switch";
 import {
   AlertCircle,
   Save,
-  UserPlus,
-  Sparkles,
   Eye,
   CheckCircle2,
   Loader2,
@@ -43,7 +39,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { studentApi, classApi, sessionApi } from "@/lib/api";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
 import { ImageCapture } from "@/components/shared/ImageCapture";
@@ -72,6 +68,9 @@ interface GlobalSubjectFee {
 const Admissions = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const prefillClassRef = useRef<string | null>(null);
+  const prefillStudentIdRef = useRef<string | null>(null);
 
   // PDF Receipt Hook (replaces react-to-print)
   const { isPrinting, generatePDF } = usePDFReceipt();
@@ -134,7 +133,6 @@ const Admissions = () => {
   const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   // Modal states
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [savedStudent, setSavedStudent] = useState<any>(null);
   const [savedSession, setSavedSession] = useState<any>(null);
@@ -142,13 +140,7 @@ const Admissions = () => {
   // TASK 1: Draft Persistence State
   const [draftSaved, setDraftSaved] = useState(false);
 
-  const [quickName, setQuickName] = useState("");
-  const [quickClassId, setQuickClassId] = useState("");
-  const [quickSessionId, setQuickSessionId] = useState("");
-  const [quickParentCell, setQuickParentCell] = useState("");
-  const [quickTotalFee, setQuickTotalFee] = useState("");
-  const [quickPaidAmount, setQuickPaidAmount] = useState("");
-  const [quickFeeValidationError, setQuickFeeValidationError] = useState("");
+
 
   // Student Photo State
   const [photo, setPhoto] = useState<string | null>(null);
@@ -181,6 +173,28 @@ const Admissions = () => {
       }
     }
   }, []);
+
+  // Pre-fill from Front Desk navigation (VerificationHub ✓ button)
+  useEffect(() => {
+    const prefill = location.state?.prefill;
+    if (!prefill) return;
+
+    prefillStudentIdRef.current = prefill._id || null;
+    setStudentName(prefill.studentName || "");
+    setFatherName(prefill.fatherName || "");
+    setParentCell(prefill.parentCell || "");
+    setStudentCell(prefill.studentCell || "");
+    setAddress(prefill.address || "");
+    if (prefill.sessionRef) setSelectedSessionId(prefill.sessionRef);
+    if (prefill.group) setGroup(prefill.group);
+    // Store classRef to set after group cascade completes
+    if (prefill.classRef) prefillClassRef.current = prefill.classRef;
+
+    // Clear navigation state so refresh doesn't re-prefill
+    window.history.replaceState({}, document.title);
+    // Clear any saved draft so prefill takes precedence
+    localStorage.removeItem(ADMISSION_DRAFT_KEY);
+  }, [location.state]);
 
   // TASK 1: Save Draft to localStorage whenever form state changes
   useEffect(() => {
@@ -227,22 +241,6 @@ const Admissions = () => {
     paidAmount,
     isCustomFeeMode,
   ]);
-
-  // TASK 1: Auto-select active or upcoming session for Quick Add
-  useEffect(() => {
-    if (sessions.length > 0 && !quickSessionId) {
-      // Prefer active, then upcoming, then any session
-      const activeSession = sessions.find((s: any) => s.status === "active");
-      const upcomingSession = sessions.find(
-        (s: any) => s.status === "upcoming",
-      );
-      const defaultSession = activeSession || upcomingSession || sessions[0];
-
-      if (defaultSession) {
-        setQuickSessionId(defaultSession._id);
-      }
-    }
-  }, [sessions]);
 
   // WAQAR PROTOCOL V2: Fetch session price when session changes
   useEffect(() => {
@@ -295,29 +293,9 @@ const Admissions = () => {
     fetchSessionPrice();
   }, [selectedSessionId]); // Only re-fetch when session changes
 
-  // TASK 2: Dynamic fee sync for Quick Add when class changes
-  useEffect(() => {
-    if (quickClassId) {
-      const selectedClass = getQuickSelectedClass();
-      if (selectedClass) {
-        // Calculate total from subjects or use baseFee
-        const subjectTotal = (selectedClass.subjects || []).reduce(
-          (sum: number, s: any) => {
-            if (typeof s === "object" && s.fee) return sum + s.fee;
-            return sum;
-          },
-          0,
-        );
-        setQuickTotalFee(String(subjectTotal || selectedClass.baseFee || 0));
-      }
-    }
-  }, [quickClassId, classes]);
-
   // Get selected class
   const getSelectedClass = () =>
     classes.find((c: any) => c._id === selectedClassId);
-  const getQuickSelectedClass = () =>
-    classes.find((c: any) => c._id === quickClassId);
 
   // Get classes filtered by group (cascading select)
   const getFilteredClasses = () => {
@@ -404,12 +382,18 @@ const Admissions = () => {
   }, [isCustomFeeMode, isSessionPriceMode, sessionPrice]);
 
   // Reset class selection when group changes (cascading behavior)
+  // Skip reset if prefilling from Front Desk navigation
   useEffect(() => {
     if (group) {
-      // Clear class selection when group changes
-      setSelectedClassId("");
-      setSelectedSubjects([]);
-      setTotalFee("");
+      if (prefillClassRef.current) {
+        // Prefill mode: set the class instead of clearing it
+        setSelectedClassId(prefillClassRef.current);
+        prefillClassRef.current = null;
+      } else {
+        setSelectedClassId("");
+        setSelectedSubjects([]);
+        setTotalFee("");
+      }
     }
   }, [group]);
 
@@ -470,9 +454,15 @@ const Admissions = () => {
 
   // React Query Mutation
   const createStudentMutation = useMutation({
-    mutationFn: studentApi.create,
+    mutationFn: async (studentData: any) => {
+      if (prefillStudentIdRef.current) {
+        return studentApi.update(prefillStudentIdRef.current, studentData);
+      }
+      return studentApi.create(studentData);
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["all-students-lookup"] });
       // Invalidate dashboard & finance queries so stats update immediately
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-dashboard"] });
@@ -489,6 +479,9 @@ const Admissions = () => {
       // TASK 3: Clear draft after successful save (Safety Flush)
       localStorage.removeItem(ADMISSION_DRAFT_KEY);
       console.log("🗑️ Draft cleared after successful save");
+
+      // Front Desk prefills should be treated as finalized once saved.
+      prefillStudentIdRef.current = null;
 
       triggerConfetti();
       setSuccessModalOpen(true);
@@ -600,56 +593,17 @@ const Admissions = () => {
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
       photo: photo || undefined,
+      studentStatus: "Active",
+      status: "active",
     };
 
     console.log("📤 Sending Student Data to Backend:", studentData);
     createStudentMutation.mutate(studentData);
   };
 
-  // Quick Add submission
-  const handleQuickAdd = () => {
-    if (!quickName || !quickClassId || !quickParentCell) {
-      toast.error("Missing Information", {
-        description: "Please fill in all required fields for quick add",
-        duration: 3000,
-      });
-      return;
-    }
-
-    const selectedClass = getQuickSelectedClass();
-    const classTitle =
-      selectedClass?.classTitle || selectedClass?.className || "TBD";
-
-    const quickData = {
-      studentName: quickName,
-      fatherName: "To be updated",
-      class: classTitle,
-      group: "Pre-Medical",
-      subjects: [],
-      parentCell: quickParentCell,
-      studentCell: undefined,
-      address: undefined,
-      admissionDate: new Date(),
-      totalFee: Number(quickTotalFee) || 0,
-      paidAmount: Number(quickPaidAmount) || 0,
-      classRef: quickClassId,
-      sessionRef: quickSessionId || undefined,
-    };
-
-    createStudentMutation.mutate(quickData);
-    setQuickAddOpen(false);
-
-    // Reset quick form
-    setQuickName("");
-    setQuickClassId("");
-    setQuickSessionId("");
-    setQuickParentCell("");
-    setQuickTotalFee("");
-    setQuickPaidAmount("");
-  };
-
   // TASK 4: Reset form and clear ALL state including validation errors
   const handleCancel = () => {
+    prefillStudentIdRef.current = null;
     setStudentName("");
     setFatherName("");
     setSelectedClassId("");
@@ -706,11 +660,11 @@ const Admissions = () => {
       >
         <Button
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
-          onClick={() => setQuickAddOpen(true)}
+          onClick={() => navigate("/students")}
           style={{ borderRadius: "0.75rem" }}
         >
-          <Sparkles className="mr-2 h-4 w-4" />
-          Quick Add
+          <Eye className="mr-2 h-4 w-4" />
+          View Students
         </Button>
       </HeaderBanner>
 
@@ -794,24 +748,36 @@ const Admissions = () => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="group">Group *</Label>
-                <Select
-                  value={group}
-                  onValueChange={(value) => {
-                    setGroup(value);
-                  }}
-                >
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="Select group" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    <SelectItem value="Pre-Medical">Pre-Medical</SelectItem>
-                    <SelectItem value="Pre-Engineering">
-                      Pre-Engineering
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Group *</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { value: "Pre-Medical", label: "Pre-Medical", desc: "Biology · Chemistry · Physics" },
+                    { value: "Pre-Engineering", label: "Pre-Engineering", desc: "Maths · Chemistry · Physics" },
+                  ].map((opt) => {
+                    const isSelected = group === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setGroup(opt.value)}
+                        className={`relative p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                          isSelected
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "border-border bg-background hover:border-primary/30"
+                        }`}
+                      >
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                          </div>
+                        )}
+                        <p className={`font-semibold text-sm ${isSelected ? "text-primary" : "text-foreground"}`}>{opt.label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Class Dropdown - Filtered by Group */}
@@ -1225,203 +1191,6 @@ const Admissions = () => {
           </div>
         </div>
       </div>
-
-      {/* Quick Add Modal */}
-      <Dialog open={quickAddOpen} onOpenChange={setQuickAddOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100">
-              <UserPlus className="h-6 w-6 text-sky-600" />
-            </div>
-            <DialogTitle className="text-center text-lg font-semibold">
-              Speed Enrollment
-            </DialogTitle>
-            <DialogDescription className="text-center text-sm">
-              Quick add with minimal info
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-name" className="text-sm">
-                Student Name *
-              </Label>
-              <Input
-                id="quick-name"
-                placeholder="Enter full name"
-                value={quickName}
-                onChange={(e) => setQuickName(e.target.value)}
-                className="h-9"
-              />
-            </div>
-
-            {/* TASK 1: Session with auto-select (active or upcoming) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">Session</Label>
-                {sessions.find((s: any) => s._id === quickSessionId) &&
-                  (() => {
-                    const selected = sessions.find(
-                      (s: any) => s._id === quickSessionId,
-                    );
-                    if (selected?.status === "active") {
-                      return (
-                        <span className="text-xs text-green-600 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Active
-                        </span>
-                      );
-                    } else if (selected?.status === "upcoming") {
-                      return (
-                        <span className="text-xs text-sky-600 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Upcoming
-                        </span>
-                      );
-                    }
-                    return null;
-                  })()}
-              </div>
-              <Select value={quickSessionId} onValueChange={setQuickSessionId}>
-                <SelectTrigger className="h-9 bg-background">
-                  <SelectValue placeholder="Select session" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sessions.length === 0 ? (
-                    <SelectItem value="none" disabled>
-                      No sessions available
-                    </SelectItem>
-                  ) : (
-                    sessions.map((session: any) => (
-                      <SelectItem key={session._id} value={session._id}>
-                        {session.sessionName}
-                        {session.status === "active" && (
-                          <span className="ml-2 text-green-600 text-xs">
-                            (Current)
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* TASK 2: Class with fee sync */}
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-class" className="text-sm">
-                Class *
-              </Label>
-              <Select value={quickClassId} onValueChange={setQuickClassId}>
-                <SelectTrigger className="h-9 bg-background">
-                  <SelectValue placeholder="Select class" />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((cls: any) => (
-                    <SelectItem key={cls._id} value={cls._id}>
-                      {cls.className} - {cls.section}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-parent" className="text-sm">
-                Parent Cell *
-              </Label>
-              <Input
-                id="quick-parent"
-                placeholder="03XX-XXXXXXX"
-                value={quickParentCell}
-                onChange={(e) => setQuickParentCell(e.target.value)}
-                className="h-9"
-              />
-            </div>
-
-            {/* Fee fields with sync indicator */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Total Fee</Label>
-                  {quickClassId && (
-                    <span className="text-xs text-sky-600">Auto-filled</span>
-                  )}
-                </div>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={quickTotalFee}
-                  onChange={(e) => setQuickTotalFee(e.target.value)}
-                  className="h-9 bg-background"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm">Paid Amount</Label>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  value={quickPaidAmount}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setQuickPaidAmount(value);
-
-                    // TASK 1: Real-time validation for Quick Add
-                    if (value && quickTotalFee) {
-                      const paidNum = Number(value);
-                      const totalNum = Number(quickTotalFee);
-                      if (paidNum > totalNum) {
-                        setQuickFeeValidationError(
-                          "Received amount cannot exceed total fee",
-                        );
-                      } else {
-                        setQuickFeeValidationError("");
-                      }
-                    } else {
-                      setQuickFeeValidationError("");
-                    }
-                  }}
-                  className={`h-9 ${quickFeeValidationError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
-                />
-                {quickFeeValidationError && (
-                  <p className="text-xs text-red-600 flex items-center gap-1 font-medium">
-                    <AlertCircle className="h-3 w-3" />
-                    {quickFeeValidationError}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setQuickAddOpen(false);
-                setQuickFeeValidationError("");
-              }}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleQuickAdd}
-              disabled={
-                createStudentMutation.isPending || !!quickFeeValidationError
-              }
-              className="flex-1 bg-sky-600 hover:bg-sky-700"
-              style={{ borderRadius: "0.75rem" }}
-            >
-              {createStudentMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Enroll Student"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Success Modal - Elegant Compact Design */}
       <AdmissionSuccessModal

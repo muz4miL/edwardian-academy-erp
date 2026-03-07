@@ -59,8 +59,11 @@ import {
   Calculator,
   Lock,
   Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
@@ -74,13 +77,18 @@ interface Student {
   studentName: string;
   fatherName: string;
   parentCell: string;
+  studentCell?: string;
   email?: string;
+  address?: string;
   class: string;
   group: string;
   studentStatus: string;
   classRef?: string;
+  sessionRef?: string;
+  subjects?: Array<{ name: string; fee?: number }>;
+  totalFee?: number;
   createdAt: string;
-  plainPassword?: string; // Readable password stored in DB for Front Desk display
+  plainPassword?: string;
 }
 
 interface ClassInstance {
@@ -96,10 +104,13 @@ interface ClassInstance {
 
 export default function VerificationHub() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [foundStudent, setFoundStudent] = useState<Student | null>(null);
+  const [declineStudent, setDeclineStudent] = useState<Student | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
   const [generatedCredentials, setGeneratedCredentials] = useState<any>(null);
@@ -268,6 +279,32 @@ export default function VerificationHub() {
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to approve student");
+    },
+  });
+
+  // Reject mutation
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`${API_BASE_URL}/api/public/reject/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to decline");
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success("Registration declined successfully");
+      await refetchStudents();
+      setFoundStudent(null);
+      setDeclineDialogOpen(false);
+      setDeclineStudent(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to decline registration");
     },
   });
 
@@ -835,17 +872,47 @@ export default function VerificationHub() {
                             : "N/A"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectStudent(student);
-                          }}
-                        >
-                          {activeTab === "active" ? "View" : "Review"}
-                        </Button>
+                        {activeTab === "active" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectStudent(student);
+                            }}
+                          >
+                            View
+                          </Button>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50"
+                              title="Approve & open Admissions"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate("/admissions", { state: { prefill: student } });
+                              }}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50"
+                              title="Decline registration"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeclineStudent(student);
+                                setDeclineDialogOpen(true);
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -855,6 +922,91 @@ export default function VerificationHub() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={declineDialogOpen}
+        onOpenChange={(open) => {
+          setDeclineDialogOpen(open);
+          if (!open && !rejectMutation.isPending) {
+            setDeclineStudent(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
+          <DialogHeader className="bg-gradient-to-r from-rose-600 via-red-500 to-orange-500 px-6 py-5 text-left">
+            <DialogTitle className="flex items-center gap-3 text-lg text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 backdrop-blur">
+                <X className="h-5 w-5" />
+              </div>
+              Decline Registration
+            </DialogTitle>
+            <DialogDescription className="text-rose-50/90">
+              Remove this application from the pending queue after one final confirmation.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 bg-white px-6 py-6">
+            <div className="rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-500">
+                Selected Application
+              </p>
+              <p className="mt-2 text-xl font-bold text-slate-900">
+                {declineStudent?.studentName}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                S/O {declineStudent?.fatherName}
+              </p>
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+                <Badge className="bg-white text-rose-700 border border-rose-200">
+                  Pending
+                </Badge>
+                <span>{declineStudent?.class}</span>
+              </div>
+            </div>
+
+            <p className="text-sm leading-6 text-slate-600">
+              This will permanently remove the pending registration record. Use this only when the application should not proceed to admissions.
+            </p>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 rounded-xl"
+                disabled={rejectMutation.isPending}
+                onClick={() => {
+                  setDeclineDialogOpen(false);
+                  setDeclineStudent(null);
+                }}
+              >
+                Keep Application
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700"
+                disabled={rejectMutation.isPending || !declineStudent}
+                onClick={() => {
+                  if (declineStudent) {
+                    rejectMutation.mutate(declineStudent._id);
+                  }
+                }}
+              >
+                {rejectMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Declining...
+                  </>
+                ) : (
+                  <>
+                    <X className="mr-2 h-4 w-4" />
+                    Decline Now
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Finalize Admission Dialog - WIDE 2-COLUMN LAYOUT */}
       <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
