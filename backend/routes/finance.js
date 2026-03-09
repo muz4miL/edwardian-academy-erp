@@ -263,7 +263,7 @@ router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async 
       success: true,
       data: {
         partnerName: user?.fullName || "Partner",
-        expenseDebt: user?.expenseDebt || 0,
+        expenseDebt: totalDebt,
         debtToOwner: user?.debtToOwner || 0,
         totalSettled,
         floatingCash: user?.walletBalance?.floating || 0,
@@ -559,6 +559,31 @@ router.post("/partner/record-settlement", protect, restrictTo("OWNER"), async (r
       $inc: { expenseDebt: -parseFloat(amount), debtToOwner: -parseFloat(amount) },
     });
 
+    // Mark the partner's oldest UNPAID expense shares as PAID (up to the settled amount)
+    let remaining = parseFloat(amount);
+    if (remaining > 0) {
+      const unpaidExpenses = await Expense.find({
+        "shares.partner": partnerId,
+        "shares.status": "UNPAID",
+      }).sort({ expenseDate: 1 }); // oldest first
+
+      for (const expense of unpaidExpenses) {
+        if (remaining <= 0) break;
+        const shareIdx = expense.shares.findIndex(
+          s => s.partner?.toString() === partnerId.toString() && s.status === "UNPAID"
+        );
+        if (shareIdx === -1) continue;
+        const shareAmt = expense.shares[shareIdx].amount || 0;
+        if (shareAmt <= remaining) {
+          expense.shares[shareIdx].status = "PAID";
+          expense.shares[shareIdx].repaymentStatus = "SETTLED";
+          remaining -= shareAmt;
+          await expense.save();
+        }
+        // If settlement is partial and doesn't cover this share fully, leave it UNPAID
+      }
+    }
+
     // Notify the partner
     await Notification.create({
       recipient: partnerId,
@@ -599,6 +624,16 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
       });
     }
 
+    // Enforce once-per-month: check if already split for this month
+    if (config.lastExpenseSplitMonth === targetMonth && config.lastExpenseSplitYear === targetYear) {
+      const monthLabel = new Date(targetYear, targetMonth - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+      return res.status(400).json({
+        success: false,
+        message: `Expenses for ${monthLabel} have already been split. You can only split once per month.`,
+        alreadySplit: true,
+      });
+    }
+
     // Find all expenses in the month
     const expenses = await Expense.find({
       expenseDate: { $gte: startDate, $lte: endDate },
@@ -635,7 +670,6 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
         newShares.push({
           partner: share.userId,
           partnerName: share.fullName || "Partner",
-          partnerKey: null,
           percentage: pct,
           amount: shareAmount,
           status: "UNPAID",
@@ -655,12 +689,15 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
       updatedCount++;
     }
 
+    // Record that this month has been split (use $set to bypass pre-save validation hook)
+    await Configuration.findOneAndUpdate({}, { $set: { lastExpenseSplitMonth: targetMonth, lastExpenseSplitYear: targetYear } });
+
     const monthName = new Date(targetYear, targetMonth - 1).toLocaleString("en-US", { month: "long", year: "numeric" });
 
     res.json({
       success: true,
       message: `${monthName}: ${updatedCount} expenses recalculated, ${skippedCount} already had partners. PKR ${totalDebtAssigned.toLocaleString()} total debt assigned.`,
-      data: { updatedCount, skippedCount, totalDebtAssigned, month: monthName },
+      data: { updatedCount, skippedCount, totalDebtAssigned, month: monthName, lastExpenseSplitMonth: targetMonth, lastExpenseSplitYear: targetYear },
     });
   } catch (error) {
     console.error("Recalculate splits error:", error);
@@ -780,25 +817,60 @@ router.get("/stats/overview", protect, async (req, res) => {
     const Teacher = require("../models/Teacher");
     const Expense = require("../models/Expense");
     const Transaction = require("../models/Transaction");
+    const FeeRecord = require("../models/FeeRecord");
 
     // THIS MONTH ONLY - Sync with Dashboard
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    // Monthly Income from Transactions (consistent with Dashboard)
+    // Monthly Income from Transactions — same filters as getDashboardStats
     const monthlyIncomeResult = await Transaction.aggregate([
-      { $match: { type: "INCOME", date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $match: { type: "INCOME", date: { $gte: startOfMonth, $lte: endOfMonth }, status: { $in: ["FLOATING", "VERIFIED"] } } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const totalIncome = monthlyIncomeResult[0]?.total || 0;
+    const monthlyIncomeGross = monthlyIncomeResult[0]?.total || 0;
 
-    // Monthly Expenses from Transactions (consistent with Dashboard)
-    const monthlyExpensesResult = await Transaction.aggregate([
+    // Deduct refunds (same as getDashboardStats)
+    const monthlyRefundResult = await Transaction.aggregate([
+      { $match: { type: "REFUND", date: { $gte: startOfMonth, $lte: endOfMonth } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const monthlyRefunds = monthlyRefundResult[0]?.total || 0;
+    const totalIncome = monthlyIncomeGross - monthlyRefunds;
+
+    // Monthly Expenses — unified: Transaction(EXPENSE) + Expense model, deduplicated
+    const txnExpResult = await Transaction.aggregate([
       { $match: { type: "EXPENSE", date: { $gte: startOfMonth, $lte: endOfMonth } } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const totalExpenses = monthlyExpensesResult[0]?.total || 0;
+    const txnExpTotal = txnExpResult[0]?.total || 0;
+
+    const expModelResult = await Expense.aggregate([
+      { $match: { expenseDate: { $gte: startOfMonth, $lte: endOfMonth }, status: { $ne: "cancelled" } } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const expModelTotal = expModelResult[0]?.total || 0;
+
+    // Calculate overlap between Expense model and Transaction(EXPENSE)
+    const expRecords = await Expense.find({
+      expenseDate: { $gte: startOfMonth, $lte: endOfMonth },
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    let overlapTotal = 0;
+    for (const exp of expRecords) {
+      const expDate = new Date(exp.expenseDate || exp.createdAt);
+      const dayStart = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const match = await Transaction.findOne({
+        type: "EXPENSE", amount: exp.amount, date: { $gte: dayStart, $lt: dayEnd },
+      }).lean();
+      if (match) overlapTotal += exp.amount;
+    }
+
+    const totalExpenses = txnExpTotal + (expModelTotal - overlapTotal);
 
     // Total Expected & Pending (all-time student data)
     const expectedResult = await Student.aggregate([
@@ -815,6 +887,12 @@ router.get("/stats/overview", protect, async (req, res) => {
     const pendingStudentsCount = await Student.countDocuments({
       feeStatus: { $in: ["pending", "partial", "Pending"] },
     });
+
+    // Monthly fee records
+    const monthlyFeeCollection = await FeeRecord.aggregate([
+      { $match: { createdAt: { $gte: startOfMonth }, status: "PAID" } },
+      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
 
     // Teacher liabilities
     const teachers = await Teacher.find({ status: "active" });
@@ -845,16 +923,19 @@ router.get("/stats/overview", protect, async (req, res) => {
     res.json({
       success: true,
       data: {
-        totalIncome,       // Monthly INCOME transactions
+        totalIncome,       // Monthly INCOME transactions (net of refunds)
         totalExpected,     // All-time total fees
+        totalCollected,    // All-time collected fees
         totalPending,      // All-time unpaid fees
         pendingStudentsCount,
         totalTeacherLiabilities,  // Current owed to teachers
         teacherPayroll,
         teacherCount: teachers.length,
         academyShare: netProfit,
-        totalExpenses,     // Monthly EXPENSE transactions
+        totalExpenses,     // Monthly unified expenses
         netProfit,         // Monthly Net (INCOME - EXPENSE)
+        monthlyFeesCollected: monthlyFeeCollection[0]?.total || 0,
+        monthlyFeesCount: monthlyFeeCollection[0]?.count || 0,
         collectionRate:
           totalExpected > 0
             ? Math.round((totalCollected / totalExpected) * 100)

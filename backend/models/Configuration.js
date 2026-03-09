@@ -98,6 +98,10 @@ const configurationSchema = new mongoose.Schema(
       },
     ],
 
+    // Track last expense split to enforce once-per-month restriction
+    lastExpenseSplitMonth: { type: Number, default: 0 }, // 1-12
+    lastExpenseSplitYear: { type: Number, default: 0 },
+
     // ========================================
     // SESSION-BASED PRICING (Waqar Protocol v2)
     // ========================================

@@ -22,6 +22,107 @@ const Session = require("../models/Session");
 const TeacherPayment = require("../models/TeacherPayment");
 
 // =====================================================================
+// UNIFIED EXPENSE HELPER — Combines Transaction(EXPENSE) + Expense model
+// Deduplicates teacher salary records that exist in both collections
+// =====================================================================
+async function getUnifiedExpenseTotal(dateFilter) {
+  // 1. Sum all Transaction(EXPENSE) records
+  const txnExpenseResult = await Transaction.aggregate([
+    { $match: { type: "EXPENSE", ...(dateFilter ? { date: dateFilter } : {}) } },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  const txnExpenseTotal = txnExpenseResult[0]?.total || 0;
+
+  // 2. Sum Expense model records
+  const expModelResult = await Expense.aggregate([
+    { $match: { ...(dateFilter ? { expenseDate: dateFilter } : {}), status: { $ne: "cancelled" } } },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  const expModelTotal = expModelResult[0]?.total || 0;
+
+  // 3. Find overlap: Expense records that also have a matching Transaction
+  //    These are created by routes that insert into both collections (POST /api/expenses, approvePayoutRequest)
+  //    Match by: same date (day), same amount, category overlap
+  const expRecords = await Expense.find({
+    ...(dateFilter ? { expenseDate: dateFilter } : {}),
+    status: { $ne: "cancelled" },
+  }).lean();
+
+  let overlapTotal = 0;
+  for (const exp of expRecords) {
+    const expDate = new Date(exp.expenseDate || exp.createdAt);
+    const dayStart = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const matchingTxn = await Transaction.findOne({
+      type: "EXPENSE",
+      amount: exp.amount,
+      date: { $gte: dayStart, $lt: dayEnd },
+    }).lean();
+
+    if (matchingTxn) {
+      overlapTotal += exp.amount;
+    }
+  }
+
+  // Unified total = Transaction expenses + Expense-only records (no double count)
+  const unifiedTotal = txnExpenseTotal + (expModelTotal - overlapTotal);
+  return unifiedTotal;
+}
+
+// Same as above but returns category breakdown
+async function getUnifiedExpenseBreakdown(dateFilter) {
+  // Get Transaction(EXPENSE) by category
+  const txnCategories = await Transaction.aggregate([
+    { $match: { type: "EXPENSE", ...(dateFilter ? { date: dateFilter } : {}) } },
+    { $group: { _id: "$category", total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    { $sort: { total: -1 } },
+  ]);
+
+  // Get Expense model records individually
+  const expRecords = await Expense.find({
+    ...(dateFilter ? { expenseDate: dateFilter } : {}),
+    status: { $ne: "cancelled" },
+  }).lean();
+
+  // Identify Expense records NOT in Transaction (orphans)
+  const orphanExpenses = [];
+  for (const exp of expRecords) {
+    const expDate = new Date(exp.expenseDate || exp.createdAt);
+    const dayStart = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate());
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const matchingTxn = await Transaction.findOne({
+      type: "EXPENSE",
+      amount: exp.amount,
+      date: { $gte: dayStart, $lt: dayEnd },
+    }).lean();
+
+    if (!matchingTxn) {
+      orphanExpenses.push(exp);
+    }
+  }
+
+  // Merge: start with Transaction categories, add orphan Expense records
+  const merged = {};
+  for (const cat of txnCategories) {
+    merged[cat._id || "Uncategorized"] = { total: cat.total, count: cat.count };
+  }
+  for (const exp of orphanExpenses) {
+    const catName = exp.category || "Uncategorized";
+    if (!merged[catName]) merged[catName] = { total: 0, count: 0 };
+    merged[catName].total += exp.amount;
+    merged[catName].count += 1;
+  }
+
+  return Object.entries(merged)
+    .map(([category, data]) => ({ category, total: data.total, count: data.count }))
+    .sort((a, b) => b.total - a.total);
+}
+
+// =====================================================================
 // CLOSE DAY — Lock floating cash into verified balance
 // =====================================================================
 exports.closeDay = async (req, res) => {
@@ -168,12 +269,8 @@ exports.getDashboardStats = async (req, res) => {
     const monthlyRefunds = monthlyRefundResult[0]?.total || 0;
     const monthlyIncome = monthlyIncomeGross - monthlyRefunds;
 
-    // Monthly expenses
-    const monthlyExpenseResult = await Transaction.aggregate([
-      { $match: { type: "EXPENSE", date: { $gte: startOfMonth } } },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
-    const monthlyExpenses = monthlyExpenseResult[0]?.total || 0;
+    // Monthly expenses (unified: Transaction + Expense model, deduplicated)
+    const monthlyExpenses = await getUnifiedExpenseTotal({ $gte: startOfMonth });
 
     // Today's income
     const todayIncomeResult = await Transaction.aggregate([
@@ -185,6 +282,10 @@ exports.getDashboardStats = async (req, res) => {
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
     const todayIncome = (todayIncomeResult[0]?.total || 0) - (todayRefundResult[0]?.total || 0);
+
+    // Today's expenses (unified)
+    const todayStart = new Date(today);
+    const todayExpenses = await getUnifiedExpenseTotal({ $gte: todayStart, $lt: tomorrow });
 
     // Floating (unverified) cash
     const floatingResult = await Transaction.aggregate([
@@ -233,6 +334,12 @@ exports.getDashboardStats = async (req, res) => {
     // Net Revenue = Total Cash In - Total Cash Out (Expenses only, not liabilities)
     const netRevenue = monthlyIncome - monthlyExpenses;
 
+    // Fee collection stats for current month (from FeeRecord model)
+    const monthlyFeeCollection = await FeeRecord.aggregate([
+      { $match: { createdAt: { $gte: startOfMonth }, status: "PAID" } },
+      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
+    ]);
+
     return res.json({
       success: true,
       data: {
@@ -244,6 +351,7 @@ exports.getDashboardStats = async (req, res) => {
         monthlyIncome,
         monthlyExpenses,
         todayIncome,
+        todayExpenses,
         floatingCash,
 
         // Fee stats
@@ -255,11 +363,15 @@ exports.getDashboardStats = async (req, res) => {
             ? Math.round((totalCollected / totalExpected) * 100)
             : 0,
 
+        // Monthly fee collection (from FeeRecord)
+        monthlyFeesCollected: monthlyFeeCollection[0]?.total || 0,
+        monthlyFeesCount: monthlyFeeCollection[0]?.count || 0,
+
         // Teacher financials
         teacherOwed,
         monthlyLiabilities,
 
-        // Owner summary (Cash-Based: Income minus actual Payouts)
+        // Owner summary (Cash-Based: Income minus actual Expenses)
         ownerNetRevenue: netRevenue,
         netProfit: netRevenue,
 
@@ -1002,7 +1114,7 @@ exports.getAnalyticsDashboard = async (req, res) => {
     ];
 
     // Monthly Revenue & Expenses
-    const [monthlyRevenue, monthlyExpenses] = await Promise.all([
+    const [monthlyRevenue, monthlyExpensesTxn, monthlyRefunds, monthlyExpensesModel] = await Promise.all([
       Transaction.aggregate([
         { $match: { type: "INCOME", date: { $gte: sixMonthsAgo } } },
         {
@@ -1023,6 +1135,26 @@ exports.getAnalyticsDashboard = async (req, res) => {
         },
         { $sort: { "_id.year": 1, "_id.month": 1 } },
       ]),
+      Transaction.aggregate([
+        { $match: { type: "REFUND", date: { $gte: sixMonthsAgo } } },
+        {
+          $group: {
+            _id: { year: { $year: "$date" }, month: { $month: "$date" } },
+            total: { $sum: "$amount" },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
+      Expense.aggregate([
+        { $match: { expenseDate: { $gte: sixMonthsAgo }, status: { $ne: "cancelled" } } },
+        {
+          $group: {
+            _id: { year: { $year: "$expenseDate" }, month: { $month: "$expenseDate" } },
+            total: { $sum: "$amount" },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
     ]);
 
     const revenueVsExpenses = [];
@@ -1034,14 +1166,25 @@ exports.getAnalyticsDashboard = async (req, res) => {
       const rev = monthlyRevenue.find(
         (r) => r._id.year === year && r._id.month === month,
       );
-      const exp = monthlyExpenses.find(
+      const refund = monthlyRefunds.find(
+        (r) => r._id.year === year && r._id.month === month,
+      );
+      const expTxn = monthlyExpensesTxn.find(
         (e) => e._id.year === year && e._id.month === month,
       );
+      const expModel = monthlyExpensesModel.find(
+        (e) => e._id.year === year && e._id.month === month,
+      );
+      // Revenue = income minus refunds
+      const revenue = (rev ? rev.total : 0) - (refund ? refund.total : 0);
+      // Expenses: use whichever is higher (Transaction or Expense model) to avoid undercount
+      // This handles cases where some records are in both models
+      const expenses = Math.max(expTxn ? expTxn.total : 0, expModel ? expModel.total : 0);
       revenueVsExpenses.push({
         month: label,
-        revenue: rev ? rev.total : 0,
-        expenses: exp ? exp.total : 0,
-        profit: (rev ? rev.total : 0) - (exp ? exp.total : 0),
+        revenue,
+        expenses,
+        profit: revenue - expenses,
       });
     }
 
@@ -1167,7 +1310,16 @@ exports.getAnalyticsDashboard = async (req, res) => {
     ]);
 
     const totalStudents = await Student.countDocuments();
-    const totalTeachers = await Teacher.countDocuments();
+    const totalTeachers = await Teacher.countDocuments({ status: "active" });
+
+    // Quick stat expenses (unified)
+    const todayExpenses = await getUnifiedExpenseTotal({ $gte: today, $lt: tmr });
+    const weeklyExpenses = await getUnifiedExpenseTotal({ $gte: weekStart });
+    const monthlyExpensesTotal = await getUnifiedExpenseTotal({ $gte: startOfMonth });
+
+    const todayRevenue = (todayRev[0]?.total || 0) - (todayRefunds[0]?.total || 0);
+    const weeklyRevenue = (weeklyRev[0]?.total || 0) - (weeklyRefunds[0]?.total || 0);
+    const monthlyRevenueTotal = (monthlyRev[0]?.total || 0) - (monthlyRefundsAmt[0]?.total || 0);
 
     return res.json({
       success: true,
@@ -1177,9 +1329,15 @@ exports.getAnalyticsDashboard = async (req, res) => {
         feeCollection,
         expenseCategories,
         quickStats: {
-          todayRevenue: (todayRev[0]?.total || 0) - (todayRefunds[0]?.total || 0),
-          weeklyRevenue: (weeklyRev[0]?.total || 0) - (weeklyRefunds[0]?.total || 0),
-          monthlyRevenue: (monthlyRev[0]?.total || 0) - (monthlyRefundsAmt[0]?.total || 0),
+          todayRevenue,
+          weeklyRevenue,
+          monthlyRevenue: monthlyRevenueTotal,
+          todayExpenses,
+          weeklyExpenses,
+          monthlyExpenses: monthlyExpensesTotal,
+          todayNet: todayRevenue - todayExpenses,
+          weeklyNet: weeklyRevenue - weeklyExpenses,
+          monthlyNet: monthlyRevenueTotal - monthlyExpensesTotal,
           totalStudents,
           totalTeachers,
         },
@@ -1215,36 +1373,42 @@ exports.generateFinancialReport = async (req, res) => {
       dateFilter = { $gte: new Date(now.getFullYear(), now.getMonth(), 1) };
     } else if (period === "custom" && startDate && endDate) {
       dateFilter = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    } else if (period === "full") {
+      // All-time: no date filter needed, use a very old start date
+      dateFilter = { $gte: new Date("2020-01-01") };
     } else {
       dateFilter = { $gte: today };
     }
 
-    const [revenueByCategory, expenseByCategory] = await Promise.all([
-      Transaction.aggregate([
-        { $match: { type: "INCOME", date: dateFilter } },
-        {
-          $group: {
-            _id: "$category",
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
-          },
+    // Revenue from Transaction (INCOME)
+    const revenueByCategory = await Transaction.aggregate([
+      { $match: { type: "INCOME", date: dateFilter } },
+      {
+        $group: {
+          _id: "$category",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
         },
-        { $sort: { total: -1 } },
-      ]),
-      Transaction.aggregate([
-        { $match: { type: "EXPENSE", date: dateFilter } },
-        {
-          $group: {
-            _id: "$category",
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { total: -1 } },
-      ]),
+      },
+      { $sort: { total: -1 } },
     ]);
 
-    const totalRevenue = revenueByCategory.reduce((s, r) => s + r.total, 0);
+    // Deduct refunds from revenue
+    const refundResult = await Transaction.aggregate([
+      { $match: { type: "REFUND", date: dateFilter } },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const totalRefunds = refundResult[0]?.total || 0;
+
+    // Expenses — unified breakdown using helper
+    const expenseBreakdown = await getUnifiedExpenseBreakdown(dateFilter);
+    const expenseByCategory = expenseBreakdown.map(e => ({
+      _id: e.category,
+      total: e.total,
+      count: e.count,
+    }));
+
+    const totalRevenue = revenueByCategory.reduce((s, r) => s + r.total, 0) - totalRefunds;
     const totalExpenses = expenseByCategory.reduce((s, e) => s + e.total, 0);
 
     const feesSummary = await FeeRecord.aggregate([
@@ -1262,6 +1426,7 @@ exports.generateFinancialReport = async (req, res) => {
       today: "Today's",
       week: "This Week's",
       month: "This Month's",
+      full: "All-Time",
       custom: "Custom Period",
     };
 

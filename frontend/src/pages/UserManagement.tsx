@@ -69,7 +69,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 // Permission options organized by group for clean 3-column layout
 const PERMISSION_GROUPS = [
@@ -776,8 +776,8 @@ export default function UserManagement() {
           </DialogHeader>
 
           <div className="space-y-6 py-2">
-            {/* Current Credentials Banner (for TEACHER users) */}
-            {selectedUser?.role === "TEACHER" && selectedUser?.teacherPassword && (
+            {/* Current Credentials Banner (for TEACHER / PARTNER / OWNER users) */}
+            {selectedUser?.teacherPassword && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Key className="h-4 w-4 text-amber-600" />

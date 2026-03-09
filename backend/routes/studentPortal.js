@@ -9,7 +9,10 @@ const {
     recordVideoView,
     studentLogout,
     getStudentSchedule,
+    getProfilePictureStatus,
+    updateProfilePicture,
 } = require("../controllers/studentPortalController");
+const { handleStudentProfilePhotoUpload } = require("../middleware/upload");
 
 /**
  * Student Portal Routes - LMS Module
@@ -83,6 +86,10 @@ router.get("/videos", protectStudent, getStudentVideos);
 
 // Get schedule/timetable
 router.get("/schedule", protectStudent, getStudentSchedule);
+
+// Profile picture management
+router.get("/profile-picture/status", protectStudent, getProfilePictureStatus);
+router.post("/profile-picture", protectStudent, handleStudentProfilePhotoUpload, updateProfilePicture);
 
 // Record video view
 router.post("/videos/:id/view", protectStudent, recordVideoView);

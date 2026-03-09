@@ -8,7 +8,7 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
     return `https://${codespaceBase}-5000.app.github.dev`;
   }
-  return import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  return import.meta.env.VITE_API_URL || 'http://localhost:5001';
 };
 const API_BASE_URL = getApiBaseUrl();
 

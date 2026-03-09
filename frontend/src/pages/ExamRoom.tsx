@@ -34,7 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = "http://localhost:5001";
 
 interface Question {
     questionText: string;

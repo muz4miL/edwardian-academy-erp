@@ -7,7 +7,7 @@ const getApiBaseUrl = (): string => {
     // Extract codespace name from current URL and construct backend URL
     const hostname = window.location.hostname;
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
-    return `https://${codespaceBase}-5000.app.github.dev`;
+    return `https://${codespaceBase}-5001.app.github.dev`;
   }
   
   // Check environment variable
@@ -16,7 +16,7 @@ const getApiBaseUrl = (): string => {
   }
   
   // Fallback to localhost for local development
-  return 'http://localhost:5000';
+  return 'http://localhost:5001';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

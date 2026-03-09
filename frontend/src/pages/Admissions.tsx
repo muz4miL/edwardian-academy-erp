@@ -48,7 +48,7 @@ import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 // API Base URL for config fetch
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // TASK 1: Draft Persistence Key
 const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";

@@ -19,7 +19,7 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
     return `https://${codespaceBase}-5000.app.github.dev/api`;
   }
-  return 'http://localhost:5000/api';
+  return 'http://localhost:5001/api';
 };
 const API_BASE_URL = getApiBaseUrl();
 
@@ -131,8 +131,8 @@ export function TopBar({ title }: TopBarProps) {
         : "bg-blue-500";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6">
-      <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 md:px-6">
+      <h1 className="text-lg md:text-xl font-semibold text-foreground ml-10 md:ml-0">{title}</h1>
 
       <div className="flex items-center gap-4">
         {/* Search */}

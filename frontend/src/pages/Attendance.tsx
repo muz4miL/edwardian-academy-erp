@@ -57,12 +57,14 @@ import {
   CalendarDays,
   TrendingUp,
   Timer,
+  CalendarRange,
+  Activity,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // ─── HELPERS ──────────────────────────────────────────────
 function formatTime(dateStr: string) {
@@ -135,7 +137,488 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// DAILY VIEW — All attendance records for a selected date
+// TODAY VIEW — Live attendance with 30-second auto-refresh
+// ═══════════════════════════════════════════════════════════
+function TodayView() {
+  const [classFilter, setClassFilter] = useState("all");
+  const queryClient = useQueryClient();
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // Fetch class list for dropdown
+  const { data: classesData } = useQuery({
+    queryKey: ["attendance-classes"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/attendance/classes`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch classes");
+      return res.json();
+    },
+  });
+
+  // Main query — auto-refreshes every 30 seconds
+  const { data, isLoading, dataUpdatedAt } = useQuery({
+    queryKey: ["attendance-today", classFilter],
+    queryFn: async () => {
+      const url = classFilter !== "all"
+        ? `${API_BASE}/api/attendance/today?classFilter=${encodeURIComponent(classFilter)}`
+        : `${API_BASE}/api/attendance/today`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch today's attendance");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const stats = data?.stats || {};
+  const records = data?.records || [];
+  const classes = classesData?.classes || [];
+
+  // Status update mutation
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const res = await fetch(`${API_BASE}/api/attendance/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attendance-today"] });
+      toast.success("Attendance status updated");
+    },
+    onError: () => toast.error("Failed to update status"),
+  });
+
+  const handlePrint = () => {
+    const el = printRef.current;
+    if (!el) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Today's Attendance</title>
+      <style>
+        body { font-family: Arial; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f5f5f5; font-weight: 600; }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+      </style></head><body>
+      <h1>Today's Attendance — ${data?.date || getTodayStr()}</h1>
+      <p>Present: ${stats.present || 0} | Late: ${stats.late || 0} | Absent: ${stats.absent || 0} | Rate: ${stats.rate || 0}%</p>
+      ${el.innerHTML}
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  const handleExport = () => {
+    downloadCSV(
+      `attendance-today-${getTodayStr()}.csv`,
+      ["#", "Student", "ID", "Class", "Status", "Check In", "Marked By"],
+      records.map((r: any, i: number) => [
+        String(i + 1),
+        r.studentId?.studentName || r.studentName || "—",
+        r.studentId?.studentId || r.studentNumericId || "—",
+        r.studentId?.class || r.class || "—",
+        r.status,
+        r.checkInTime ? formatTime(r.checkInTime) : r.timestamp ? formatTime(r.timestamp) : "—",
+        r.markedBy || r.scanMethod || "—",
+      ])
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <Select value={classFilter} onValueChange={setClassFilter}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="All Classes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Classes</SelectItem>
+            {classes.map((c: string) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Activity className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+          Auto-refreshing every 30s
+          {dataUpdatedAt > 0 && (
+            <span>• Last: {new Date(dataUpdatedAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true, timeZone: "Asia/Karachi" })}</span>
+          )}
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={!records.length}>
+            <Download className="mr-1.5 h-4 w-4" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={handlePrint} disabled={!records.length}>
+            <Printer className="mr-1.5 h-4 w-4" /> Print
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-blue-100">
+                <Users className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Students</p>
+                <p className="text-2xl font-bold">{stats.totalStudents ?? "—"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-100">
+                <UserCheck className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Present</p>
+                <p className="text-2xl font-bold text-emerald-600">{stats.present ?? "—"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-100">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Late</p>
+                <p className="text-2xl font-bold text-amber-600">{stats.late ?? "—"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-red-100">
+                <XCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Absent</p>
+                <p className="text-2xl font-bold text-red-600">{stats.absent ?? "—"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-purple-100">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Rate</p>
+                <p className="text-2xl font-bold text-purple-600">{stats.rate ?? "—"}%</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Records Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            Today's Attendance — {data?.date || getTodayStr()}
+            {classFilter !== "all" && (
+              <Button variant="ghost" size="sm" className="ml-2 text-xs" onClick={() => setClassFilter("all")}>
+                Clear Filter
+              </Button>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : records.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <ScanBarcode className="h-12 w-12 mx-auto mb-3 opacity-40" />
+              <p className="font-medium">No attendance records yet for today</p>
+              <p className="text-sm mt-1">Records will appear here once students scan their IDs at the gate</p>
+            </div>
+          ) : (
+            <div ref={printRef} className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">#</TableHead>
+                    <TableHead>Student</TableHead>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Class</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Check In</TableHead>
+                    <TableHead>Marked By</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {records.map((r: any, i: number) => {
+                    const student = r.studentId || {};
+                    return (
+                      <TableRow key={r._id}>
+                        <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell className="font-medium">{student.studentName || r.studentName || "—"}</TableCell>
+                        <TableCell className="font-mono text-sm">{student.studentId || r.studentNumericId || "—"}</TableCell>
+                        <TableCell>{student.class || r.class || "—"}</TableCell>
+                        <TableCell><StatusBadge status={r.status} /></TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1 text-sm">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                            {r.checkInTime ? formatTime(r.checkInTime) : r.timestamp ? formatTime(r.timestamp) : "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {r.markedBy || r.scanMethod || "—"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={r.status}
+                            onValueChange={(val) => statusMutation.mutate({ id: r._id, status: val })}
+                          >
+                            <SelectTrigger className="h-8 w-28 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="present">Present</SelectItem>
+                              <SelectItem value="late">Late</SelectItem>
+                              <SelectItem value="early-leave">Early Leave</SelectItem>
+                              <SelectItem value="Absent">Absent</SelectItem>
+                              <SelectItem value="Excused">Excused</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// DATE RANGE VIEW — Query attendance across a date range
+// ═══════════════════════════════════════════════════════════
+function DateRangeView() {
+  const today = getTodayStr();
+  const weekAgo = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+
+  const [startDate, setStartDate] = useState(weekAgo);
+  const [endDate, setEndDate] = useState(today);
+  const [classFilter, setClassFilter] = useState("all");
+
+  const { data: classesData } = useQuery({
+    queryKey: ["attendance-classes"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/attendance/classes`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch classes");
+      return res.json();
+    },
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["attendance-range", startDate, endDate, classFilter],
+    queryFn: async () => {
+      let url = `${API_BASE}/api/attendance/range?startDate=${startDate}&endDate=${endDate}`;
+      if (classFilter !== "all") url += `&classFilter=${encodeURIComponent(classFilter)}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch range");
+      return res.json();
+    },
+    enabled: !!startDate && !!endDate,
+  });
+
+  const classes = classesData?.classes || [];
+  const dailyBreakdown = data?.dailyBreakdown || [];
+  const records = data?.records || [];
+
+  const handleExport = () => {
+    downloadCSV(
+      `attendance-${startDate}-to-${endDate}.csv`,
+      ["Date", "Student", "ID", "Class", "Status", "Check In", "Marked By"],
+      records.map((r: any) => {
+        const student = r.studentId || {};
+        return [
+          r.date,
+          student.studentName || r.studentName || "—",
+          student.studentId || r.studentNumericId || "—",
+          student.class || r.class || "—",
+          r.status,
+          r.checkInTime ? formatTime(r.checkInTime) : r.timestamp ? formatTime(r.timestamp) : "—",
+          r.markedBy || r.scanMethod || "—",
+        ];
+      })
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-44" />
+          <span className="text-muted-foreground">to</span>
+          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-44" />
+        </div>
+        <Select value={classFilter} onValueChange={setClassFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="All Classes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Classes</SelectItem>
+            {classes.map((c: string) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="ml-auto">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={!records.length}>
+            <Download className="mr-1.5 h-4 w-4" /> Export CSV
+          </Button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <>
+          {/* Daily Breakdown Summary */}
+          {dailyBreakdown.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Daily Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Present</TableHead>
+                      <TableHead className="text-right">Late</TableHead>
+                      <TableHead className="text-right">Absent</TableHead>
+                      <TableHead className="text-right">Excused</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dailyBreakdown.map((d: any) => (
+                      <TableRow key={d.date}>
+                        <TableCell className="font-medium">{formatDate(d.date)}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-emerald-100 text-emerald-700">{d.present}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-amber-100 text-amber-700">{d.late}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-red-100 text-red-700">{d.absent}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge className="bg-blue-100 text-blue-700">{d.excused}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* All Records */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">All Records ({data?.totalRecords || 0})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {records.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CalendarRange className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p className="font-medium">No records for selected date range</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Student</TableHead>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Class</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Check In</TableHead>
+                        <TableHead>Marked By</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {records.map((r: any, i: number) => {
+                        const student = r.studentId || {};
+                        return (
+                          <TableRow key={r._id}>
+                            <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                            <TableCell className="font-medium">{formatDate(r.date)}</TableCell>
+                            <TableCell>{student.studentName || r.studentName || "—"}</TableCell>
+                            <TableCell className="font-mono text-sm">{student.studentId || r.studentNumericId || "—"}</TableCell>
+                            <TableCell>{student.class || r.class || "—"}</TableCell>
+                            <TableCell><StatusBadge status={r.status} /></TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-1 text-sm">
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                {r.checkInTime ? formatTime(r.checkInTime) : r.timestamp ? formatTime(r.timestamp) : "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {r.markedBy || r.scanMethod || "—"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// DAILY VIEW — Legacy daily view by selected date
 // ═══════════════════════════════════════════════════════════
 function DailyView() {
   const [date, setDate] = useState(getTodayStr());
@@ -1185,8 +1668,16 @@ export default function Attendance() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="daily" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <Tabs defaultValue="today" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+            <TabsTrigger value="today" className="flex items-center gap-1.5">
+              <Activity className="h-4 w-4" />
+              Today
+            </TabsTrigger>
+            <TabsTrigger value="range" className="flex items-center gap-1.5">
+              <CalendarRange className="h-4 w-4" />
+              Date Range
+            </TabsTrigger>
             <TabsTrigger value="daily" className="flex items-center gap-1.5">
               <CalendarDays className="h-4 w-4" />
               Daily View
@@ -1201,6 +1692,12 @@ export default function Attendance() {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="today" className="mt-6">
+            <TodayView />
+          </TabsContent>
+          <TabsContent value="range" className="mt-6">
+            <DateRangeView />
+          </TabsContent>
           <TabsContent value="daily" className="mt-6">
             <DailyView />
           </TabsContent>

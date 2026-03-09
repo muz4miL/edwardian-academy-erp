@@ -103,6 +103,19 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Profile picture change tracking
+    profilePictureChangeCount: {
+      type: Number,
+      default: 0,
+    },
+    profilePictureChangeLog: [
+      {
+        changedAt: { type: Date, default: Date.now },
+        oldPhotoUrl: String,
+        newPhotoUrl: String,
+        changedBy: { type: String, enum: ["student", "admin"], default: "student" },
+      },
+    ],
     // Last scanned timestamp for audit trails
     lastScannedAt: {
       type: Date,
@@ -373,7 +386,8 @@ studentSchema.methods.getStudentProfile = function () {
     group: this.group,
     subjects: this.subjects,
     email: this.email,
-    photo: this.photo || defaultPhoto,
+    // PRIORITY: imageUrl (uploaded) > photo (legacy) > dicebear avatar
+    photo: this.imageUrl || this.photo || defaultPhoto,
     studentStatus: this.studentStatus,
     feeStatus: this.feeStatus,
     totalFee: this.totalFee,
@@ -381,6 +395,7 @@ studentSchema.methods.getStudentProfile = function () {
     balance: this.balance,
     session: this.sessionRef,
     classRef: this.classRef,
+    profilePictureChangeCount: this.profilePictureChangeCount || 0,
   };
 };
 

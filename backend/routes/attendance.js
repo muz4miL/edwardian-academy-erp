@@ -376,6 +376,13 @@ router.post(
         data: record,
       });
     } catch (error) {
+      if (error.code === 11000) {
+        return res.status(200).json({
+          success: true,
+          alreadyMarked: true,
+          message: "Attendance already recorded for this student today",
+        });
+      }
       console.error("Error marking manual attendance:", error);
       res.status(500).json({
         success: false,
@@ -385,5 +392,152 @@ router.post(
     }
   }
 );
+
+// ============================================================
+// GET /api/attendance/today — Real-time today's summary + records
+// Auto-refreshes every 30 seconds from frontend
+// ============================================================
+router.get("/today", protect, async (req, res) => {
+  try {
+    const today = Attendance.getTodayDateStr();
+    const { classFilter } = req.query;
+
+    const query = { date: today };
+    if (classFilter && classFilter !== "all") {
+      query.class = classFilter;
+    }
+
+    const records = await Attendance.find(query)
+      .populate("studentId", "studentName studentId class group photo imageUrl feeStatus")
+      .sort({ timestamp: -1 });
+
+    // Total enrolled students for percentage
+    const studentQuery = {};
+    if (classFilter && classFilter !== "all") {
+      studentQuery.class = classFilter;
+    }
+    const totalStudents = await Student.countDocuments({
+      ...studentQuery,
+      $or: [
+        { studentStatus: { $in: ["Active", "active"] } },
+        { studentStatus: { $exists: false } },
+      ],
+    });
+
+    const present = records.filter((r) => r.status === "present" || r.status === "Present").length;
+    const late = records.filter((r) => r.status === "late" || r.status === "Late").length;
+    const excused = records.filter((r) => r.status === "Excused").length;
+    const absent = Math.max(0, totalStudents - present - late - excused);
+
+    return res.status(200).json({
+      success: true,
+      date: today,
+      stats: {
+        totalStudents,
+        present,
+        late,
+        absent,
+        excused,
+        rate: totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0,
+      },
+      records,
+    });
+  } catch (error) {
+    console.error("Error fetching today's attendance:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch attendance" });
+  }
+});
+
+// ============================================================
+// GET /api/attendance/range — Date range report
+// ============================================================
+router.get("/range", protect, async (req, res) => {
+  try {
+    const { startDate, endDate, classFilter } = req.query;
+    if (!startDate || !endDate) {
+      return res.status(400).json({ success: false, message: "startDate and endDate required" });
+    }
+
+    const query = { date: { $gte: startDate, $lte: endDate } };
+    if (classFilter && classFilter !== "all") {
+      query.class = classFilter;
+    }
+
+    const records = await Attendance.find(query)
+      .populate("studentId", "studentName studentId class group photo imageUrl")
+      .sort({ date: -1, timestamp: -1 });
+
+    // Group by date for daily breakdown
+    const dailyMap = {};
+    records.forEach((r) => {
+      const dateKey = r.date;
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = { date: dateKey, present: 0, late: 0, absent: 0, excused: 0, records: [] };
+      }
+      const statusLower = (r.status || "present").toLowerCase();
+      if (dailyMap[dateKey][statusLower] !== undefined) {
+        dailyMap[dateKey][statusLower]++;
+      } else {
+        dailyMap[dateKey].present++;
+      }
+      dailyMap[dateKey].records.push(r);
+    });
+
+    return res.status(200).json({
+      success: true,
+      dateRange: { startDate, endDate },
+      totalRecords: records.length,
+      dailyBreakdown: Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date)),
+      records,
+    });
+  } catch (error) {
+    console.error("Error fetching range attendance:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch range" });
+  }
+});
+
+// ============================================================
+// PUT /api/attendance/:id — Admin update attendance status
+// ============================================================
+router.put(
+  "/:id",
+  protect,
+  restrictTo("OWNER", "ADMIN", "STAFF", "OPERATOR"),
+  async (req, res) => {
+    try {
+      const { status, notes } = req.body;
+      const attendance = await Attendance.findByIdAndUpdate(
+        req.params.id,
+        { status, notes, markedBy: "Admin", scannedBy: req.user?._id },
+        { new: true, runValidators: true }
+      );
+      if (!attendance) {
+        return res.status(404).json({ success: false, message: "Record not found" });
+      }
+      return res.status(200).json({ success: true, attendance });
+    } catch (error) {
+      console.error("Error updating attendance:", error);
+      return res.status(500).json({ success: false, message: "Failed to update" });
+    }
+  }
+);
+
+// ============================================================
+// GET /api/attendance/classes — Class list for dropdown filter
+// ============================================================
+router.get("/classes", protect, async (req, res) => {
+  try {
+    const classes = await Student.distinct("class", {
+      $or: [
+        { studentStatus: { $in: ["Active", "active"] } },
+        { studentStatus: { $exists: false } },
+      ],
+    });
+    return res.status(200).json({ success: true, classes: classes.filter(Boolean).sort() });
+  } catch (error) {
+    console.error("Error fetching classes:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch classes" });
+  }
+});
 
 module.exports = router;

@@ -204,7 +204,17 @@ export const AddTeacherModal = ({
 
     let compensation: any = { type: compType };
 
-    if (compType === "percentage") {
+    // Owner/Partner always get 100% of their teaching income
+    if (role === "OWNER" || role === "PARTNER") {
+      compensation = {
+        type: "percentage",
+        teacherShare: 100,
+        academyShare: 0,
+        fixedSalary: null,
+        baseSalary: null,
+        profitShare: null,
+      };
+    } else if (compType === "percentage") {
       const tShare = toNumberOrNull(teacherShare);
       const aShare = toNumberOrNull(academyShare);
 
@@ -438,7 +448,14 @@ export const AddTeacherModal = ({
                       <Label className="text-sm font-medium text-gray-700">
                         System Role <span className="text-red-500">*</span>
                       </Label>
-                      <Select value={role} onValueChange={(v: "TEACHER" | "PARTNER" | "OWNER") => setRole(v)}>
+                      <Select value={role} onValueChange={(v: "TEACHER" | "PARTNER" | "OWNER") => {
+                        setRole(v);
+                        if (v === "OWNER" || v === "PARTNER") {
+                          setCompType("percentage");
+                          setTeacherShare("100");
+                          setAcademyShare("0");
+                        }
+                      }}>
                         <SelectTrigger className="h-10 focus-visible:ring-primary/20">
                           <SelectValue placeholder="Select Role" />
                         </SelectTrigger>
@@ -492,6 +509,41 @@ export const AddTeacherModal = ({
                     Compensation Package
                   </h3>
 
+                  {(role === "OWNER" || role === "PARTNER") ? (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-5 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                          <span className="text-amber-600 font-bold text-lg">%</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {role === "OWNER" ? "Owner" : "Partner"} Compensation
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            100% of teaching revenue for their subject
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-amber-100 p-4 space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Teacher Cut</span>
+                          <span className="font-bold text-amber-700">100%</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Academy Cut</span>
+                          <span className="font-bold text-gray-400">0%</span>
+                        </div>
+                        <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mt-2">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: "100%" }} />
+                        </div>
+                      </div>
+                      <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        Revenue sharing & expense splits are configured in <strong className="ml-0.5">System Configuration</strong>
+                      </p>
+                    </div>
+                  ) : (
+                  <>
                   {/* Type Selection Cards */}
                   <RadioGroup
                     value={compType}
@@ -632,6 +684,8 @@ export const AddTeacherModal = ({
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
                 </section>
               </div>
             </div>

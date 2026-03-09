@@ -30,7 +30,7 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
     return `https://${codespaceBase}-5000.app.github.dev`;
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 };
 const API_BASE_URL = getApiBaseUrl();
 
@@ -49,22 +49,8 @@ interface ClassInstance {
   days: string[];
   startTime: string;
   endTime: string;
+  subjects?: Array<{ name: string; fee: number }>;
 }
-
-// Subject options
-const premedSubjects = [
-  { id: "biology", label: "Biology" },
-  { id: "chemistry", label: "Chemistry" },
-  { id: "physics", label: "Physics" },
-  { id: "english", label: "English" },
-];
-
-const preengSubjects = [
-  { id: "physics", label: "Physics" },
-  { id: "chemistry", label: "Chemistry" },
-  { id: "math", label: "Mathematics" },
-  { id: "english", label: "English" },
-];
 
 export const ViewEditStudentModal = ({
   open,
@@ -125,13 +111,12 @@ export const ViewEditStudentModal = ({
 
   const previewStatus = calculatePreviewStatus();
 
-  // Get available subjects based on group
-  const availableSubjects =
-    group === "Pre-Medical"
-      ? premedSubjects
-      : group === "Pre-Engineering"
-        ? preengSubjects
-        : [];
+  // Get available subjects from the selected class
+  const selectedClass = activeClasses.find((c) => c._id === selectedClassId);
+  const availableSubjects = (selectedClass?.subjects || []).map((s) => ({
+    id: s.name.toLowerCase(),
+    label: s.name,
+  }));
 
   // Populate form when student data changes
   useEffect(() => {

@@ -55,7 +55,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 function formatCurrency(n: number) {
   return `PKR ${n.toLocaleString()}`;
@@ -333,11 +333,22 @@ function StudentReport({ onBack }: { onBack: () => void }) {
   const students = data?.data || [];
   const totalStudents = students.length;
   const activeStudents = students.filter((s: any) => s.status === "active" || s.status === "Active").length;
-  const totalMonthlyFee = students.reduce((s: number, st: any) => s + (st.feeAmount || st.monthlyFee || 0), 0);
+  const totalExpectedFee = students.reduce((s: number, st: any) => s + (Number(st.totalFee) || 0), 0);
+  const totalPaidAmount = students.reduce((s: number, st: any) => s + (Number(st.paidAmount) || 0), 0);
+  const totalRemaining = totalExpectedFee - totalPaidAmount;
+  const collectionRate = totalExpectedFee > 0 ? Math.round((totalPaidAmount / totalExpectedFee) * 100) : 0;
+
+  const paidCount = students.filter((s: any) => s.feeStatus === "paid").length;
+  const partialCount = students.filter((s: any) => s.feeStatus === "partial").length;
+  const pendingCount = students.filter((s: any) => s.feeStatus === "pending").length;
 
   const handleCSV = () => {
-    const headers = ["Student ID", "Name", "Father", "Class", "Status", "Monthly Fee", "Contact"];
-    const rows = students.map((s: any) => [s.studentId || "", s.studentName || s.name || "", s.fatherName || "", s.class || s.className || "", s.status || "", String(s.feeAmount || s.monthlyFee || 0), s.phone || s.contactNumber || ""]);
+    const headers = ["Student ID", "Name", "Father", "Class", "Status", "Fee Status", "Total Fee (PKR)", "Paid (PKR)", "Remaining (PKR)", "Contact"];
+    const rows = students.map((s: any) => {
+      const totalFee = Number(s.totalFee) || 0;
+      const paid = Number(s.paidAmount) || 0;
+      return [s.studentId || "", s.studentName || s.name || "", s.fatherName || "", s.class || s.className || "", s.status || "", s.feeStatus || "pending", String(totalFee), String(paid), String(Math.max(0, totalFee - paid)), s.parentCell || s.studentCell || ""];
+    });
     downloadCSV("student-report", headers, rows);
     toast.success("CSV downloaded");
   };
@@ -354,29 +365,49 @@ function StudentReport({ onBack }: { onBack: () => void }) {
         </div>
       </div>
       <div ref={printRef}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Student Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())} &bull; Total: {totalStudents} students</p>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Student Fee Report</h1>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())} &bull; {totalStudents} students ({activeStudents} active)</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <Card className="border-l-4 border-violet-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Students</p><p className="text-2xl font-bold text-violet-700">{totalStudents}</p></CardContent></Card>
-          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Active Students</p><p className="text-2xl font-bold text-emerald-700">{activeStudents}</p></CardContent></Card>
-          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Expected Monthly Fee</p><p className="text-2xl font-bold text-amber-700">{formatCurrency(totalMonthlyFee)}</p></CardContent></Card>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <Card className="border-l-4 border-violet-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Students</p><p className="text-xl font-bold text-violet-700">{totalStudents}</p></CardContent></Card>
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Active</p><p className="text-xl font-bold text-emerald-700">{activeStudents}</p></CardContent></Card>
+          <Card className="border-l-4 border-blue-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Fee Expected</p><p className="text-xl font-bold text-blue-700">{formatCurrency(totalExpectedFee)}</p></CardContent></Card>
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Collected</p><p className="text-xl font-bold text-emerald-700">{formatCurrency(totalPaidAmount)}</p></CardContent></Card>
+          <Card className="border-l-4 border-red-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Remaining</p><p className="text-xl font-bold text-red-600">{formatCurrency(totalRemaining)}</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Collection Rate</p><p className="text-xl font-bold text-amber-700">{collectionRate}%</p></CardContent></Card>
         </div>
 
+        {/* Fee Status Summary */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Paid</p><p className="text-lg font-bold text-emerald-600">{paidCount}</p></CardContent></Card>
+          <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Partial</p><p className="text-lg font-bold text-amber-600">{partialCount}</p></CardContent></Card>
+          <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Pending</p><p className="text-lg font-bold text-red-600">{pendingCount}</p></CardContent></Card>
+        </div>
+
+        {/* Student Table */}
         <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Father</TableHead><TableHead>Class</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Monthly Fee</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Father</TableHead><TableHead>Class</TableHead><TableHead>Status</TableHead><TableHead>Fee Status</TableHead><TableHead className="text-right">Total Fee</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Remaining</TableHead></TableRow></TableHeader>
             <TableBody>
-              {students.map((s: any) => (
-                <TableRow key={s._id}>
-                  <TableCell className="font-mono text-xs">{s.studentId}</TableCell>
-                  <TableCell className="font-medium">{s.studentName || s.name}</TableCell>
-                  <TableCell>{s.fatherName || "—"}</TableCell>
-                  <TableCell>{s.class || s.className || "—"}</TableCell>
-                  <TableCell><Badge variant={s.status === "active" || s.status === "Active" ? "default" : "secondary"}>{s.status}</Badge></TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(s.feeAmount || s.monthlyFee || 0)}</TableCell>
-                </TableRow>
-              ))}
+              {students.map((s: any) => {
+                const totalFee = Number(s.totalFee) || 0;
+                const paid = Number(s.paidAmount) || 0;
+                const remaining = Math.max(0, totalFee - paid);
+                return (
+                  <TableRow key={s._id}>
+                    <TableCell className="font-mono text-xs">{s.studentId}</TableCell>
+                    <TableCell className="font-medium">{s.studentName || s.name}</TableCell>
+                    <TableCell>{s.fatherName || "—"}</TableCell>
+                    <TableCell>{s.class || s.className || "—"}</TableCell>
+                    <TableCell><Badge variant={s.status === "active" || s.status === "Active" ? "default" : "secondary"}>{s.status}</Badge></TableCell>
+                    <TableCell><Badge variant={s.feeStatus === "paid" ? "default" : s.feeStatus === "partial" ? "secondary" : "destructive"}>{s.feeStatus || "pending"}</Badge></TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(totalFee)}</TableCell>
+                    <TableCell className="text-right font-medium text-emerald-700">{formatCurrency(paid)}</TableCell>
+                    <TableCell className="text-right font-bold text-red-600">{formatCurrency(remaining)}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div></CardContent></Card>
@@ -611,6 +642,8 @@ export default function Reports() {
     { title: "Financial Report", description: "Revenue vs expenses breakdown by category with net profit, CSV export, and printable format", icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", action: () => setShowPeriodPicker(true) },
     { title: "Teacher Payment Report", description: "All teacher salaries, wallet credits, payouts, and outstanding balances", icon: GraduationCap, color: "text-blue-600", bgColor: "bg-blue-100", action: () => setActiveReport("teachers") },
     { title: "Expense Report", description: "Complete expense log with category breakdown and vendor details", icon: Receipt, color: "text-red-600", bgColor: "bg-red-100", action: () => setActiveReport("expenses") },
+    { title: "Student Report", description: "Full student roster with class details, status, and expected monthly fees", icon: Users, color: "text-violet-600", bgColor: "bg-violet-100", action: () => setActiveReport("students") },
+    { title: "Partner Settlements", description: "Partner settlement history with confirmed, pending, and per-partner breakdown", icon: Package, color: "text-amber-600", bgColor: "bg-amber-100", action: () => setActiveReport("settlements") },
   ];
 
   return (

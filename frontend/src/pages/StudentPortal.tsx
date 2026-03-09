@@ -50,7 +50,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 interface StudentProfile {
   _id: string;
@@ -63,6 +63,7 @@ interface StudentProfile {
   subjects: Array<{ name: string; fee: number }>;
   photo?: string;
   email?: string;
+  profilePictureChangeCount?: number;
   feeStatus: string;
   totalFee: number;
   paidAmount: number;
@@ -97,6 +98,13 @@ interface VideoItem {
   viewCount: number;
   formattedDuration?: string;
 }
+
+// Resolve photo URL — prepend API_BASE_URL for relative paths, use dicebear fallback
+const resolvePortalPhoto = (photo: string | undefined, studentId: string) => {
+  if (!photo) return `https://api.dicebear.com/7.x/avataaars/svg?seed=${studentId}`;
+  if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
+  return `${API_BASE_URL}${photo}`;
+};
 
 // Subject color mapping with gradients
 const SUBJECT_COLORS: Record<
@@ -174,6 +182,9 @@ export function StudentPortal() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
   const [activeSubject, setActiveSubject] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   // Mouse position for spotlight effect
   const mouseX = useMotionValue(0);
@@ -185,6 +196,53 @@ export function StudentPortal() {
     const rect = e.currentTarget.getBoundingClientRect();
     mouseX.set(e.clientX - rect.left);
     mouseY.set(e.clientY - rect.top);
+  };
+
+  // Profile picture status
+  const { data: pictureStatus } = useQuery({
+    queryKey: ["profile-picture-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/student-portal/profile-picture/status`, {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: isLoggedIn && !!profile,
+  });
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!file || uploadingPhoto) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5MB");
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch(`${API_BASE_URL}/api/student-portal/profile-picture`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Upload failed");
+      // Update profile with new photo
+      if (profile) {
+        setProfile({ ...profile, photo: data.photoUrl, profilePictureChangeCount: data.changesUsed });
+      }
+      queryClient.invalidateQueries({ queryKey: ["profile-picture-status"] });
+      toast.success(data.message || "Profile picture updated!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   // Get greeting based on time
@@ -579,21 +637,35 @@ export function StudentPortal() {
             <div className="bg-brand-gold h-2 opacity-80" />
             <div className="p-10 md:p-12">
               <div className="text-center space-y-8">
-                <div className="mx-auto w-32 h-32 rounded-[2.5rem] bg-brand-primary/50 border border-brand-gold/30 flex items-center justify-center relative group overflow-hidden shadow-2xl">
-                  {profile.photo ? (
-                    <img 
-                      src={profile.photo} 
-                      alt={profile.name} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    />
-                  ) : (
-                    <img 
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.studentId}`} 
-                      alt={profile.name} 
-                      className="w-full h-full object-cover opacity-80"
-                    />
+                <div
+                  className="mx-auto w-32 h-32 rounded-[2.5rem] bg-brand-primary/50 border border-brand-gold/30 flex items-center justify-center relative group overflow-hidden shadow-2xl cursor-pointer"
+                  onClick={() => pictureStatus?.canChangeNow && photoInputRef.current?.click()}
+                >
+                  <img
+                    src={resolvePortalPhoto(profile.photo, profile.studentId)}
+                    alt={profile.name}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  {pictureStatus?.canChangeNow && (
+                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      {uploadingPhoto ? (
+                        <Loader2 className="h-6 w-6 text-white animate-spin" />
+                      ) : (
+                        <>
+                          <Camera className="h-6 w-6 text-white mb-1" />
+                          <span className="text-[10px] text-white/80 font-medium">Change Photo</span>
+                          <span className="text-[9px] text-brand-gold/80">({3 - (profile.profilePictureChangeCount || 0)} left)</span>
+                        </>
+                      )}
+                    </div>
                   )}
-                  <div className="absolute inset-0 bg-brand-gold/10 animate-pulse group-hover:animate-none transition-all pointer-events-none" />
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
+                  />
                 </div>
 
                 <div className="space-y-4">
@@ -708,16 +780,12 @@ export function StudentPortal() {
                   variant="ghost"
                   className="flex items-center gap-3 hover:bg-white/5 h-14 px-4 rounded-2xl border border-transparent hover:border-white/10 transition-all"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-brand-gold overflow-hidden flex items-center justify-center shadow-lg shadow-brand-gold/20">
-                    {profile?.photo ? (
-                      <img src={profile.photo} alt={profile.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <img 
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.studentId}`} 
-                        alt={profile?.name} 
-                        className="w-full h-full object-cover"
-                      />
-                    )}
+                  <div className="w-10 h-10 rounded-xl bg-brand-gold overflow-hidden flex items-center justify-center shadow-lg shadow-brand-gold/20 relative group/nav">
+                    <img
+                      src={resolvePortalPhoto(profile?.photo, profile?.studentId || "")}
+                      alt={profile?.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="hidden md:block text-left">
                     <p className="text-sm font-bold text-white leading-none">

@@ -59,7 +59,7 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, "");
     return `https://${codespaceBase}-5000.app.github.dev/api`;
   }
-  return "http://localhost:5000/api";
+  return "http://localhost:5001/api";
 };
 
 const API_BASE_URL = getApiBaseUrl();

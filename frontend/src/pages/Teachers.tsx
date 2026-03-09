@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserPlus, Loader2, Trash2, Wallet } from "lucide-react";
+import { UserPlus, Loader2, Trash2, Wallet, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 // Import the Modals and API
 import { AddTeacherModal } from "@/components/dashboard/AddTeacherModal";
 import { ViewEditTeacherModal } from "@/components/dashboard/ViewEditTeacherModal";
@@ -100,6 +101,7 @@ const Teachers = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch teachers from MongoDB using React Query
   const { data: teachersResponse, isLoading } = useQuery({
@@ -258,21 +260,28 @@ const Teachers = () => {
                         <>
                           Compensation:{" "}
                           <span className="font-medium text-success">
-                            {teacher.compensation?.type === "percentage" &&
-                            teacher.compensation?.teacherShare !== null &&
-                            teacher.compensation?.teacherShare !== undefined &&
-                            teacher.compensation?.academyShare !== null &&
-                            teacher.compensation?.academyShare !== undefined ? (
-                              <span>
-                                {teacher.compensation.teacherShare} :{" "}
-                                <span className="text-muted-foreground">
-                                  {teacher.compensation.academyShare}
-                                </span>{" "}
-                                %
-                              </span>
-                            ) : (
-                              formatCompensation(teacher.compensation)
-                            )}
+                            {(() => {
+                              const role = teacher.userId?.role || 'TEACHER';
+                              if (role === 'OWNER' || role === 'PARTNER') {
+                                return <span className="text-amber-600">100% + Revenue Pool</span>;
+                              }
+                              if (teacher.compensation?.type === "percentage" &&
+                                teacher.compensation?.teacherShare !== null &&
+                                teacher.compensation?.teacherShare !== undefined &&
+                                teacher.compensation?.academyShare !== null &&
+                                teacher.compensation?.academyShare !== undefined) {
+                                return (
+                                  <span>
+                                    {teacher.compensation.teacherShare} :{" "}
+                                    <span className="text-muted-foreground">
+                                      {teacher.compensation.academyShare}
+                                    </span>{" "}
+                                    %
+                                  </span>
+                                );
+                              }
+                              return formatCompensation(teacher.compensation);
+                            })()}
                           </span>
                         </>
                       ) : (
@@ -285,6 +294,19 @@ const Teachers = () => {
                 );
               });
             })()}
+      </div>
+
+      {/* Search Bar */}
+      <div className="mt-6 rounded-xl border border-border bg-card p-4 card-shadow">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, subject, or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-background"
+          />
+        </div>
       </div>
 
       {/* Teachers Table */}
@@ -337,7 +359,16 @@ const Teachers = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {teachers.map((teacher: any) => (
+              {teachers.filter((teacher: any) => {
+                if (!searchTerm.trim()) return true;
+                const term = searchTerm.toLowerCase();
+                return (
+                  teacher.name?.toLowerCase().includes(term) ||
+                  teacher.subject?.toLowerCase().includes(term) ||
+                  teacher.phone?.toLowerCase().includes(term) ||
+                  (teacher.userId?.role || '').toLowerCase().includes(term)
+                );
+              }).map((teacher: any) => (
                 <TableRow key={teacher._id} className="hover:bg-secondary/50">
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -418,24 +449,40 @@ const Teachers = () => {
                   <TableCell>
                     <div className="flex flex-col gap-0.5">
                       <div className="font-medium text-success text-sm">
-                        {teacher.compensation?.type === "percentage" &&
-                        teacher.compensation?.teacherShare !== null &&
-                        teacher.compensation?.teacherShare !== undefined &&
-                        teacher.compensation?.academyShare !== null &&
-                        teacher.compensation?.academyShare !== undefined ? (
-                          <span>
-                            {teacher.compensation.teacherShare} :{" "}
-                            <span className="text-muted-foreground">
-                              {teacher.compensation.academyShare}
-                            </span>{" "}
-                            %
-                          </span>
-                        ) : (
-                          formatCompensation(teacher.compensation)
-                        )}
+                        {(() => {
+                          const userRole = teacher.userId?.role || 'TEACHER';
+                          if (userRole === 'OWNER' || userRole === 'PARTNER') {
+                            return (
+                              <span className="text-amber-600 font-semibold">100%
+                                <span className="text-amber-500 font-normal text-xs ml-1">+ Revenue Pool</span>
+                              </span>
+                            );
+                          }
+                          if (teacher.compensation?.type === "percentage" &&
+                            teacher.compensation?.teacherShare !== null &&
+                            teacher.compensation?.teacherShare !== undefined &&
+                            teacher.compensation?.academyShare !== null &&
+                            teacher.compensation?.academyShare !== undefined) {
+                            return (
+                              <span>
+                                {teacher.compensation.teacherShare} :{" "}
+                                <span className="text-muted-foreground">
+                                  {teacher.compensation.academyShare}
+                                </span>{" "}
+                                %
+                              </span>
+                            );
+                          }
+                          return formatCompensation(teacher.compensation);
+                        })()}
                       </div>
                       <span className="text-xs text-muted-foreground capitalize">
-                        {teacher.compensation?.type || "Not Set"}
+                        {(() => {
+                          const userRole = teacher.userId?.role || 'TEACHER';
+                          if (userRole === 'OWNER') return 'Owner';
+                          if (userRole === 'PARTNER') return 'Partner';
+                          return teacher.compensation?.type || "Not Set";
+                        })()}
                       </span>
                     </div>
                   </TableCell>

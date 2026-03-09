@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { User, DollarSign, Loader2, Eye, Edit } from "lucide-react";
-import { teacherApi } from "@/lib/api";
+import { teacherApi, settingsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface ViewEditTeacherModalProps {
@@ -41,6 +41,15 @@ export const ViewEditTeacherModal = ({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<"view" | "edit">(initialMode);
+
+  // Fetch configuration for dynamic subjects
+  const { data: configData } = useQuery({
+    queryKey: ["config"],
+    queryFn: settingsApi.get,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const subjects = configData?.data?.defaultSubjectFees || [];
 
   // Form State
   const [name, setName] = useState("");
@@ -213,11 +222,11 @@ export const ViewEditTeacherModal = ({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover">
-                  <SelectItem value="biology">Biology</SelectItem>
-                  <SelectItem value="chemistry">Chemistry</SelectItem>
-                  <SelectItem value="physics">Physics</SelectItem>
-                  <SelectItem value="math">Mathematics</SelectItem>
-                  <SelectItem value="english">English</SelectItem>
+                  {subjects.map((s: any) => (
+                    <SelectItem key={s.name} value={s.name.toLowerCase()}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

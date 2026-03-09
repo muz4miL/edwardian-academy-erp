@@ -9,21 +9,7 @@ if (!fs.existsSync(uploadDir)) {
   console.log("Created upload directory:", uploadDir);
 }
 
-// Configure storage for student photos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Format: {studentId}-{timestamp}.{ext}
-    const studentId = req.params.id;
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-    cb(null, `${studentId}-${timestamp}${ext}`);
-  },
-});
-
-// File filter - only accept images
+// File filter - only accept images (security)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png/;
   const extname = allowedTypes.test(
@@ -38,20 +24,33 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Configure multer
+// Admin upload (uses req.params.id for filename)
+const adminStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Format: {studentId}-{timestamp}.{ext}
+    const studentId = req.params.id;
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, `${studentId}-${timestamp}${ext}`);
+  },
+});
+
+// Configure multer for admin uploads
 const uploadStudentPhoto = multer({
-  storage,
+  storage: adminStorage,
   fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB max file size
   },
 }).single("photo");
 
-// Wrapper middleware with error handling
+// Wrapper middleware with error handling (admin)
 const handlePhotoUpload = (req, res, next) => {
   uploadStudentPhoto(req, res, (err) => {
     if (err instanceof multer.MulterError) {
-      // Multer-specific errors
       if (err.code === "LIMIT_FILE_SIZE") {
         return res.status(400).json({
           success: false,
@@ -63,7 +62,6 @@ const handlePhotoUpload = (req, res, next) => {
         message: `Upload error: ${err.message}`,
       });
     } else if (err) {
-      // Custom errors (e.g., file type validation)
       return res.status(400).json({
         success: false,
         message: err.message,
@@ -73,4 +71,48 @@ const handlePhotoUpload = (req, res, next) => {
   });
 };
 
-module.exports = { handlePhotoUpload, uploadDir };
+// Student portal self-upload (uses req.student for filename)
+const portalStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const studentId = req.student?.studentId || req.student?._id || "unknown";
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    cb(null, `profile-${studentId}-${Date.now()}${ext}`);
+  },
+});
+
+const uploadStudentPortalPhoto = multer({
+  storage: portalStorage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+}).single("photo");
+
+// Wrapper middleware with error handling (student portal)
+const handleStudentProfilePhotoUpload = (req, res, next) => {
+  uploadStudentPortalPhoto(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          success: false,
+          message: "File too large. Maximum 5MB.",
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        message: `Upload error: ${err.message}`,
+      });
+    } else if (err) {
+      return res.status(400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+    next();
+  });
+};
+
+module.exports = { handlePhotoUpload, handleStudentProfilePhotoUpload, uploadDir };

@@ -11,21 +11,27 @@ router.route("/").get(getConfig).post(updateConfig);
 router.route("/session-price/:sessionId").get(getSessionPrice);
 
 // @route   GET /api/config/partners
-// @desc    Get partner/owner users with names, subjects (auto-detected from User collection)
+// @desc    Get partner/owner users with names, subjects, contact info (auto-detected from User collection)
 // @access  Protected
 router.get("/partners", async (req, res) => {
   try {
     // Auto-detect all OWNER + PARTNER users
     const users = await User.find({ role: { $in: ["OWNER", "PARTNER"] }, isActive: true })
-      .select("fullName role teacherId")
+      .select("fullName role teacherId phone profileImage isActive")
       .sort({ role: 1, fullName: 1 }); // OWNER first, then PARTNERs alphabetically
 
     const partners = [];
     for (const user of users) {
       let subject = null;
+      let joiningDate = null;
+      let compensation = null;
+      let status = "active";
       if (user.teacherId) {
-        const teacher = await Teacher.findById(user.teacherId).select("subject");
+        const teacher = await Teacher.findById(user.teacherId).select("subject joiningDate compensation status");
         subject = teacher?.subject || null;
+        joiningDate = teacher?.joiningDate || null;
+        compensation = teacher?.compensation || null;
+        status = teacher?.status || "active";
       }
 
       partners.push({
@@ -33,6 +39,12 @@ router.get("/partners", async (req, res) => {
         fullName: user.fullName,
         role: user.role,
         subject,
+        phone: user.phone || null,
+        profileImage: user.profileImage || null,
+        isActive: user.isActive,
+        joiningDate,
+        compensation,
+        status,
       });
     }
 

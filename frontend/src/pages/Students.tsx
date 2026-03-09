@@ -33,7 +33,6 @@ import {
   Trash2,
   UserPlus,
   Search,
-  Download,
   Loader2,
   DollarSign,
   Receipt,
@@ -52,7 +51,7 @@ import { WithdrawStudentDialog } from "@/components/dashboard/WithdrawStudentDia
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // Helper function to get initials from name
 const getInitials = (name: string): string => {
@@ -96,6 +95,9 @@ const Students = () => {
   // Teacher Filter
   const [teacherFilter, setTeacherFilter] = useState("all");
 
+  // Fee Status Filter
+  const [feeStatusFilter, setFeeStatusFilter] = useState("all");
+
   // Modal states
   const [isViewEditModalOpen, setIsViewEditModalOpen] = useState(false);
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
@@ -107,7 +109,6 @@ const Students = () => {
   const [feeStudent, setFeeStudent] = useState<any | null>(null);
   const [feeAmount, setFeeAmount] = useState("");
   const [feeMonth, setFeeMonth] = useState("");
-  const [feeSubject, setFeeSubject] = useState("");
   const [feeSuccess, setFeeSuccess] = useState<any | null>(null);
 
   // TASK 4: Fetch all sessions for filter dropdown
@@ -161,7 +162,9 @@ const Students = () => {
     });
   }, [timetableData]);
 
-  // Fetch students with React Query - include session filter
+  // Fetch students with React Query - only when at least one filter is active
+  const hasActiveFilter = searchTerm.trim() !== "" || classFilter !== "all" || groupFilter !== "all" || sessionFilter !== "all" || timeFilter !== "all" || teacherFilter !== "all" || feeStatusFilter !== "all";
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [
       "students",
@@ -172,6 +175,7 @@ const Students = () => {
         session: sessionFilter,
         time: timeFilter,
         teacher: teacherFilter,
+        feeStatus: feeStatusFilter,
       },
     ],
     queryFn: () =>
@@ -182,10 +186,12 @@ const Students = () => {
         sessionRef: sessionFilter !== "all" ? sessionFilter : undefined,
         time: timeFilter !== "all" ? timeFilter : undefined,
         teacher: teacherFilter !== "all" ? teacherFilter : undefined,
+        feeStatus: feeStatusFilter !== "all" ? feeStatusFilter : undefined,
       }),
+    enabled: hasActiveFilter,
   });
 
-  const students = data?.data || [];
+  const students = hasActiveFilter ? (data?.data || []) : [];
 
   // Withdraw mutation (soft delete with optional refund)
   const withdrawStudentMutation = useMutation({
@@ -219,20 +225,18 @@ const Students = () => {
       studentId,
       amount,
       month,
-      subject,
     }: {
       studentId: string;
       amount: number;
       month: string;
-      subject: string;
     }) => {
       const res = await fetch(
-        `${API_BASE_URL}/students/${studentId}/collect-fee`,
+        `${API_BASE_URL}/api/students/${studentId}/collect-fee`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ amount, month, subject }),
+          body: JSON.stringify({ amount, month }),
         },
       );
       if (!res.ok) {
@@ -243,6 +247,8 @@ const Students = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
       setFeeSuccess(data.data);
     },
     onError: (error: any) => {
@@ -252,21 +258,6 @@ const Students = () => {
       });
     },
   });
-
-  // Generate month options (current month + next 11 months)
-  const getMonthOptions = () => {
-    const months = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const monthStr = date.toLocaleString("default", {
-        month: "long",
-        year: "numeric",
-      });
-      months.push(monthStr);
-    }
-    return months;
-  };
 
   // Handlers
   const handleEdit = (student: any) => {
@@ -288,89 +279,52 @@ const Students = () => {
 
   // Fee collection handler
   const handleCollectFee = (student: any) => {
-    try {
-      if (!student || !student._id) {
-        toast.error("Invalid Student", {
-          description: "Student data is missing. Please refresh and try again.",
-          duration: 3000,
-        });
-        return;
-      }
-
-      setFeeStudent(student);
-      setFeeAmount("");
-      setFeeMonth(getMonthOptions()[0] || "");
-      setFeeSubject(student?.subjects?.[0] || "");
-      setFeeSuccess(null);
-      setIsFeeModalOpen(true);
-    } catch (error) {
-      console.error("❌ Error in handleCollectFee:", error);
-      toast.error("Error", {
-        description: "Failed to open fee collection modal. Please try again.",
-        duration: 3000,
+    if (!student || !student._id) {
+      toast.error("Invalid Student", {
+        description: "Student data is missing. Please refresh and try again.",
       });
+      return;
     }
+    setFeeStudent(student);
+    setFeeAmount("");
+    setFeeMonth(new Date().toLocaleString("default", { month: "long", year: "numeric" }));
+    setFeeSuccess(null);
+    setIsFeeModalOpen(true);
   };
 
   const submitFeeCollection = () => {
     if (!feeStudent || !feeStudent._id) {
-      toast.error("Invalid Student", {
-        description: "Student information is missing.",
-        duration: 3000,
-      });
+      toast.error("Invalid Student", { description: "Student information is missing." });
       return;
     }
-
     if (!feeAmount || parseFloat(feeAmount) <= 0) {
-      toast.error("Invalid Amount", {
-        description: "Please enter a valid fee amount greater than 0.",
-        duration: 3000,
-      });
+      toast.error("Invalid Amount", { description: "Please enter a valid fee amount greater than 0." });
       return;
     }
-
     if (!feeMonth) {
-      toast.error("Missing Month", {
-        description: "Please select a month for this fee collection.",
-        duration: 3000,
-      });
+      toast.error("Missing Month", { description: "Please select a month for this fee collection." });
       return;
     }
-
-    try {
-      collectFeeMutation.mutate({
-        studentId: feeStudent._id,
-        amount: parseFloat(feeAmount),
-        month: feeMonth,
-        subject: feeSubject || "",
-      });
-    } catch (error) {
-      console.error("❌ Error submitting fee collection:", error);
-      toast.error("Error", {
-        description: "Failed to submit fee collection. Please try again.",
-        duration: 3000,
-      });
-    }
+    collectFeeMutation.mutate({
+      studentId: feeStudent._id,
+      amount: parseFloat(feeAmount),
+      month: feeMonth,
+    });
   };
 
   const closeFeeModal = () => {
-    try {
-      setIsFeeModalOpen(false);
-      setFeeStudent(null);
-      setFeeSuccess(null);
-      setFeeAmount("");
-      setFeeMonth("");
-      setFeeSubject("");
-    } catch (error) {
-      console.warn("Error closing fee modal:", error);
-    }
+    setIsFeeModalOpen(false);
+    setFeeStudent(null);
+    setFeeSuccess(null);
+    setFeeAmount("");
+    setFeeMonth("");
   };
 
   return (
     <DashboardLayout title="Students">
       <HeaderBanner
         title="Student Management"
-        subtitle={`Total Students: ${students.length} | Active: ${students.filter((s: any) => s.status === "active").length}`}
+        subtitle={hasActiveFilter ? `Total Students: ${students.length} | Active: ${students.filter((s: any) => s.status === "active").length}` : "Use filters to find students"}
       >
         <Button
           className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
@@ -394,7 +348,22 @@ const Students = () => {
             />
           </div>
 
-          {/* Session Filter - Integrated */}
+          {/* Teacher Filter - First */}
+          <Select value={teacherFilter} onValueChange={setTeacherFilter}>
+            <SelectTrigger className="w-[170px] bg-background">
+              <SelectValue placeholder="All Teachers" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Teachers</SelectItem>
+              {teachers.map((t: any) => (
+                <SelectItem key={t._id} value={t._id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Session Filter */}
           <Select value={sessionFilter} onValueChange={setSessionFilter}>
             <SelectTrigger className="w-[180px] bg-background">
               <SelectValue placeholder="All Sessions" />
@@ -434,7 +403,7 @@ const Students = () => {
             </SelectContent>
           </Select>
 
-          {/* Time Slot Filter - Derived from Timetable entries */}
+          {/* Time Slot Filter */}
           <Select value={timeFilter} onValueChange={setTimeFilter}>
             <SelectTrigger className="w-[160px] bg-background">
               <SelectValue placeholder="All Time Slots" />
@@ -449,30 +418,34 @@ const Students = () => {
             </SelectContent>
           </Select>
 
-          {/* Teacher Filter - Dynamic from teachers */}
-          <Select value={teacherFilter} onValueChange={setTeacherFilter}>
-            <SelectTrigger className="w-[170px] bg-background">
-              <SelectValue placeholder="All Teachers" />
+          {/* Fee Status Filter */}
+          <Select value={feeStatusFilter} onValueChange={setFeeStatusFilter}>
+            <SelectTrigger className="w-[160px] bg-background">
+              <SelectValue placeholder="All Fee Status" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="all">All Teachers</SelectItem>
-              {teachers.map((t: any) => (
-                <SelectItem key={t._id} value={t._id}>
-                  {t.name}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">All Fee Status</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="partial">Partial</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
             </SelectContent>
           </Select>
-
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
       {/* Students Table */}
       <div className="mt-6 rounded-xl border border-border bg-card card-shadow overflow-hidden">
-        {isLoading ? (
+        {!hasActiveFilter ? (
+          <div className="flex flex-col items-center justify-center p-16">
+            <Search className="h-12 w-12 text-muted-foreground/40 mb-4" />
+            <p className="text-muted-foreground font-semibold text-lg">
+              Select a filter to view students
+            </p>
+            <p className="text-sm text-muted-foreground mt-2 text-center max-w-md">
+              Use the filters above to find students by teacher, session, class, group, time slot, or search by name.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center p-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <span className="ml-3 text-muted-foreground">
@@ -494,14 +467,8 @@ const Students = () => {
               No students found
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              {sessionFilter !== "all"
-                ? "No students in this session. Try selecting 'All Sessions'."
-                : "Add your first student to get started"}
+              No students match the selected filters. Try adjusting your criteria.
             </p>
-            <Button className="mt-4" onClick={() => navigate("/admissions")}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Add First Student
-            </Button>
           </div>
         ) : (
           <Table>
@@ -714,7 +681,7 @@ const Students = () => {
         isProcessing={withdrawStudentMutation.isPending}
       />
 
-      {/* Fee Collection Modal */}
+      {/* Fee Collection Modal — Perfected */}
       <Dialog
         open={isFeeModalOpen}
         onOpenChange={(open) => !open && closeFeeModal()}
@@ -727,123 +694,85 @@ const Students = () => {
             </DialogTitle>
             <DialogDescription>
               {feeStudent
-                ? `Collecting fee for ${feeStudent?.studentName || feeStudent?.name || "Student"} (${feeStudent?.studentId || "N/A"})`
+                ? `Collecting fee for ${feeStudent?.studentName || "Student"} (${feeStudent?.studentId || "N/A"})`
                 : "Loading student information..."}
             </DialogDescription>
           </DialogHeader>
 
           {feeSuccess ? (
-            // Success state
+            /* ========== SUCCESS STATE ========== */
             <div className="space-y-4">
-              <div className="flex flex-col items-center justify-center py-4">
-                <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-                <h3 className="text-lg font-semibold text-green-700">
-                  Fee Collected Successfully!
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Receipt #{feeSuccess?.receiptNumber || "N/A"}
-                </p>
+              <div className="flex flex-col items-center justify-center py-6">
+                <CheckCircle className="h-20 w-20 text-green-500 mb-3" />
+                <h3 className="text-xl font-bold text-green-700">Fee Collected!</h3>
               </div>
 
-              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 border border-green-200 dark:border-green-800 space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">
-                    Total Amount
-                  </span>
-                  <span className="font-semibold">
-                    Rs. {feeSuccess?.amount?.toLocaleString() || "0"}
+                  <span className="text-sm font-medium text-muted-foreground">Amount Collected</span>
+                  <span className="text-lg font-bold text-green-700 dark:text-green-300">
+                    Rs. {feeSuccess?.feeRecord?.amount?.toLocaleString() || "0"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Month</span>
-                  <span className="font-medium">
-                    {feeSuccess?.month || "N/A"}
+                  <span className="text-sm font-medium text-muted-foreground">Collection Month</span>
+                  <span className="font-semibold text-foreground">
+                    {feeSuccess?.feeRecord?.month || "N/A"}
                   </span>
                 </div>
-                <div className="border-t border-border pt-3 mt-3">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Split Breakdown:
-                  </p>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-blue-600">
-                      Teacher Share (
-                      {feeSuccess?.splitBreakdown?.teacherPercentage || "0"}%)
-                    </span>
-                    <span className="font-medium">
-                      Rs.{" "}
-                      {feeSuccess?.splitBreakdown?.teacherAmount?.toLocaleString() ||
-                        "0"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm mt-1">
-                    <span className="text-purple-600">
-                      Academy Share (
-                      {feeSuccess?.splitBreakdown?.academyPercentage || "0"}%)
-                    </span>
-                    <span className="font-medium">
-                      Rs.{" "}
-                      {feeSuccess?.splitBreakdown?.academyAmount?.toLocaleString() ||
-                        "0"}
-                    </span>
-                  </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-muted-foreground">Receipt</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {feeSuccess?.feeRecord?.receiptNumber || "N/A"}
+                  </span>
                 </div>
               </div>
 
               <DialogFooter>
-                <Button onClick={closeFeeModal} className="w-full">
-                  <Receipt className="mr-2 h-4 w-4" />
+                <Button onClick={closeFeeModal} className="w-full bg-green-600 hover:bg-green-700">
                   Done
                 </Button>
               </DialogFooter>
             </div>
           ) : (
-            // Collection form
+            /* ========== COLLECTION FORM ========== */
             <div className="space-y-4">
+              {/* Student Financial Summary */}
+              {feeStudent && (
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg p-4 border border-blue-100 dark:border-blue-900">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Total Fee</p>
+                      <p className="font-semibold text-blue-700 dark:text-blue-300">
+                        Rs. {Number(feeStudent.totalFee || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Paid Amount</p>
+                      <p className="font-semibold text-green-700 dark:text-green-300">
+                        Rs. {Number(feeStudent.paidAmount || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="col-span-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                      <p className="text-xs text-muted-foreground mb-1">Remaining Balance</p>
+                      <p className="font-bold text-lg text-purple-700 dark:text-purple-300">
+                        Rs. {Math.max(0, Number(feeStudent.totalFee || 0) - Number(feeStudent.paidAmount || 0)).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Collection Month — Read-only, auto-set to current month */}
               <div className="space-y-2">
-                <Label htmlFor="feeMonth">Month</Label>
-                <Select value={feeMonth} onValueChange={setFeeMonth}>
-                  <SelectTrigger id="feeMonth">
-                    <SelectValue placeholder="Select month" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getMonthOptions()?.map((month) => (
-                      <SelectItem key={month} value={month}>
-                        {month}
-                      </SelectItem>
-                    )) || []}
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm font-medium">Collection Month</Label>
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border border-border rounded-md">
+                  <span className="text-sm font-medium text-muted-foreground">{feeMonth}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">(Current Month)</span>
+                </div>
               </div>
 
-              {feeStudent?.subjects &&
-                Array.isArray(feeStudent.subjects) &&
-                feeStudent.subjects.length > 0 && (
-                  <div className="space-y-2">
-                    <Label htmlFor="feeSubject">Subject</Label>
-                    <Select value={feeSubject} onValueChange={setFeeSubject}>
-                      <SelectTrigger id="feeSubject">
-                        <SelectValue placeholder="Select subject" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {feeStudent?.subjects?.map((subj: any, idx: number) => {
-                          const subjName =
-                            typeof subj === "string"
-                              ? subj
-                              : subj?.name || `Subject ${idx + 1}`;
-                          return (
-                            <SelectItem
-                              key={`${subjName}-${idx}`}
-                              value={subjName}
-                            >
-                              {subjName}
-                            </SelectItem>
-                          );
-                        }) || []}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
+              {/* Amount Input */}
               <div className="space-y-2">
                 <Label htmlFor="feeAmount">Amount (Rs.)</Label>
                 <Input
@@ -853,9 +782,16 @@ const Students = () => {
                   value={feeAmount}
                   onChange={(e) => setFeeAmount(e.target.value)}
                   min={0}
+                  max={feeStudent ? Math.max(0, (feeStudent.totalFee || 0) - (feeStudent.paidAmount || 0)) : undefined}
                 />
+                {feeAmount && feeStudent && parseFloat(feeAmount) > Math.max(0, (feeStudent.totalFee || 0) - (feeStudent.paidAmount || 0)) && (
+                  <p className="text-xs text-red-600 font-medium">
+                    Amount exceeds remaining balance of Rs. {Math.max(0, (feeStudent.totalFee || 0) - (feeStudent.paidAmount || 0)).toLocaleString()}
+                  </p>
+                )}
               </div>
 
+              {/* 70/30 Split Note */}
               <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-sm">
                 <p className="text-blue-700 dark:text-blue-300">
                   <strong>Note:</strong> Fee will be automatically split:
@@ -866,6 +802,7 @@ const Students = () => {
                 </ul>
               </div>
 
+              {/* Action Buttons */}
               <DialogFooter className="gap-2 sm:gap-0">
                 <Button variant="outline" onClick={closeFeeModal}>
                   Cancel
@@ -875,6 +812,7 @@ const Students = () => {
                   disabled={
                     !feeAmount ||
                     parseFloat(feeAmount) <= 0 ||
+                    (feeStudent && parseFloat(feeAmount) > Math.max(0, (feeStudent.totalFee || 0) - (feeStudent.paidAmount || 0))) ||
                     collectFeeMutation.isPending
                   }
                 >

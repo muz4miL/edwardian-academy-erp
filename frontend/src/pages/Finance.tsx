@@ -57,7 +57,7 @@ import { pdf } from "@react-pdf/renderer";
 import { MiscPaymentPDF, type MiscPaymentPDFData } from "@/components/print/MiscPaymentPDF";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // ==================== TYPES ====================
 interface Asset {
@@ -169,18 +169,20 @@ const FinanceOverview = () => {
         <Card className="border-l-4 border-emerald-500">
           <CardContent className="pt-6">
             <p className="text-sm font-medium text-muted-foreground">
-              Fee Collections
+              Monthly Revenue
             </p>
             <p className="text-2xl font-bold text-emerald-700 mt-1">
               {formatCurrency(stats?.totalIncome || 0)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">This month</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats?.monthlyFeesCount ? `${stats.monthlyFeesCount} fee payments this month` : "This month"}
+            </p>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-red-500">
           <CardContent className="pt-6">
             <p className="text-sm font-medium text-muted-foreground">
-              Expenses
+              Monthly Expenses
             </p>
             <p className="text-2xl font-bold text-red-700 mt-1">
               {formatCurrency(stats?.totalExpenses || 0)}
@@ -191,13 +193,13 @@ const FinanceOverview = () => {
         <Card className="border-l-4 border-slate-800">
           <CardContent className="pt-6">
             <p className="text-sm font-medium text-muted-foreground">
-              Net Balance
+              Net Profit
             </p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">
+            <p className={`text-2xl font-bold mt-1 ${(stats?.netProfit || 0) >= 0 ? "text-emerald-700" : "text-red-600"}`}>
               {formatCurrency(stats?.netProfit || 0)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Revenue - Expenses
+              Revenue − Expenses
             </p>
           </CardContent>
         </Card>
@@ -692,6 +694,25 @@ const DailyExpenses = () => {
   const queryClient = useQueryClient();
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [isSplitting, setIsSplitting] = useState(false);
+  const [showSplitConfirmDialog, setShowSplitConfirmDialog] = useState(false);
+
+  // Fetch config to check if current month already split
+  const { data: configData } = useQuery({
+    queryKey: ["config-split-status"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/config`, { credentials: "include" });
+      if (!res.ok) return null;
+      const result = await res.json();
+      return result.data;
+    },
+  });
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const alreadySplitThisMonth =
+    configData?.lastExpenseSplitMonth === currentMonth &&
+    configData?.lastExpenseSplitYear === currentYear;
 
   // Form state
   const [expenseTitle, setExpenseTitle] = useState("");
@@ -786,10 +807,9 @@ const DailyExpenses = () => {
 
   // Month-end: recalculate splits for expenses missing partner assignments
   const handleRecalculateSplits = async () => {
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    if (!window.confirm(`Recalculate expense splits for ${month}/${year}? This will assign partner shares to any un-split expenses this month.`)) return;
+    setShowSplitConfirmDialog(false);
+    const month = currentMonth;
+    const year = currentYear;
 
     setIsSplitting(true);
     try {
@@ -802,10 +822,11 @@ const DailyExpenses = () => {
       const result = await res.json();
       if (result.success) {
         toast.success("Splits Recalculated", {
-          description: `${result.updatedCount} expense(s) updated. Total debt assigned: PKR ${result.totalDebtAssigned?.toLocaleString() || 0}`,
+          description: `${result.data?.updatedCount ?? 0} expense(s) updated. Total debt assigned: PKR ${result.data?.totalDebtAssigned?.toLocaleString() || 0}`,
         });
         queryClient.invalidateQueries({ queryKey: ["expenses"] });
         queryClient.invalidateQueries({ queryKey: ["partner-all-debts"] });
+        queryClient.invalidateQueries({ queryKey: ["config-split-status"] });
       } else {
         throw new Error(result.message || "Failed to recalculate");
       }
@@ -832,16 +853,19 @@ const DailyExpenses = () => {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={handleRecalculateSplits}
-              disabled={isSplitting}
-              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+              onClick={() => setShowSplitConfirmDialog(true)}
+              disabled={isSplitting || alreadySplitThisMonth}
+              className={alreadySplitThisMonth ? "border-gray-300 text-gray-400 cursor-not-allowed" : "border-amber-300 text-amber-700 hover:bg-amber-50"}
+              title={alreadySplitThisMonth ? `Already split for ${now.toLocaleString("en-US", { month: "long", year: "numeric" })}` : "Split this month's expenses among partners"}
             >
               {isSplitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : alreadySplitThisMonth ? (
+                <CheckSquare className="mr-2 h-4 w-4" />
               ) : (
                 <Calculator className="mr-2 h-4 w-4" />
               )}
-              Split Month Expenses
+              {alreadySplitThisMonth ? "Month Already Split" : "Split Month Expenses"}
             </Button>
             <Button
               onClick={() => setShowExpenseDialog(true)}
@@ -1001,6 +1025,71 @@ const DailyExpenses = () => {
                 </>
               ) : (
                 "Record Expense"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== SPLIT MONTH CONFIRMATION DIALOG ===== */}
+      <Dialog open={showSplitConfirmDialog} onOpenChange={setShowSplitConfirmDialog}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 shrink-0">
+                <Calculator className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg">Split Month Expenses</DialogTitle>
+                <DialogDescription className="text-sm text-muted-foreground">
+                  {now.toLocaleString("en-US", { month: "long", year: "numeric" })}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-amber-900">
+                This will calculate each partner's share for every un-split expense recorded this month, based on the percentages set in Configuration.
+              </p>
+              <div className="flex items-start gap-2 text-xs text-amber-700">
+                <span className="mt-0.5">⚠️</span>
+                <span>This action can only be performed <strong>once per month</strong>. After splitting, the button will be locked until next month.</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Target Month</span>
+              <span className="font-semibold text-gray-800">
+                {now.toLocaleString("en-US", { month: "long" })} {currentYear}
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowSplitConfirmDialog(false)}
+              disabled={isSplitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRecalculateSplits}
+              disabled={isSplitting}
+              className="bg-amber-600 hover:bg-amber-700 text-white min-w-[140px]"
+            >
+              {isSplitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Splitting...
+                </>
+              ) : (
+                <>
+                  <Calculator className="mr-2 h-4 w-4" />
+                  Confirm & Split
+                </>
               )}
             </Button>
           </DialogFooter>

@@ -41,13 +41,19 @@ import {
   Receipt,
   Lock,
   Calendar,
+  Phone,
+  UserCheck,
+  BookOpen,
+  Shield,
+  Percent,
+  DollarSign,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 const Configuration = () => {
   const { toast } = useToast();
@@ -58,6 +64,22 @@ const Configuration = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
+
+  // --- Dynamic Partners/Owner List (for display cards) ---
+  const [systemPartners, setSystemPartners] = useState<
+    Array<{
+      userId: string;
+      fullName: string;
+      role: string;
+      subject: string | null;
+      phone: string | null;
+      profileImage: string | null;
+      isActive: boolean;
+      joiningDate: string | null;
+      compensation: { type: string; teacherShare?: number; academyShare?: number; fixedSalary?: number; baseSalary?: number; profitShare?: number } | null;
+      status: string;
+    }>
+  >([]);
 
   // --- Dynamic Expense Split (fetched from PARTNER/OWNER users) ---
   const [expenseShares, setExpenseShares] = useState<Array<{ userId: string; fullName: string; subject: string | null; percentage: number }>>([]);
@@ -201,8 +223,15 @@ const Configuration = () => {
         const res = await fetch(`${API_BASE_URL}/api/config/partners`, { credentials: "include" });
         const result = await res.json();
         if (result.success && result.data) {
-          const partners = result.data as Array<{ userId: string; fullName: string; role: string; subject: string | null }>;
+          const partners = result.data as Array<{
+            userId: string; fullName: string; role: string; subject: string | null;
+            phone: string | null; profileImage: string | null; isActive: boolean;
+            joiningDate: string | null; compensation: any; status: string;
+          }>;
           const currentShares = result.currentShares || [];
+
+          // Store full partner data for display cards
+          setSystemPartners(partners);
 
           // Build expenseShares: merge partners list with saved percentages
           const shares = partners.map((p: any) => {
@@ -522,6 +551,410 @@ const Configuration = () => {
                 <span>Super Admin</span>
               </div>
             </div>
+
+            {/* ========== SYSTEM PARTNERS & OWNER (Dynamic) ========== */}
+            <Card className="shadow-md">
+              <CardHeader className="pb-4 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-yellow-100">
+                      <Users className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">System Partners & Owner</CardTitle>
+                      <CardDescription>Dynamically detected from teachers with Partner/Owner roles</CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    <span>{systemPartners.length} member{systemPartners.length !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {systemPartners.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium">No partners or owner found</p>
+                    <p className="text-sm mt-1">Create teachers with <strong>Partner</strong> or <strong>Owner</strong> system role from the Teachers tab.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Owner Section */}
+                    {systemPartners.filter(p => p.role === "OWNER").length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Crown className="h-4 w-4 text-amber-500" />
+                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">System Owner</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {systemPartners.filter(p => p.role === "OWNER").map((partner) => (
+                            <div
+                              key={partner.userId}
+                              className="relative overflow-hidden rounded-xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 p-4 shadow-sm hover:shadow-md transition-shadow"
+                            >
+                              <div className="absolute top-0 right-0 w-20 h-20 bg-amber-100/40 rounded-bl-full" />
+                              <div className="flex items-start gap-3">
+                                <div className="relative">
+                                  {partner.profileImage ? (
+                                    <img
+                                      src={partner.profileImage.startsWith('http') ? partner.profileImage : `${API_BASE_URL}${partner.profileImage}`}
+                                      alt={partner.fullName}
+                                      className="h-12 w-12 rounded-full object-cover border-2 border-amber-300"
+                                    />
+                                  ) : (
+                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-lg border-2 border-amber-300">
+                                      {partner.fullName?.charAt(0)?.toUpperCase()}
+                                    </div>
+                                  )}
+                                  <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-amber-500 border-2 border-white flex items-center justify-center">
+                                    <Crown className="h-2.5 w-2.5 text-white" />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-900 truncate">{partner.fullName}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-200 text-amber-800">
+                                      <Crown className="h-3 w-3 mr-1" />
+                                      Owner
+                                    </span>
+                                    {partner.status === "active" && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 text-xs rounded-full bg-green-100 text-green-700">
+                                        Active
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3 space-y-1.5 text-sm">
+                                {partner.subject && (
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                    <BookOpen className="h-3.5 w-3.5 text-gray-400" />
+                                    <span className="capitalize">{partner.subject}</span>
+                                  </div>
+                                )}
+                                {partner.phone && (
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                    <Phone className="h-3.5 w-3.5 text-gray-400" />
+                                    <span>{partner.phone}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-3 pt-2 border-t border-amber-200/60">
+                                <p className="text-xs text-amber-600 flex items-center gap-1">
+                                  <Shield className="h-3 w-3" />
+                                  Full system access
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Partners Section */}
+                    {systemPartners.filter(p => p.role === "PARTNER").length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Users className="h-4 w-4 text-indigo-500" />
+                          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">System Partners</h3>
+                          <span className="text-xs text-gray-400">({systemPartners.filter(p => p.role === "PARTNER").length})</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {systemPartners.filter(p => p.role === "PARTNER").map((partner) => (
+                            <div
+                              key={partner.userId}
+                              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all"
+                            >
+                              <div className="absolute top-0 right-0 w-16 h-16 bg-indigo-50/50 rounded-bl-full" />
+                              <div className="flex items-start gap-3">
+                                <div className="relative">
+                                  {partner.profileImage ? (
+                                    <img
+                                      src={partner.profileImage.startsWith('http') ? partner.profileImage : `${API_BASE_URL}${partner.profileImage}`}
+                                      alt={partner.fullName}
+                                      className="h-12 w-12 rounded-full object-cover border-2 border-indigo-200"
+                                    />
+                                  ) : (
+                                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg border-2 border-indigo-200">
+                                      {partner.fullName?.charAt(0)?.toUpperCase()}
+                                    </div>
+                                  )}
+                                  <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-indigo-500 border-2 border-white flex items-center justify-center">
+                                    <Users className="h-2.5 w-2.5 text-white" />
+                                  </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-gray-900 truncate">{partner.fullName}</p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700">
+                                      <Users className="h-3 w-3 mr-1" />
+                                      Partner
+                                    </span>
+                                    {partner.status === "active" && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 text-xs rounded-full bg-green-100 text-green-700">
+                                        Active
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3 space-y-1.5 text-sm">
+                                {partner.subject && (
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                    <BookOpen className="h-3.5 w-3.5 text-gray-400" />
+                                    <span className="capitalize">{partner.subject}</span>
+                                  </div>
+                                )}
+                                {partner.phone && (
+                                  <div className="flex items-center gap-2 text-gray-600">
+                                    <Phone className="h-3.5 w-3.5 text-gray-400" />
+                                    <span>{partner.phone}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-3 pt-2 border-t border-gray-100">
+                                <p className="text-xs text-indigo-500 flex items-center gap-1">
+                                  <Shield className="h-3 w-3" />
+                                  Partner access
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ========== EXPENSE SPLIT CONFIGURATION (Dynamic) ========== */}
+            <Card className="shadow-md">
+              <CardHeader className="pb-4 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-100 to-green-100">
+                      <Percent className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Expense Split Configuration</CardTitle>
+                      <CardDescription>Set how monthly expenses are divided among partners (must total 100%)</CardDescription>
+                    </div>
+                  </div>
+                  {splitError ? (
+                    <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      <span>{splitError}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Valid (100%)</span>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {expenseShares.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Percent className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium">No partners found</p>
+                    <p className="text-sm mt-1">Create teachers with <strong>Partner</strong> or <strong>Owner</strong> system role to configure expense splits.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
+                      <p className="text-sm text-emerald-800">
+                        <strong>How it works:</strong> When you click "Split Month Expenses" in the Finance tab, each expense for that month
+                        will be divided among partners using these percentages. The resulting debt is tracked in Settlements.
+                      </p>
+                    </div>
+
+                    {/* Partner Split Inputs */}
+                    <div className="space-y-3">
+                      {expenseShares.map((share, index) => {
+                        const isOwner = systemPartners.find(p => p.userId === share.userId)?.role === "OWNER";
+                        return (
+                          <div
+                            key={share.userId}
+                            className={cn(
+                              "flex items-center gap-4 p-4 rounded-xl border transition-all",
+                              isOwner
+                                ? "bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200"
+                                : "bg-white border-gray-200 hover:border-emerald-200"
+                            )}
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className={cn(
+                                "h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm",
+                                isOwner
+                                  ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                                  : "bg-gradient-to-br from-indigo-400 to-purple-500"
+                              )}>
+                                {share.fullName?.charAt(0)?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-900 truncate">{share.fullName}</p>
+                                <p className="text-xs text-gray-500">
+                                  {isOwner ? "Owner" : "Partner"}
+                                  {share.subject ? ` · ${share.subject}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="relative w-24">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={share.percentage}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                    setExpenseShares(prev => prev.map((s, i) =>
+                                      i === index ? { ...s, percentage: val } : s
+                                    ));
+                                  }}
+                                  className="h-10 pr-8 text-right font-bold text-emerald-700"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">%</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Total Bar */}
+                    <div className="pt-2">
+                      {(() => {
+                        const total = expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
+                        const isValid = total === 100;
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium text-gray-700">Total</span>
+                              <span className={cn("font-bold text-lg", isValid ? "text-green-600" : "text-red-600")}>
+                                {total}%
+                              </span>
+                            </div>
+                            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-300",
+                                  isValid ? "bg-gradient-to-r from-green-400 to-emerald-500" : total > 100 ? "bg-red-500" : "bg-amber-400"
+                                )}
+                                style={{ width: `${Math.min(total, 100)}%` }}
+                              />
+                            </div>
+                            {!isValid && (
+                              <p className="text-xs text-red-500 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {total > 100 ? `Exceeds 100% by ${total - 100}%` : `${100 - total}% remaining to allocate`}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ========== OWNER & PARTNER COMPENSATION MODEL ========== */}
+            <Card className="shadow-md">
+              <CardHeader className="pb-4 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-100 to-orange-100">
+                      <DollarSign className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Owner & Partner Compensation Model</CardTitle>
+                      <CardDescription>How the owner and partners earn from the academy</CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="space-y-5">
+                  {/* Step 1: Teaching Income */}
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-white font-bold text-sm shrink-0">1</div>
+                      <div>
+                        <p className="font-semibold text-gray-900">Teaching Income — 100%</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          The owner and each partner keeps <strong>100%</strong> of the fee revenue from the subject they personally teach — they receive the full amount for their classes with no academy cut.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2: Academy Revenue Pool */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white font-bold text-sm shrink-0">2</div>
+                      <div>
+                        <p className="font-semibold text-gray-900">Academy Revenue Pool</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Each regular teacher has a custom compensation split (e.g. 70/30, 60/40, etc.). The <strong>academy's portion</strong> from every teacher is pooled together as academy revenue — this pool is then
+                          divided between the owner and partners based on the <strong>Expense Split</strong> percentages defined above.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3: Expense Liability */}
+                  <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500 text-white font-bold text-sm shrink-0">3</div>
+                      <div>
+                        <p className="font-semibold text-gray-900">Expense Liability</p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Academy expenses (utilities, rent, supplies, etc.) are split among all partners using the same <strong>Expense Split</strong> percentages.
+                          The owner records settlements when partners pay their share.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Current Partners Summary */}
+                  {systemPartners.length > 0 && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Current Members</p>
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {systemPartners.map((p) => {
+                          const share = expenseShares.find(s => s.userId === p.userId);
+                          return (
+                            <div key={p.userId} className="flex items-center justify-between px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white font-bold text-xs ${
+                                  p.role === "OWNER" ? "bg-amber-500" : "bg-indigo-500"
+                                }`}>
+                                  {p.fullName?.charAt(0)?.toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{p.fullName}</p>
+                                  <p className="text-xs text-gray-500 capitalize">{p.role?.toLowerCase()} · {p.subject || "N/A"}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-amber-700">100% + Pool</p>
+                                <p className="text-xs text-gray-400">{share ? `${share.percentage}% expense split` : "split not set"}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* ========== CARD 4: Academy Info ========== */}

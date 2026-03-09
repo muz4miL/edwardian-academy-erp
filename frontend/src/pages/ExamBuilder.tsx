@@ -271,22 +271,6 @@ const ExamBuilder = () => {
                                 </Select>
                             </div>
 
-                            {/* Duration */}
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-amber-500" />
-                                    Duration (minutes)
-                                </Label>
-                                <Input
-                                    type="number"
-                                    min={5}
-                                    max={180}
-                                    value={durationMinutes}
-                                    onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 30)}
-                                    className="bg-background"
-                                />
-                            </div>
-
                             {/* Start Time */}
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2">
@@ -296,7 +280,14 @@ const ExamBuilder = () => {
                                 <Input
                                     type="datetime-local"
                                     value={startTime}
-                                    onChange={(e) => setStartTime(e.target.value)}
+                                    onChange={(e) => {
+                                        setStartTime(e.target.value);
+                                        // Auto-calculate duration if end time is set
+                                        if (endTime && e.target.value) {
+                                            const diffMs = new Date(endTime).getTime() - new Date(e.target.value).getTime();
+                                            if (diffMs > 0) setDurationMinutes(Math.round(diffMs / 60000));
+                                        }
+                                    }}
                                     className="bg-background"
                                 />
                             </div>
@@ -307,8 +298,35 @@ const ExamBuilder = () => {
                                 <Input
                                     type="datetime-local"
                                     value={endTime}
-                                    onChange={(e) => setEndTime(e.target.value)}
+                                    onChange={(e) => {
+                                        setEndTime(e.target.value);
+                                        // Auto-calculate duration if start time is set
+                                        if (startTime && e.target.value) {
+                                            const diffMs = new Date(e.target.value).getTime() - new Date(startTime).getTime();
+                                            if (diffMs > 0) setDurationMinutes(Math.round(diffMs / 60000));
+                                        }
+                                    }}
                                     className="bg-background"
+                                />
+                            </div>
+
+                            {/* Duration - Auto-calculated */}
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-amber-500" />
+                                    Duration (minutes)
+                                    {startTime && endTime && (
+                                        <span className="text-xs text-amber-600 font-normal">• Auto-calculated</span>
+                                    )}
+                                </Label>
+                                <Input
+                                    type="number"
+                                    min={5}
+                                    max={180}
+                                    value={durationMinutes}
+                                    onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 30)}
+                                    className="bg-background"
+                                    readOnly={!!(startTime && endTime)}
                                 />
                             </div>
 

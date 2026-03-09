@@ -6,6 +6,7 @@ const Class = require("../models/Class");
 const Configuration = require("../models/Configuration");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
+const Timetable = require("../models/Timetable");
 
 // Minimal revenue helper inline to avoid import errors
 const calculateRevenueSplit = async ({ fee, teacherRole, config }) => {
@@ -148,15 +149,13 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
-// COLLECT FEE - Simplified but Working Version
+// COLLECT FEE — Perfected Module
 exports.collectFee = async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, month, subject, teacherId, paymentMethod, notes } =
-      req.body;
+    const { amount, month, teacherId, paymentMethod, notes } = req.body;
 
-    console.log("Collecting fee:", { id, amount, month, subject });
-
+    // --- VALIDATION ---
     if (!amount || !month) {
       return res
         .status(400)
@@ -168,6 +167,22 @@ exports.collectFee = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
+
+    const amountNum = Number(amount);
+    if (amountNum <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Amount must be greater than 0" });
+    }
+
+    // CRITICAL: Prevent over-collection
+    const remainingBalance = (student.totalFee || 0) - (student.paidAmount || 0);
+    if (amountNum > remainingBalance) {
+      return res.status(400).json({
+        success: false,
+        message: `Amount (Rs. ${amountNum.toLocaleString()}) exceeds remaining balance (Rs. ${remainingBalance.toLocaleString()})`,
+      });
+    }
 
     // Find teacher
     let teacher = null;
@@ -189,8 +204,8 @@ exports.collectFee = async (req, res) => {
       student: student._id,
       studentName: student.studentName,
       className: student.class,
-      subject: subject || "General",
-      amount: Number(amount),
+      subject: "General",
+      amount: amountNum,
       month,
       status: "PAID",
       collectedBy: req.user?._id,
@@ -209,9 +224,9 @@ exports.collectFee = async (req, res) => {
       notes,
     });
 
-    // Update student with strict fee status calculation
-    student.paidAmount = (student.paidAmount || 0) + Number(amount);
-    student.feeStatus = calculateFeeStatus(student.paidAmount, student.totalFee || 0);
+    // Update student — pre-save hook recalculates feeStatus
+    const oldFeeStatus = student.feeStatus;
+    student.paidAmount = (student.paidAmount || 0) + amountNum;
     await student.save();
 
     // Update teacher balance
@@ -242,15 +257,16 @@ exports.collectFee = async (req, res) => {
     }
 
     // Create transaction record
-    await Transaction.create({
+    const transaction = await Transaction.create({
       type: "INCOME",
       category: "Tuition",
       stream: split.stream,
-      amount: Number(amount),
-      description: `Fee: ${student.studentName} - ${month}`,
+      amount: amountNum,
+      description: `Fee collected from ${student.studentName} (${month})`,
       collectedBy: req.user?._id,
       status: split.isPartner ? "VERIFIED" : "FLOATING",
       studentId: student._id,
+      classId: student.classRef,
       splitDetails: {
         teacherShare: split.teacherRevenue,
         academyShare: split.poolRevenue,
@@ -259,18 +275,45 @@ exports.collectFee = async (req, res) => {
       },
     });
 
-    // Update collector's totalCash for partner retention system
-    if (req.user?._id && !split.isPartner) {
-      // Only for non-partner teachers (FLOATING status)
+    // Track collector's totalCash (for daily closing verification)
+    if (req.user?._id) {
       try {
         const collector = await User.findById(req.user._id);
-        if (collector && collector.role === "PARTNER") {
-          collector.totalCash = (collector.totalCash || 0) + Number(amount);
+        if (collector) {
+          collector.totalCash = (collector.totalCash || 0) + amountNum;
           await collector.save();
         }
       } catch (e) {
         console.log("TotalCash update skipped:", e.message);
       }
+    }
+
+    // Send OWNER notification
+    try {
+      const owner = await User.findOne({ role: "OWNER" });
+      if (owner) {
+        const newRemaining = (student.totalFee || 0) - student.paidAmount;
+        await Notification.create({
+          recipient: owner._id,
+          recipientRole: "OWNER",
+          message: `Fee collected from ${student.studentName} (${student.studentId}): Rs. ${amountNum.toLocaleString()} paid | Remaining: Rs. ${newRemaining.toLocaleString()}`,
+          type: "FINANCE",
+          relatedId: transaction._id.toString(),
+        });
+
+        // Special notification if student is now FULLY PAID
+        if (student.feeStatus === "paid" && oldFeeStatus !== "paid") {
+          await Notification.create({
+            recipient: owner._id,
+            recipientRole: "OWNER",
+            message: `${student.studentName} (${student.studentId}) has FULLY PAID their fee of Rs. ${student.totalFee.toLocaleString()}`,
+            type: "FINANCE",
+            relatedId: student._id.toString(),
+          });
+        }
+      }
+    } catch (e) {
+      console.log("Owner notification skipped:", e.message);
     }
 
     // Handle pool distribution if academy gets share
@@ -355,6 +398,32 @@ exports.trackPrint = async (req, res) => {
           teacherName: teacherMap[sub.name.toLowerCase().trim()] || null,
         }));
         console.log(`📄 Receipt enriched with teacher names for ${student.studentId}`);
+      }
+
+      // Enrich with timetable schedule (Subject / Teacher / Time)
+      if (classDoc) {
+        const classId = classDoc._id;
+        const timetableEntries = await Timetable.find({ classId, status: "active" }).populate("teacherId", "name");
+
+        // Deduplicate by subject — pick one representative entry per subject
+        const subjectMap = {};
+        for (const entry of timetableEntries) {
+          const subjectKey = entry.subject.toLowerCase().trim();
+          if (!subjectMap[subjectKey]) {
+            subjectMap[subjectKey] = {
+              subject: entry.subject,
+              teacherName: entry.teacherId?.name || "—",
+              time: `${entry.startTime} – ${entry.endTime}`,
+              days: [entry.day],
+            };
+          } else {
+            if (!subjectMap[subjectKey].days.includes(entry.day)) {
+              subjectMap[subjectKey].days.push(entry.day);
+            }
+          }
+        }
+        enrichedStudent.schedule = Object.values(subjectMap);
+        console.log(`📅 Receipt enriched with ${enrichedStudent.schedule.length} schedule entries for ${student.studentId}`);
       }
     } catch (enrichErr) {
       console.log("Subject teacher enrichment skipped:", enrichErr.message);

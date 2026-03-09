@@ -8,6 +8,7 @@ const Transaction = require("../models/Transaction");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const Configuration = require("../models/Configuration");
+const Teacher = require("../models/Teacher");
 const { protect } = require("../middleware/authMiddleware");
 const { handlePhotoUpload } = require("../middleware/upload");
 const {
@@ -151,7 +152,7 @@ router.get("/:id/placeholder-avatar", async (req, res) => {
 // @access  Public
 router.get("/", async (req, res) => {
   try {
-    const { class: className, group, status, search, sessionRef, time, teacher } = req.query;
+    const { class: className, group, status, search, sessionRef, time, teacher, feeStatus } = req.query;
 
     // Build query using $and array for clean composability
     const conditions = [];
@@ -166,6 +167,10 @@ router.get("/", async (req, res) => {
 
     if (status) {
       conditions.push({ status });
+    }
+
+    if (feeStatus && feeStatus !== "all") {
+      conditions.push({ feeStatus });
     }
 
     if (search) {
@@ -205,8 +210,9 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Teacher filter: Find students in classes where this teacher teaches
+    // Teacher filter: Find students who take the subject this teacher teaches, in classes where this teacher is assigned
     if (teacher && teacher !== "all") {
+      const teacherDoc = await Teacher.findById(teacher).select("subject");
       const teacherClasses = await Class.find({
         "subjectTeachers.teacherId": teacher,
       });
@@ -218,12 +224,24 @@ router.get("/", async (req, res) => {
       const teacherClassIds = teacherClasses.map((c) => c._id);
       const teacherClassNames = teacherClasses.map((c) => c.classTitle);
 
-      conditions.push({
+      const classCondition = {
         $or: [
           { class: { $in: teacherClassNames } },
           { classRef: { $in: teacherClassIds } },
         ],
-      });
+      };
+
+      // Also filter by the teacher's subject if known
+      if (teacherDoc && teacherDoc.subject) {
+        conditions.push({
+          $and: [
+            classCondition,
+            { "subjects.name": { $regex: new RegExp(`^${teacherDoc.subject}$`, "i") } },
+          ],
+        });
+      } else {
+        conditions.push(classCondition);
+      }
     }
 
     const query = conditions.length > 0 ? { $and: conditions } : {};
@@ -552,9 +570,10 @@ router.put("/:id", async (req, res) => {
       updateData.paidAmount = Number(updateData.paidAmount);
     }
 
-    // Never allow frontend to override studentId
+    // Never allow frontend to override studentId or feeStatus
     delete updateData.studentId;
     delete updateData._id;
+    delete updateData.feeStatus; // Pre-save hook auto-calculates this
 
     console.log("📝 Updating student:", student.studentId);
     console.log("📝 Update data:", JSON.stringify(updateData, null, 2));

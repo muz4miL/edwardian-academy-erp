@@ -5,10 +5,11 @@ const getApiBaseUrl = () => {
     // Extract codespace name from current URL and construct backend URL
     const hostname = window.location.hostname;
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
-    return `https://${codespaceBase}-5000.app.github.dev/api`;
+    return `https://${codespaceBase}-5001.app.github.dev/api`;
   }
-  // Fallback to localhost for local development
-  return 'http://localhost:5000/api';
+  // Use env var, fallback to localhost:5001
+  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+  return `${base}/api`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -202,7 +203,7 @@ export const settingsApi = {
 // Student API Endpoints
 export const studentApi = {
     // Get all students
-    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string; time?: string; teacher?: string }) => {
+    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string; time?: string; teacher?: string; feeStatus?: string }) => {
         const queryParams = new URLSearchParams();
         if (filters?.class) queryParams.append('class', filters.class);
         if (filters?.group) queryParams.append('group', filters.group);
@@ -210,6 +211,7 @@ export const studentApi = {
         if (filters?.sessionRef) queryParams.append('sessionRef', filters.sessionRef);
         if (filters?.time) queryParams.append('time', filters.time);
         if (filters?.teacher) queryParams.append('teacher', filters.teacher);
+        if (filters?.feeStatus) queryParams.append('feeStatus', filters.feeStatus);
 
         const url = `${API_BASE_URL}/students${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await fetch(url);

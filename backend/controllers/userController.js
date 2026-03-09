@@ -44,12 +44,12 @@ exports.getAllUsers = async (req, res) => {
 
     const users = await User.find().select("-password").sort({ createdAt: -1 });
 
-    // For TEACHER users, attach their plainPassword from Teacher model
+    // For all users that have a linked Teacher record, attach plainPassword (so Owner can always see credentials)
     const Teacher = require("../models/Teacher");
     const usersData = await Promise.all(
       users.map(async (u) => {
         const userData = u.toObject();
-        if (u.role === "TEACHER" && u.teacherId) {
+        if (u.teacherId) {
           const teacher = await Teacher.findById(u.teacherId).select("plainPassword username");
           if (teacher) {
             userData.teacherPassword = teacher.plainPassword || null;
@@ -220,7 +220,13 @@ exports.updateUser = async (req, res) => {
     if (fullName) user.fullName = fullName;
     if (role) user.role = role;
     if (phone !== undefined) user.phone = phone;
-    if (email !== undefined) user.email = email;
+    if (email !== undefined) {
+      // Validate email format – reject strings without '@' (e.g. "waqar")
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, message: "Invalid email address format." });
+      }
+      user.email = email;
+    }
     if (typeof isActive === "boolean") user.isActive = isActive;
 
     // Update permissions

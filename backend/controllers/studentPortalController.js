@@ -132,7 +132,7 @@ exports.getStudentProfile = async (req, res) => {
         class: student.class,
         group: student.group,
         subjects: student.subjects,
-        photo: student.photo,
+        photo: student.imageUrl || student.photo,
         email: student.email,
         feeStatus: student.feeStatus,
         totalFee: student.totalFee,
@@ -141,6 +141,7 @@ exports.getStudentProfile = async (req, res) => {
         session: student.sessionRef,
         classRef: student.classRef,
         studentStatus: student.studentStatus,
+        profilePictureChangeCount: student.profilePictureChangeCount || 0,
       },
     });
   } catch (error) {
@@ -290,6 +291,97 @@ exports.studentLogout = async (req, res) => {
     success: true,
     message: "Logged out successfully",
   });
+};
+
+// @desc    Get profile picture change status
+// @route   GET /api/student-portal/profile-picture/status
+// @access  Protected (Student)
+exports.getProfilePictureStatus = async (req, res) => {
+  try {
+    const student = await Student.findById(req.student._id).lean();
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    const maxChanges = 3;
+    const changesUsed = student.profilePictureChangeCount || 0;
+    const changesRemaining = Math.max(0, maxChanges - changesUsed);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        currentPhotoUrl: student.imageUrl || student.photo || null,
+        changesUsed,
+        changesRemaining,
+        maxChangesAllowed: maxChanges,
+        canChangeNow: changesRemaining > 0,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getProfilePictureStatus:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// @desc    Upload/update profile picture
+// @route   POST /api/student-portal/profile-picture
+// @access  Protected (Student)
+exports.updateProfilePicture = async (req, res) => {
+  try {
+    const student = await Student.findById(req.student._id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    const maxChanges = 3;
+    const changesUsed = student.profilePictureChangeCount || 0;
+
+    if (changesUsed >= maxChanges) {
+      return res.status(403).json({
+        success: false,
+        message: `Maximum ${maxChanges} profile picture changes reached. Contact administration.`,
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+
+    const oldPhotoUrl = student.imageUrl || student.photo || null;
+    const newPhotoUrl = `/uploads/students/${req.file.filename}`;
+
+    // Update BOTH fields so it syncs everywhere
+    student.photo = newPhotoUrl;
+    student.imageUrl = newPhotoUrl;
+    student.profilePictureChangeCount = changesUsed + 1;
+
+    if (!student.profilePictureChangeLog) {
+      student.profilePictureChangeLog = [];
+    }
+    student.profilePictureChangeLog.push({
+      changedAt: new Date(),
+      oldPhotoUrl,
+      newPhotoUrl,
+      changedBy: "student",
+    });
+
+    await student.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture updated successfully!",
+      data: {
+        photoUrl: newPhotoUrl,
+        changesUsed: changesUsed + 1,
+        changesRemaining: Math.max(0, maxChanges - (changesUsed + 1)),
+        maxChangesAllowed: maxChanges,
+        canChangeNow: maxChanges - (changesUsed + 1) > 0,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in updateProfilePicture:", error);
+    return res.status(500).json({ success: false, message: "Server error updating picture" });
+  }
 };
 
 // @desc    Get student's class schedule/timetable

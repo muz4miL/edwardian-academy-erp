@@ -24,8 +24,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -102,7 +100,7 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, "");
     return `https://${codespaceBase}-5000.app.github.dev/api`;
   }
-  return "http://localhost:5000/api";
+  return "http://localhost:5001/api";
 };
 const API_BASE_URL = getApiBaseUrl();
 
@@ -129,7 +127,9 @@ const OwnerDashboard = () => {
     floatingCash: 0,
     ownerNetRevenue: 0,
     monthlyIncome: 0,
+    monthlyExpenses: 0,
     todayIncome: 0,
+    todayExpenses: 0,
     totalStudents: 0,
     activeStudents: 0,
     totalTeachers: 0,
@@ -137,6 +137,9 @@ const OwnerDashboard = () => {
     totalCollected: 0,
     totalPending: 0,
     collectionRate: 0,
+    monthlyFeesCollected: 0,
+    monthlyFeesCount: 0,
+    netProfit: 0,
   });
 
   // Analytics data
@@ -423,15 +426,30 @@ const OwnerDashboard = () => {
         )}
 
         {/* Quick Stats Row */}
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-emerald-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly Revenue</p>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">
+                  PKR {(stats.monthlyIncome || 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">This month's income</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg">
+                <DollarSign className="h-6 w-6" />
+              </div>
+            </div>
+          </div>
+
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-red-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Net Revenue</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
-                  PKR {(analytics?.quickStats?.monthlyRevenue || stats.monthlyIncome || stats.ownerNetRevenue || 0).toLocaleString()}
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Monthly Expenses</p>
+                <p className="text-2xl font-bold text-red-600 mt-1">
+                  PKR {(stats.monthlyExpenses || 0).toLocaleString()}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">This month</p>
+                <p className="text-xs text-slate-400 mt-1">This month's outflow</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg">
                 <Wallet className="h-6 w-6" />
@@ -442,47 +460,67 @@ const OwnerDashboard = () => {
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-sky-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Revenue</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
-                  PKR {(analytics?.quickStats?.todayRevenue || stats.todayIncome || 0).toLocaleString()}
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Net Profit</p>
+                <p className={`text-2xl font-bold mt-1 ${(stats.netProfit || 0) >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                  PKR {(stats.netProfit || 0).toLocaleString()}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">Today so far</p>
+                <p className="text-xs text-slate-400 mt-1">Revenue − Expenses</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-sky-600 text-white shadow-lg">
-                <DollarSign className="h-6 w-6" />
+              <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-lg ${(stats.netProfit || 0) >= 0 ? "bg-gradient-to-br from-sky-500 to-sky-600" : "bg-gradient-to-br from-orange-500 to-orange-600"}`}>
+                <TrendingUp className="h-6 w-6" />
               </div>
             </div>
           </div>
 
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-emerald-500">
+        </div>
+
+        {/* Secondary Stats Row */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-4 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Students</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
-                  {analytics?.quickStats?.totalStudents || stats.totalStudents || students.length || 0}
+                <p className="text-xl font-bold text-slate-900 mt-1">
+                  {stats.totalStudents || 0}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">Enrolled</p>
+                <p className="text-xs text-slate-400 mt-0.5">{stats.activeStudents || 0} active</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-lg">
-                <GraduationCap className="h-6 w-6" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                <GraduationCap className="h-5 w-5" />
               </div>
             </div>
           </div>
 
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-violet-500">
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-4 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Teachers</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
-                  {analytics?.quickStats?.totalTeachers || 0}
+                <p className="text-xl font-bold text-slate-900 mt-1">
+                  {stats.totalTeachers || analytics?.quickStats?.totalTeachers || 0}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">On payroll</p>
+                <p className="text-xs text-slate-400 mt-0.5">On payroll</p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 text-white shadow-lg">
-                <Users className="h-6 w-6" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-600">
+                <Users className="h-5 w-5" />
               </div>
             </div>
           </div>
+
+          <div className="group relative overflow-hidden rounded-2xl bg-white p-4 shadow-md hover:shadow-lg transition-all duration-300 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Fee Collection</p>
+                <p className="text-xl font-bold text-slate-900 mt-1">
+                  {stats.collectionRate || 0}%
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">PKR {(stats.totalCollected || 0).toLocaleString()} / {(stats.totalExpected || 0).toLocaleString()}</p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
+                <CreditCard className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+
         </div>
 
         {/* Charts Section */}
@@ -957,7 +995,7 @@ const OwnerDashboard = () => {
 // ========================================
 const PartnerDashboard = () => {
   const { user, checkAuth } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "expenses" | "earnings" | "timetable">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "expenses" | "transactions" | "earnings" | "timetable">("overview");
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -971,11 +1009,8 @@ const PartnerDashboard = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const profileInputRef = useRef<HTMLInputElement>(null);
 
-  // Payment modal
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentNotes, setPaymentNotes] = useState("");
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  // Settlement history
+  const [settlements, setSettlements] = useState<any[]>([]);
 
   const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -1018,6 +1053,11 @@ const PartnerDashboard = () => {
         });
         setTimetable(sorted);
       }
+
+      // Fetch settlement history for this partner
+      const settlementsRes = await fetch(`${API_BASE_URL}/finance/partner/settlements`, { credentials: "include" });
+      const settlementsData = await settlementsRes.json();
+      if (settlementsData.success) setSettlements(settlementsData.data || []);
     } catch (err) {
       console.error("Error fetching partner data:", err);
     } finally {
@@ -1078,32 +1118,6 @@ const PartnerDashboard = () => {
   };
 
   // Payment request handler
-  const handleRequestPayment = async () => {
-    const amt = parseInt(paymentAmount) || 0;
-    if (amt <= 0) { setError("Please enter a valid amount"); return; }
-    try {
-      setIsProcessingPayment(true);
-      setError(null);
-      const res = await fetch(`${API_BASE_URL}/finance/partner/request-payment`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: amt, notes: paymentNotes || undefined }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMessage(data.message || "Payment submitted!");
-        setPaymentModalOpen(false);
-        setPaymentAmount("");
-        setPaymentNotes("");
-        await fetchPartnerData();
-      } else {
-        setError(data.message || "Failed to submit payment");
-      }
-    } catch (err) {
-      setError("Network error. Please try again.");
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const todayClasses = timetable.filter((t: any) => t.day === today);
@@ -1200,10 +1214,10 @@ const PartnerDashboard = () => {
 
       {/* Tab Navigation */}
       <div className="mt-6 flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
-        {(["overview", "expenses", "earnings", "timetable"] as const).map(tab => (
+        {([ "overview", "expenses", "transactions", "earnings", "timetable"] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
-            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "earnings" ? "Teacher Earnings" : "Timetable"}
+            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "transactions" ? "Transactions" : tab === "earnings" ? "Teacher Earnings" : "Timetable"}
           </button>
         ))}
       </div>
@@ -1222,10 +1236,7 @@ const PartnerDashboard = () => {
                     PKR {(partnerStats?.expenseDebt || 0).toLocaleString()}
                   </p>
                   {(partnerStats?.expenseDebt || 0) > 0 ? (
-                    <Button size="sm" variant="outline" onClick={() => setPaymentModalOpen(true)}
-                      className="mt-2 w-full border-red-300 text-red-700 hover:bg-red-50 text-xs">
-                      <CreditCard className="h-3.5 w-3.5 mr-1.5" /> Request Payment
-                    </Button>
+                    <p className="text-xs text-red-600 font-medium mt-1">Contact owner to settle</p>
                   ) : (
                     <p className="text-xs text-green-600 font-medium mt-1">All Caught Up!</p>
                   )}
@@ -1420,14 +1431,115 @@ const PartnerDashboard = () => {
                     </div>
                   ))}
                   {(partnerStats?.expenseDebt || 0) > 0 && (
-                    <Button onClick={() => setPaymentModalOpen(true)} className="w-full mt-2 bg-red-600 hover:bg-red-700 text-white">
-                      <CreditCard className="h-4 w-4 mr-2" /> Pay Outstanding Balance - PKR {partnerStats.expenseDebt.toLocaleString()}
-                    </Button>
+                    <p className="text-sm text-center text-red-600 font-medium mt-2 py-3 border border-red-200 rounded-lg bg-red-50">
+                      PKR {partnerStats.expenseDebt.toLocaleString()} outstanding — the owner will record your settlement
+                    </p>
                   )}
                 </div>
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ======= TRANSACTIONS TAB ======= */}
+      {activeTab === "transactions" && (
+        <div className="mt-6 space-y-6">
+          {/* Expense Settlements */}
+          <Card className="border-slate-200 shadow-lg">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <HandCoins className="h-5 w-5 text-blue-600" /> Expense Settlements
+                  </CardTitle>
+                  <CardDescription>Payments recorded by the owner for your expense shares</CardDescription>
+                </div>
+                {settlements.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-xl font-bold text-blue-700">
+                      PKR {settlements.filter((s: any) => s.status === "COMPLETED").reduce((sum: number, s: any) => sum + (s.amount || 0), 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-slate-500">Total settled</p>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {settlements.length === 0 ? (
+                <div className="text-center py-12">
+                  <HandCoins className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm text-slate-500">No settlements recorded yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  {settlements.map((s: any) => (
+                    <div key={s._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm text-white ${s.status === "COMPLETED" ? "bg-blue-500" : "bg-orange-400"}`}>
+                          <HandCoins className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            Expense Settlement {s.method ? `· ${s.method}` : ""}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(s.date || s.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                            {s.recordedBy?.fullName ? ` — recorded by ${s.recordedBy.fullName}` : ""}
+                          </p>
+                          {s.notes && <p className="text-xs text-slate-400 mt-0.5">{s.notes}</p>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-blue-700">PKR {(s.amount || 0).toLocaleString()}</p>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.status === "COMPLETED" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                          {s.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Teacher Payouts in Transactions view */}
+          {tc && tc.payoutHistory && tc.payoutHistory.length > 0 && (
+            <Card className="border-slate-200 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Wallet className="h-5 w-5 text-emerald-600" /> Teacher Salary Payouts
+                </CardTitle>
+                <CardDescription>Payments received for your teaching work</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                  {tc.payoutHistory.map((p: any) => (
+                    <div key={p._id} className="flex items-center justify-between p-3 rounded-lg bg-emerald-50/60 border border-emerald-100 hover:bg-emerald-50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
+                          <ArrowUpRight className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {p.voucherId || "Salary Payout"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(p.paymentDate || p.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                            {p.month && p.year ? ` — ${p.month} ${p.year}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-emerald-700">+PKR {(p.amountPaid || 0).toLocaleString()}</p>
+                        <p className={`text-xs ${p.status === "paid" ? "text-green-600" : "text-orange-500"}`}>{p.status}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -1575,40 +1687,7 @@ const PartnerDashboard = () => {
         </div>
       )}
 
-      {/* Payment Request Modal */}
-      <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-red-600" /> Record Expense Payment
-            </DialogTitle>
-            <DialogDescription>
-              Submit a debt payment. The owner will be notified to confirm.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-              <p className="text-xs uppercase tracking-widest font-bold text-red-700 mb-1">Outstanding Debt</p>
-              <p className="text-2xl font-black text-red-600">PKR {(partnerStats?.expenseDebt || 0).toLocaleString()}</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="paymentAmt">Payment Amount (PKR)</Label>
-              <Input id="paymentAmt" type="number" placeholder="Enter amount" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="paymentNotes">Notes (optional)</Label>
-              <Input id="paymentNotes" placeholder="e.g. Cash payment" value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleRequestPayment} disabled={isProcessingPayment} className="bg-red-600 hover:bg-red-700 text-white">
-              {isProcessingPayment ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              Submit Payment
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </DashboardLayout>
   );
 };

@@ -404,32 +404,56 @@ exports.scanBarcode = async (req, res) => {
     console.log(`🕒 Updated lastScannedAt for ${student.studentName}`);
 
     // ========================================
-    // STEP 5D: LOG ATTENDANCE RECORD
+    // STEP 5D: LOG ATTENDANCE RECORD (with duplicate check)
     // ========================================
     const dateStr = `${pakistanTime.getFullYear()}-${String(pakistanTime.getMonth() + 1).padStart(2, "0")}-${String(pakistanTime.getDate()).padStart(2, "0")}`;
     const scanMethod = barcodeId.startsWith("TOKEN-") ? "token" : "barcode";
 
+    let attendanceResult = null;
+    let attendanceAlreadyMarked = false;
     try {
-      await Attendance.create({
+      // Check if already marked today
+      const existingAttendance = await Attendance.findOne({
         studentId: student._id,
-        studentNumericId: student.studentId,
-        studentName: student.studentName,
-        class: student.class,
-        classRef: student.classRef?._id || student.classRef,
-        group: student.group,
-        type: "check-in",
         date: dateStr,
-        timestamp: now,
-        status: isPartial ? "present" : "present",
-        currentSession: currentSession || undefined,
-        scanMethod,
-        scannedValue: barcodeId,
-        scannedBy: req.user?._id,
-        feeStatus: student.feeStatus,
       });
-      console.log(`📋 Attendance logged for ${student.studentName} on ${dateStr}`);
+
+      if (!existingAttendance) {
+        attendanceResult = await Attendance.create({
+          studentId: student._id,
+          studentNumericId: student.studentId,
+          studentName: student.studentName,
+          class: student.class,
+          classRef: student.classRef?._id || student.classRef,
+          group: student.group,
+          type: "check-in",
+          date: dateStr,
+          timestamp: now,
+          checkInTime: now,
+          status: "present",
+          markedBy: "Gatekeeper",
+          currentSession: currentSession || undefined,
+          scanMethod,
+          scannedValue: barcodeId,
+          scannedBy: req.user?._id,
+          feeStatus: student.feeStatus,
+        });
+        attendanceAlreadyMarked = false;
+        console.log(`✅ Attendance auto-marked: ${student.studentName} — Present (Gatekeeper)`);
+      } else {
+        attendanceResult = existingAttendance;
+        attendanceAlreadyMarked = true;
+        console.log(`ℹ️ Attendance already marked for ${student.studentName} today`);
+      }
     } catch (attErr) {
-      console.error(`⚠️ Attendance log failed (non-blocking):`, attErr.message);
+      // Handle duplicate key error gracefully
+      if (attErr.code === 11000) {
+        attendanceAlreadyMarked = true;
+        attendanceResult = await Attendance.findOne({ studentId: student._id, date: dateStr });
+        console.log(`ℹ️ Attendance already exists (concurrent): ${student.studentName}`);
+      } else {
+        console.error(`⚠️ Attendance log failed (non-blocking):`, attErr.message);
+      }
     }
 
     // Build enriched class schedule with teacher info
@@ -470,6 +494,14 @@ exports.scanBarcode = async (req, res) => {
           status: balance <= 0 ? "PAID" : "PENDING",
         },
         session: currentSession,
+        // Attendance info for Gatekeeper display
+        attendance: attendanceResult
+          ? {
+              status: attendanceResult.status,
+              checkInTime: attendanceResult.checkInTime || attendanceResult.timestamp,
+              alreadyMarked: attendanceAlreadyMarked,
+            }
+          : null,
       },
       // Legacy format for backward compatibility
       student: {
