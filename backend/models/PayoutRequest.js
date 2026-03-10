@@ -78,13 +78,12 @@ const PayoutRequestSchema = new mongoose.Schema(
   },
 );
 
-// Pre-save hook to auto-generate requestId
-PayoutRequestSchema.pre("save", async function (next) {
+// Pre-validate hook to auto-generate requestId
+PayoutRequestSchema.pre("validate", async function () {
   if (this.isNew && !this.requestId) {
     const count = await mongoose.model("PayoutRequest").countDocuments();
     this.requestId = `PR-${String(count + 1).padStart(5, "0")}`;
   }
-  next();
 });
 
 // Indexes for faster queries

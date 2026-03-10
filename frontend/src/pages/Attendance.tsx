@@ -1669,7 +1669,7 @@ export default function Attendance() {
 
         {/* Tabs */}
         <Tabs defaultValue="today" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+          <TabsList className="grid w-full grid-cols-3 max-w-xl">
             <TabsTrigger value="today" className="flex items-center gap-1.5">
               <Activity className="h-4 w-4" />
               Today
@@ -1678,17 +1678,9 @@ export default function Attendance() {
               <CalendarRange className="h-4 w-4" />
               Date Range
             </TabsTrigger>
-            <TabsTrigger value="daily" className="flex items-center gap-1.5">
-              <CalendarDays className="h-4 w-4" />
-              Daily View
-            </TabsTrigger>
             <TabsTrigger value="student" className="flex items-center gap-1.5">
               <Search className="h-4 w-4" />
               Student Lookup
-            </TabsTrigger>
-            <TabsTrigger value="monthly" className="flex items-center gap-1.5">
-              <Calendar className="h-4 w-4" />
-              Monthly
             </TabsTrigger>
           </TabsList>
 
@@ -1698,14 +1690,8 @@ export default function Attendance() {
           <TabsContent value="range" className="mt-6">
             <DateRangeView />
           </TabsContent>
-          <TabsContent value="daily" className="mt-6">
-            <DailyView />
-          </TabsContent>
           <TabsContent value="student" className="mt-6">
             <StudentLookup />
-          </TabsContent>
-          <TabsContent value="monthly" className="mt-6">
-            <MonthlyOverview />
           </TabsContent>
         </Tabs>
 

@@ -426,7 +426,7 @@ const OwnerDashboard = () => {
         )}
 
         {/* Quick Stats Row */}
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-emerald-500">
             <div className="flex items-center justify-between">
               <div>
@@ -453,21 +453,6 @@ const OwnerDashboard = () => {
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg">
                 <Wallet className="h-6 w-6" />
-              </div>
-            </div>
-          </div>
-
-          <div className="group relative overflow-hidden rounded-2xl bg-white p-5 shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-sky-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Net Profit</p>
-                <p className={`text-2xl font-bold mt-1 ${(stats.netProfit || 0) >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                  PKR {(stats.netProfit || 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">Revenue − Expenses</p>
-              </div>
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-lg ${(stats.netProfit || 0) >= 0 ? "bg-gradient-to-br from-sky-500 to-sky-600" : "bg-gradient-to-br from-orange-500 to-orange-600"}`}>
-                <TrendingUp className="h-6 w-6" />
               </div>
             </div>
           </div>

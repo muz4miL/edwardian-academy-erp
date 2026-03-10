@@ -130,19 +130,19 @@ const configurationSchema = new mongoose.Schema(
 );
 
 // Pre-save validation: expenseSplit must total 100%
-configurationSchema.pre("save", function (next) {
+configurationSchema.pre("save", function () {
   // If dynamic expenseShares exist and have entries, validate those
   if (this.expenseShares && this.expenseShares.length > 0) {
     const dynamicTotal = this.expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
     if (dynamicTotal !== 100) {
-      return next(new Error(`Expense shares must total 100%, got ${dynamicTotal}%`));
+      throw new Error(`Expense shares must total 100%, got ${dynamicTotal}%`);
     }
   } else {
     // Fall back to legacy validation
     const total =
       this.expenseSplit.waqar + this.expenseSplit.zahid + this.expenseSplit.saud;
     if (total !== 100) {
-      return next(new Error(`Expense split must total 100%, got ${total}%`));
+      throw new Error(`Expense split must total 100%, got ${total}%`);
     }
   }
 
@@ -153,9 +153,7 @@ configurationSchema.pre("save", function (next) {
       this.tuitionPoolSplit.zahid +
       this.tuitionPoolSplit.saud;
     if (tuitionTotal !== 100) {
-      return next(
-        new Error(`Tuition pool split must total 100%, got ${tuitionTotal}%`),
-      );
+      throw new Error(`Tuition pool split must total 100%, got ${tuitionTotal}%`);
     }
   }
 
@@ -166,9 +164,7 @@ configurationSchema.pre("save", function (next) {
       this.eteaPoolSplit.zahid +
       this.eteaPoolSplit.saud;
     if (eteaTotal !== 100) {
-      return next(
-        new Error(`ETEA pool split must total 100%, got ${eteaTotal}%`),
-      );
+      throw new Error(`ETEA pool split must total 100%, got ${eteaTotal}%`);
     }
   }
 
@@ -179,16 +175,14 @@ configurationSchema.pre("save", function (next) {
       this.poolDistribution.zahid +
       this.poolDistribution.saud;
     if (poolTotal !== 100) {
-      return next(
-        new Error(`Pool distribution must total 100%, got ${poolTotal}%`),
-      );
+      throw new Error(`Pool distribution must total 100%, got ${poolTotal}%`);
     }
   }
 
   const salaryTotal =
     this.salaryConfig.teacherShare + this.salaryConfig.academyShare;
   if (salaryTotal !== 100) {
-    return next(new Error(`Salary split must total 100%, got ${salaryTotal}%`));
+    throw new Error(`Salary split must total 100%, got ${salaryTotal}%`);
   }
 
   // Initialize default subject fees if new document and empty
@@ -207,8 +201,6 @@ configurationSchema.pre("save", function (next) {
       "✅ Initialized configuration with Peshawar standard subject rates",
     );
   }
-
-  next();
 });
 
 module.exports = mongoose.model("Configuration", configurationSchema);
