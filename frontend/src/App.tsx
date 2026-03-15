@@ -32,6 +32,7 @@ import StudentPortal from "./pages/StudentPortal";
 import Lectures from "./pages/Lectures";
 import Reports from "./pages/Reports";
 import Attendance from "./pages/Attendance";
+import InventoryPage from "./pages/Inventory";
 // Phase 4: Online Exam System
 import Exams from "./pages/Exams";
 import ExamBuilder from "./pages/ExamBuilder";
@@ -243,6 +244,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Reports />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoute>
+                  <InventoryPage />
                 </ProtectedRoute>
               }
             />

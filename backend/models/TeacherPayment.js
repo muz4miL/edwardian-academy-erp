@@ -34,7 +34,7 @@ const teacherPaymentSchema = new mongoose.Schema(
         },
         compensationType: {
             type: String,
-            enum: ['percentage', 'fixed', 'hybrid'],
+            enum: ['percentage', 'fixed', 'hybrid', 'perStudent'],
             required: true,
         },
 

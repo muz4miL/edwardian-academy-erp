@@ -37,6 +37,10 @@ interface TeacherFinanceModalProps {
       pending?: number;
     };
     totalPaid?: number;
+    userId?: {
+      role?: string;
+      [key: string]: any;
+    };
   } | null;
 }
 
@@ -72,6 +76,8 @@ export const TeacherFinanceModal = ({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { generateVoucherPDF, isGenerating } = useTeacherPaymentPDF();
+
+  const isOwnerOrPartner = teacher?.userId?.role === "OWNER" || teacher?.userId?.role === "PARTNER";
 
   // Form State
   const [creditAmount, setCreditAmount] = useState("");
@@ -300,7 +306,63 @@ export const TeacherFinanceModal = ({
             </p>
           </div>
 
-          {/* Tabs */}
+          {/* Owner/Partner: No manual credit — revenue closes from dashboard */}
+          {isOwnerOrPartner ? (
+            <div className="flex-1 mt-4 space-y-4">
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-white font-bold shadow">
+                    💰
+                  </div>
+                  <div>
+                    <p className="font-bold text-amber-900 text-lg">Auto-Revenue System</p>
+                    <p className="text-sm text-amber-700">
+                      {teacher?.userId?.role === "OWNER" ? "Owner" : "Partner"} revenue is auto-calculated
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-amber-700 bg-amber-100/50 rounded-lg p-3">
+                  Revenue from tuition classes and academy shares flows automatically when students pay fees.
+                  Use the <strong>Daily Revenue Close</strong> section on your Dashboard to review and close daily earnings.
+                </p>
+              </div>
+
+              {/* Still show transaction history for Owner/Partner */}
+              <div className="bg-secondary/30 rounded-lg p-4 border border-border max-h-[300px] overflow-y-auto">
+                <div className="flex items-center gap-2 text-primary mb-3">
+                  <History className="h-4 w-4" />
+                  <span className="font-medium text-sm">Transaction History</span>
+                </div>
+                {isLoadingTransactions ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : !transactions?.length ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No transactions yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {transactions.map((tx: WalletTransaction) => (
+                      <div key={tx._id} className="flex items-center justify-between p-3 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-1.5 rounded-full ${tx.type === "credit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+                            {tx.type === "credit" ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{tx.description}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <span className={`font-semibold text-sm ${tx.type === "credit" ? "text-green-600" : "text-red-600"}`}>
+                          {tx.type === "credit" ? "+" : "-"} {formatCurrency(tx.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+          /* Regular Teacher: Normal credit/debit/history tabs */
           <Tabs defaultValue="credit" className="flex-1 mt-4">
             <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="credit" className="flex items-center gap-2">
@@ -507,6 +569,7 @@ export const TeacherFinanceModal = ({
               </div>
             </TabsContent>
           </Tabs>
+          )}
         </DialogContent>
       </Dialog>
     </>

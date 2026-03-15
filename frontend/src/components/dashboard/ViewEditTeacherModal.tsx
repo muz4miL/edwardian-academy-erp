@@ -30,7 +30,7 @@ interface ViewEditTeacherModalProps {
   mode: "view" | "edit";
 }
 
-type CompensationType = "percentage" | "fixed";
+type CompensationType = "percentage" | "fixed" | "perStudent";
 
 export const ViewEditTeacherModal = ({
   open,
@@ -60,6 +60,7 @@ export const ViewEditTeacherModal = ({
   const [teacherShare, setTeacherShare] = useState("70");
   const [academyShare, setAcademyShare] = useState("30");
   const [fixedSalary, setFixedSalary] = useState("");
+  const [perStudentAmount, setPerStudentAmount] = useState("");
   const [baseSalary, setBaseSalary] = useState("");
   const [profitShare, setProfitShare] = useState("");
 
@@ -79,6 +80,7 @@ export const ViewEditTeacherModal = ({
         setTeacherShare(String(comp.teacherShare || 70));
         setAcademyShare(String(comp.academyShare || 30));
         setFixedSalary(String(comp.fixedSalary || ""));
+        setPerStudentAmount(String(comp.perStudentAmount || ""));
         setBaseSalary(String(comp.baseSalary || ""));
         setProfitShare(String(comp.profitShare || ""));
       }
@@ -152,6 +154,8 @@ export const ViewEditTeacherModal = ({
       compensation.academyShare = aShare;
     } else if (compType === "fixed") {
       compensation.fixedSalary = Number(fixedSalary);
+    } else if (compType === "perStudent") {
+      compensation.perStudentAmount = Number(perStudentAmount);
     }
 
     const teacherData = {
@@ -252,110 +256,168 @@ export const ViewEditTeacherModal = ({
               </Label>
             </div>
 
-            <RadioGroup
-              value={compType}
-              onValueChange={(value) =>
-                !isReadOnly && setCompType(value as CompensationType)
-              }
-              className="grid grid-cols-1 md:grid-cols-2 gap-3"
-              disabled={isReadOnly}
-            >
-              <div
-                className={`flex items-center space-x-2 border border-border rounded-lg p-3 ${isReadOnly ? "opacity-70" : "cursor-pointer hover:border-primary/50"} transition-colors bg-card`}
-              >
-                <RadioGroupItem
-                  value="percentage"
-                  id="r1"
-                  className="text-primary"
-                  disabled={isReadOnly}
-                />
-                <Label
-                  htmlFor="r1"
-                  className={`font-normal w-full ${!isReadOnly && "cursor-pointer"}`}
-                >
-                  Percentage (70/30)
-                </Label>
+            {/* Owner/Partner: Read-only 100% Revenue Pool */}
+            {(teacher?.userId?.role === "OWNER" || teacher?.userId?.role === "PARTNER") ? (
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-xl p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-white font-bold shadow">
+                    💰
+                  </div>
+                  <div>
+                    <p className="font-bold text-amber-900 text-lg">100% Revenue Pool</p>
+                    <p className="text-sm text-amber-700">
+                      {teacher?.userId?.role === "OWNER" ? "Owner" : "Partner"} — earns 100% of tuition fee splits + academy share from config
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-amber-600 mt-3 bg-amber-100/50 rounded-lg p-3">
+                  Revenue is auto-calculated when students pay fees and appears in the <strong>Daily Revenue Close</strong> section on the dashboard.
+                  No manual compensation needed — close daily from your dashboard.
+                </p>
               </div>
-              <div
-                className={`flex items-center space-x-2 border border-border rounded-lg p-3 ${isReadOnly ? "opacity-70" : "cursor-pointer hover:border-primary/50"} transition-colors bg-card`}
-              >
-                <RadioGroupItem
-                  value="fixed"
-                  id="r2"
-                  className="text-primary"
+            ) : (
+              <>
+                {/* Regular Teacher: Normal compensation options */}
+                <RadioGroup
+                  value={compType}
+                  onValueChange={(value) =>
+                    !isReadOnly && setCompType(value as CompensationType)
+                  }
+                  className="grid grid-cols-1 md:grid-cols-3 gap-3"
                   disabled={isReadOnly}
-                />
-                <Label
-                  htmlFor="r2"
-                  className={`font-normal w-full ${!isReadOnly && "cursor-pointer"}`}
                 >
-                  Fixed Salary
-                </Label>
-              </div>
-            </RadioGroup>
-
-            {/* Dynamic Fields */}
-            <div className="grid gap-4 mt-4">
-              {compType === "percentage" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground">
-                      Teacher Share (%)
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={teacherShare}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        // Strict clamping: force 0-100 range
-                        if (value !== "") {
-                          const clamped = Math.min(
-                            100,
-                            Math.max(0, Number(value)),
-                          );
-                          setTeacherShare(clamped.toString());
-                        } else {
-                          setTeacherShare(value);
-                        }
-                      }}
+                  <div
+                    className={`flex items-center space-x-2 border border-border rounded-lg p-3 ${isReadOnly ? "opacity-70" : "cursor-pointer hover:border-primary/50"} transition-colors bg-card`}
+                  >
+                    <RadioGroupItem
+                      value="percentage"
+                      id="r1"
+                      className="text-primary"
                       disabled={isReadOnly}
-                      className="bg-background"
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm text-muted-foreground flex items-center gap-1">
-                      Academy Share (%)
-                      <span className="text-xs text-primary">
-                        • Auto-calculated
-                      </span>
+                    <Label
+                      htmlFor="r1"
+                      className={`font-normal w-full ${!isReadOnly && "cursor-pointer"}`}
+                    >
+                      Percentage (70/30)
                     </Label>
-                    <Input
-                      type="number"
-                      value={academyShare}
-                      disabled
-                      className="bg-muted/50 cursor-not-allowed text-muted-foreground"
-                    />
                   </div>
-                </div>
-              )}
+                  <div
+                    className={`flex items-center space-x-2 border border-border rounded-lg p-3 ${isReadOnly ? "opacity-70" : "cursor-pointer hover:border-primary/50"} transition-colors bg-card`}
+                  >
+                    <RadioGroupItem
+                      value="fixed"
+                      id="r2"
+                      className="text-primary"
+                      disabled={isReadOnly}
+                    />
+                    <Label
+                      htmlFor="r2"
+                      className={`font-normal w-full ${!isReadOnly && "cursor-pointer"}`}
+                    >
+                      Fixed Salary
+                    </Label>
+                  </div>
+                  <div
+                    className={`flex items-center space-x-2 border border-border rounded-lg p-3 ${isReadOnly ? "opacity-70" : "cursor-pointer hover:border-primary/50"} transition-colors bg-card`}
+                  >
+                    <RadioGroupItem
+                      value="perStudent"
+                      id="r3"
+                      className="text-primary"
+                      disabled={isReadOnly}
+                    />
+                    <Label
+                      htmlFor="r3"
+                      className={`font-normal w-full ${!isReadOnly && "cursor-pointer"}`}
+                    >
+                      Per Student
+                    </Label>
+                  </div>
+                </RadioGroup>
 
-              {compType === "fixed" && (
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">
-                    Monthly Salary (PKR)
-                  </Label>
-                  <Input
-                    type="number"
-                    value={fixedSalary}
-                    onChange={(e) => setFixedSalary(e.target.value)}
-                    disabled={isReadOnly}
-                    className="bg-background"
-                  />
+                {/* Dynamic Fields */}
+                <div className="grid gap-4 mt-4">
+                  {compType === "percentage" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">
+                          Teacher Share (%)
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={teacherShare}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value !== "") {
+                              const clamped = Math.min(
+                                100,
+                                Math.max(0, Number(value)),
+                              );
+                              setTeacherShare(clamped.toString());
+                            } else {
+                              setTeacherShare(value);
+                            }
+                          }}
+                          disabled={isReadOnly}
+                          className="bg-background"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground flex items-center gap-1">
+                          Academy Share (%)
+                          <span className="text-xs text-primary">
+                            • Auto-calculated
+                          </span>
+                        </Label>
+                        <Input
+                          type="number"
+                          value={academyShare}
+                          disabled
+                          className="bg-muted/50 cursor-not-allowed text-muted-foreground"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {compType === "fixed" && (
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">
+                        Monthly Salary (PKR)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={fixedSalary}
+                        onChange={(e) => setFixedSalary(e.target.value)}
+                        disabled={isReadOnly}
+                        className="bg-background"
+                      />
+                    </div>
+                  )}
+
+                  {compType === "perStudent" && (
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">
+                        Amount Per Student (PKR)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={perStudentAmount}
+                        onChange={(e) => setPerStudentAmount(e.target.value)}
+                        disabled={isReadOnly}
+                        placeholder="e.g. 3000"
+                        className="bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Teacher earns this amount per active enrolled student. Shown in payroll reports.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         </div>
 

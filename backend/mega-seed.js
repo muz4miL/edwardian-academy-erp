@@ -39,6 +39,7 @@ const Settlement = require("./models/Settlement");
 const TeacherPayment = require("./models/TeacherPayment");
 const PayoutRequest = require("./models/PayoutRequest");
 const Transaction = require("./models/Transaction");
+const Timetable = require("./models/Timetable");
 
 // ─── Helpers ─────────────────────────────────────────────
 const randomPick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -117,6 +118,7 @@ async function megaSeed() {
     TeacherPayment.deleteMany({}),
     PayoutRequest.deleteMany({}),
     Transaction.deleteMany({}),
+    Timetable.deleteMany({}),
   ]);
   console.log("  ✓ All collections wiped\n");
 
@@ -244,7 +246,45 @@ async function megaSeed() {
     teachers.push(teacher);
     teacherUsers.push(tUser);
   }
-  console.log(`  ✓ ${teachers.length} teachers created (password: teacher123)\n`);
+  // Link Partner Saud to a Physics teacher record (partners who also teach)
+  const saudTeacher = await Teacher.create({
+    name: "Sir Shah Saud", phone: "03215556677", subject: "physics",
+    joiningDate: new Date("2025-06-01"), status: "active",
+    compensation: { type: "percentage", teacherShare: 70, academyShare: 30 },
+    balance: { floating: 18500, verified: 42000, pending: 8500 },
+    totalPaid: 165000,
+    userId: saud._id, username: "saud",
+  });
+  saud.teacherId = saudTeacher._id;
+  await saud.save();
+  teachers.push(saudTeacher);
+
+  // Link Partner Zahid to a Chemistry teacher record
+  const zahidTeacher = await Teacher.create({
+    name: "Dr. Zahid Khan", phone: "03009876543", subject: "chemistry",
+    joiningDate: new Date("2025-06-01"), status: "active",
+    compensation: { type: "percentage", teacherShare: 70, academyShare: 30 },
+    balance: { floating: 12000, verified: 35000, pending: 5000 },
+    totalPaid: 140000,
+    userId: zahid._id, username: "zahid",
+  });
+  zahid.teacherId = zahidTeacher._id;
+  await zahid.save();
+  teachers.push(zahidTeacher);
+
+  // Give some teachers balances for earnings display
+  for (let i = 0; i < Math.min(5, teachers.length - 2); i++) {
+    teachers[i].balance = {
+      floating: randomBetween(5000, 25000),
+      verified: randomBetween(20000, 60000),
+      pending: randomBetween(2000, 15000),
+    };
+    teachers[i].totalPaid = randomBetween(80000, 200000);
+    await teachers[i].save();
+  }
+
+  console.log(`  \u2713 ${teachers.length} teachers created (password: teacher123)`);
+  console.log(`  \u2713 Partners Saud & Zahid linked to teacher records\n`);
 
   // ━━━ STEP 7: CLASSES ━━━
   console.log("🏫 Creating Classes...");
@@ -556,6 +596,7 @@ async function megaSeed() {
       paidByType: randomPick(["ACADEMY_CASH", "WAQAR", "ZAHID", "SAUD"]),
       paidBy: randomPick([waqar._id, zahid._id, saud._id]),
       splitRatio: { waqar: 40, zahid: 30, saud: 30 },
+      hasPartnerDebt: true,
       shares: [
         { partner: waqar._id, partnerName: "Sir Waqar Baig", partnerKey: "waqar", percentage: 40, amount: Math.round(ei.amount * 0.4), status: Math.random() < 0.7 ? "PAID" : "UNPAID" },
         { partner: zahid._id, partnerName: "Dr. Zahid Khan", partnerKey: "zahid", percentage: 30, amount: Math.round(ei.amount * 0.3), status: Math.random() < 0.7 ? "PAID" : "UNPAID" },
@@ -758,6 +799,110 @@ async function megaSeed() {
   }
   console.log(`  ✓ ${lectureCount} lectures created\n`);
 
+  // ━━━ STEP 16b: TIMETABLE ━━━
+  console.log("📅 Creating Timetable Entries...");
+  let ttCount = 0;
+  const fullDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  // Build timetable from class configs — each subject gets a time slot per day
+  for (const cls of classes) {
+    const subjectTeachers = cls.subjectTeachers || [];
+    const classDays = cls.days || ["Mon","Tue","Wed","Thu","Fri","Sat"];
+    const dayMap = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
+    const mappedDays = classDays.map(d => dayMap[d]).filter(Boolean);
+
+    // Distribute subjects across days
+    for (let di = 0; di < mappedDays.length; di++) {
+      const day = mappedDays[di];
+      const subj = subjectTeachers[di % subjectTeachers.length];
+      if (!subj || !subj.teacherId) continue;
+
+      // Calculate time slot (1.5-hour slots starting from class start time)
+      const slotIdx = di % subjectTeachers.length;
+      const baseHour = parseInt(cls.startTime?.split(":")[0] || "8");
+      const startHour = baseHour + Math.floor(slotIdx * 1.5);
+      const endHour = startHour + 1;
+      const startMin = (slotIdx % 2 === 1) ? 30 : 0;
+      const endMin = startMin + 30;
+
+      const formatTime = (h, m) => {
+        const period = h >= 12 ? "PM" : "AM";
+        const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+        return `${String(hour12).padStart(2, "0")}:${String(m % 60).padStart(2, "0")} ${period}`;
+      };
+
+      try {
+        await Timetable.create({
+          classId: cls._id,
+          teacherId: subj.teacherId,
+          subject: subj.subject,
+          day,
+          startTime: formatTime(startHour, startMin),
+          endTime: formatTime(endHour, endMin + 30),
+          room: cls.roomNumber || "TBD",
+          status: "active",
+        });
+        ttCount++;
+      } catch (e) {
+        if (e.code !== 11000) console.error(`  ⚠ Timetable error: ${e.message}`);
+      }
+    }
+  }
+
+  // Add specific timetable entries for Saud (Physics) on Mon/Wed/Thu
+  const saudClasses = classes.filter(c => c.subjects.some(s => s.name === "Physics")).slice(0, 3);
+  const saudDays = ["Monday", "Wednesday", "Thursday"];
+  const saudTimes = [
+    { start: "04:00 PM", end: "06:00 PM" },
+    { start: "02:00 PM", end: "04:00 PM" },
+    { start: "04:00 PM", end: "06:00 PM" },
+  ];
+  for (let i = 0; i < Math.min(saudClasses.length, saudDays.length); i++) {
+    try {
+      await Timetable.create({
+        classId: saudClasses[i]._id,
+        teacherId: saudTeacher._id,
+        subject: "Physics",
+        day: saudDays[i],
+        startTime: saudTimes[i].start,
+        endTime: saudTimes[i].end,
+        room: saudClasses[i].roomNumber || "A-103",
+        status: "active",
+      });
+      ttCount++;
+    } catch (e) {
+      if (e.code !== 11000) console.error(`  ⚠ Saud timetable error: ${e.message}`);
+    }
+  }
+
+  // Add specific timetable entries for Zahid (Chemistry) on Tue/Thu/Sat
+  const zahidClasses = classes.filter(c => c.subjects.some(s => s.name === "Chemistry")).slice(0, 3);
+  const zahidDays = ["Tuesday", "Thursday", "Saturday"];
+  const zahidTimes = [
+    { start: "10:00 AM", end: "12:00 PM" },
+    { start: "10:00 AM", end: "12:00 PM" },
+    { start: "09:00 AM", end: "11:00 AM" },
+  ];
+  for (let i = 0; i < Math.min(zahidClasses.length, zahidDays.length); i++) {
+    try {
+      await Timetable.create({
+        classId: zahidClasses[i]._id,
+        teacherId: zahidTeacher._id,
+        subject: "Chemistry",
+        day: zahidDays[i],
+        startTime: zahidTimes[i].start,
+        endTime: zahidTimes[i].end,
+        room: zahidClasses[i].roomNumber || "B-103",
+        status: "active",
+      });
+      ttCount++;
+    } catch (e) {
+      if (e.code !== 11000) console.error(`  ⚠ Zahid timetable error: ${e.message}`);
+    }
+  }
+
+  console.log(`  \u2713 ${ttCount} timetable entries created\n`);
+
   // ━━━ STEP 17: TEACHER PAYMENTS ━━━
   console.log("💵 Creating Teacher Payments...");
   let tpCount = 0;
@@ -890,6 +1035,25 @@ async function megaSeed() {
   }
   console.log(`  ✓ ${settCount} settlements created\n`);
 
+  // ━━━ STEP 22b: SYNC PARTNER DEBTS FROM ACTUAL UNPAID SHARES ━━━
+  console.log("💰 Syncing partner expense debts...");
+  for (const partner of [waqar, zahid, saud]) {
+    const allExpenses = await Expense.find({ "shares.partner": partner._id });
+    let totalUnpaid = 0;
+    allExpenses.forEach(exp => {
+      exp.shares.forEach(s => {
+        if (s.partner?.toString() === partner._id.toString() && s.status === "UNPAID") {
+          totalUnpaid += s.amount;
+        }
+      });
+    });
+    await User.findByIdAndUpdate(partner._id, {
+      $set: { expenseDebt: totalUnpaid, debtToOwner: totalUnpaid },
+    });
+    console.log(`  ✓ ${partner.fullName}: PKR ${totalUnpaid.toLocaleString()} outstanding`);
+  }
+  console.log("");
+
   // ━━━ STEP 23: NOTIFICATIONS ━━━
   console.log("🔔 Creating Notifications...");
   const notifs = [
@@ -948,6 +1112,7 @@ async function megaSeed() {
   console.log(`║  Exams:             ${String(exams.length).padEnd(37)}║`);
   console.log(`║  Exam Results:      ${String(resultCount).padEnd(37)}║`);
   console.log(`║  Lectures:          ${String(lectureCount).padEnd(37)}║`);
+  console.log(`║  Timetable:         ${String(ttCount).padEnd(37)}║`);
   console.log(`║  Teacher Payments:  ${String(tpCount).padEnd(37)}║`);
   console.log(`║  Payout Requests:   ${String(prCount).padEnd(37)}║`);
   console.log(`║  Daily Closings:    ${String(dcCount).padEnd(37)}║`);

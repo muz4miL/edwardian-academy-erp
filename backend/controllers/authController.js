@@ -46,6 +46,8 @@ exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
 
+        console.log(`🔐 Login attempt: username="${username}" (len=${username?.length}), password length=${password?.length}`);
+
         // SECURITY: Reject tokens in body
         if (req.body.token || req.body.authToken) {
             return res.status(403).json({
@@ -62,10 +64,14 @@ exports.login = async (req, res) => {
             });
         }
 
+        // Normalize username to lowercase (schema stores lowercase)
+        const normalizedUsername = username.trim().toLowerCase();
+
         // Find user (explicitly select password for comparison)
-        const user = await User.findOne({ username }).select('+password');
+        const user = await User.findOne({ username: normalizedUsername }).select('+password');
 
         if (!user) {
+            console.log(`❌ Login failed: No user found with username "${normalizedUsername}"`);
             return res.status(401).json({
                 success: false,
                 message: '❌ Invalid credentials.',
@@ -80,8 +86,11 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Compare password
-        const isPasswordCorrect = await user.comparePassword(password);
+        // Compare password (trim to handle copy-paste whitespace)
+        const isPasswordCorrect = await user.comparePassword(password.trim());
+        if (!isPasswordCorrect) {
+            console.log(`❌ Login failed: Password mismatch for user "${normalizedUsername}" (${user.fullName})`);
+        }
 
         if (!isPasswordCorrect) {
             return res.status(401).json({

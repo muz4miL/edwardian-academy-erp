@@ -57,6 +57,7 @@ const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";
 interface SubjectWithFee {
   name: string;
   fee: number;
+  isClassSubject?: boolean;  // true if this subject is offered in the selected class
 }
 
 // Type for global config subject pricing
@@ -312,26 +313,30 @@ const Admissions = () => {
 
   const filteredClasses = getFilteredClasses();
 
-  // REFACTORED: Get subjects with fees from GLOBAL CONFIG (Master Subject Pricing)
+  // Returns ALL subjects from global config, annotating which ones belong to selected class
   const getClassSubjectsWithFees = (): SubjectWithFee[] => {
     const selectedClass = getSelectedClass();
-    if (!selectedClass || !selectedClass.subjects) return [];
 
-    return selectedClass.subjects.map((s: any) => {
-      const subjectName = typeof s === "string" ? s : s.name;
-
-      // First try to get fee from class definition
-      let fee = typeof s === "object" ? s.fee : 0;
-
-      // If fee is 0 or undefined, look up from global config
-      if (!fee || fee === 0) {
-        const globalSubject = globalSubjectFees.find(
-          (gs) => gs.name.toLowerCase() === subjectName.toLowerCase(),
-        );
-        fee = globalSubject?.fee || 0;
+    // Build a map of class subjects: name → fee
+    const classSubjectMap: Record<string, number> = {};
+    if (selectedClass?.subjects) {
+      for (const s of selectedClass.subjects) {
+        const name = typeof s === "string" ? s : s.name;
+        const classFee = typeof s === "object" ? s.fee : 0;
+        classSubjectMap[name.toLowerCase()] = classFee;
       }
+    }
 
-      return { name: subjectName, fee };
+    // Return ALL global config subjects, enriching with class data
+    return globalSubjectFees.map((gs) => {
+      const key = gs.name.toLowerCase();
+      const classFee = classSubjectMap[key];
+      const fee = classFee && classFee > 0 ? classFee : gs.fee;
+      return {
+        name: gs.name,
+        fee,
+        isClassSubject: !!classFee || classSubjectMap.hasOwnProperty(key),
+      };
     });
   };
 
@@ -816,7 +821,7 @@ const Admissions = () => {
                 </Select>
               </div>
 
-              {/* TASK 3: Subjects Selection (No Individual Prices - Session-Based Pricing) */}
+              {/* TASK 3: Subjects Selection (Shows ALL config subjects; class subjects pre-checked) */}
               {selectedClassId && classSubjects.length > 0 && (
                 <div className="sm:col-span-2 space-y-3">
                   <div className="flex items-center justify-between">
@@ -829,36 +834,38 @@ const Admissions = () => {
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {classSubjects.map((subject) => {
-                      const isSelected = selectedSubjects.includes(
-                        subject.name,
-                      );
+                      const isSelected = selectedSubjects.includes(subject.name);
+                      const isClass = subject.isClassSubject;
 
                       return (
                         <div
                           key={subject.name}
-                          className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50"
-                            : "border-border hover:border-sky-300"
-                            }`}
+                          className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                            isSelected
+                              ? "border-sky-500 bg-sky-50"
+                              : isClass
+                              ? "border-emerald-300 bg-emerald-50/50 hover:border-sky-300"
+                              : "border-border hover:border-sky-300 opacity-70"
+                          }`}
                           onClick={() => handleSubjectToggle(subject.name)}
                         >
                           <Checkbox
                             checked={isSelected}
-                            onCheckedChange={() =>
-                              handleSubjectToggle(subject.name)
-                            }
+                            onCheckedChange={() => handleSubjectToggle(subject.name)}
+                            className="mt-0.5"
                           />
-                          <span
-                            className={`font-medium text-sm ${isSelected ? "text-sky-700" : "text-foreground"}`}
-                          >
-                            {subject.name}
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <span className={`font-medium text-sm block ${isSelected ? "text-sky-700" : isClass ? "text-emerald-800" : "text-foreground"}`}>
+                              {subject.name}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Select subjects the student will study. Fee is based on session rate.
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm border border-emerald-400 bg-emerald-100 mr-1 align-middle" />
+                    Highlighted subjects belong to this class. Others can still be selected.
                   </p>
                 </div>
               )}

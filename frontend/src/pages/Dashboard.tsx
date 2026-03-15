@@ -55,6 +55,7 @@ import {
   CalendarDays,
   MapPin,
   BarChart3,
+  BarChart2,
   Download,
   Printer,
   PieChart,
@@ -71,6 +72,8 @@ import {
   ShieldAlert,
   Camera,
   Upload,
+  Receipt,
+  ChevronDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -118,6 +121,8 @@ const OwnerDashboard = () => {
   const [selectedRange, setSelectedRange] = useState("7d");
   const [isClosing, setIsClosing] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [ownerClosePreview, setOwnerClosePreview] = useState<any>(null);
+  const [ownerClosePreviewOpen, setOwnerClosePreviewOpen] = useState(false);
 
   // Real stats from API
   const [stats, setStats] = useState({
@@ -146,11 +151,34 @@ const OwnerDashboard = () => {
   const [analytics, setAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
+  // Academy config (owner name for banner)
+  const [academyOwner, setAcademyOwner] = useState("");
+
+  // Payout summary (partner/owner earnings)
+  const [payoutSummary, setPayoutSummary] = useState<any>(null);
+  const [payoutLoading, setPayoutLoading] = useState(true);
+  const [expandedPartner, setExpandedPartner] = useState<string | null>(null);
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditTarget, setCreditTarget] = useState<any>(null);
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditNote, setCreditNote] = useState("");
+  const [creditLoading, setCreditLoading] = useState(false);
+
   // Report modal
   const [reportOpen, setReportOpen] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportPeriod, setReportPeriod] = useState("");
+
+  // Inline close preview (auto-fetched for real-time display)
+  const [inlinePreview, setInlinePreview] = useState<any>(null);
+  const [inlinePreviewLoading, setInlinePreviewLoading] = useState(true);
+  const [closeBreakdownExpanded, setCloseBreakdownExpanded] = useState(false);
+
+  // Academy pool report (per-class, per-student details)
+  const [academyPoolReport, setAcademyPoolReport] = useState<any>(null);
+  const [academyPoolLoading, setAcademyPoolLoading] = useState(true);
+  const [expandedClass, setExpandedClass] = useState<string | null>(null);
 
   // Fetch dashboard stats
   const fetchStats = async () => {
@@ -164,6 +192,88 @@ const OwnerDashboard = () => {
       }
     } catch (err) {
       console.error("Error fetching stats:", err);
+    }
+  };
+
+  // Fetch payout summary
+  const fetchPayoutSummary = async () => {
+    try {
+      setPayoutLoading(true);
+      const res = await fetch(`${API_BASE_URL}/finance/partner/payout-summary`, { credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        setPayoutSummary(data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching payout summary:", err);
+    } finally {
+      setPayoutLoading(false);
+    }
+  };
+
+  // Fetch inline close preview (real-time breakdown)
+  const fetchInlinePreview = async () => {
+    try {
+      setInlinePreviewLoading(true);
+      const res = await fetch(`${API_BASE_URL}/finance/close-preview`, { credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        setInlinePreview(data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching inline preview:", err);
+    } finally {
+      setInlinePreviewLoading(false);
+    }
+  };
+
+  // Fetch academy pool report
+  const fetchAcademyPoolReport = async () => {
+    try {
+      setAcademyPoolLoading(true);
+      const res = await fetch(`${API_BASE_URL}/finance/academy-pool-report`, { credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        setAcademyPoolReport(data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching academy pool report:", err);
+    } finally {
+      setAcademyPoolLoading(false);
+    }
+  };
+
+  // Credit partner balance
+  const handleCreditBalance = async () => {
+    if (!creditTarget || !creditAmount) return;
+    try {
+      setCreditLoading(true);
+      const res = await fetch(`${API_BASE_URL}/finance/partner/credit-balance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          userId: creditTarget.userId,
+          amount: Number(creditAmount),
+          type: "Adjustment",
+          note: creditNote || `Manual credit by ${user?.fullName}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Balance Updated", description: data.message });
+        setCreditModalOpen(false);
+        setCreditAmount("");
+        setCreditNote("");
+        setCreditTarget(null);
+        fetchPayoutSummary();
+      } else {
+        toast({ title: "Error", description: data.message, variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to update balance", variant: "destructive" });
+    } finally {
+      setCreditLoading(false);
     }
   };
 
@@ -282,8 +392,27 @@ const OwnerDashboard = () => {
     printWindow.print();
   };
 
-  const handleCloseDay = () => {
-    setCloseConfirmOpen(true);
+  const handleCloseDay = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/finance/close-preview`, { credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        setOwnerClosePreview(data.data);
+        setOwnerClosePreviewOpen(true);
+      } else {
+        // Fallback to old preview
+        const res2 = await fetch(`${API_BASE_URL}/finance/close-day/preview`, { credentials: "include" });
+        const data2 = await res2.json();
+        if (data2.success) {
+          setOwnerClosePreview(data2.data);
+          setOwnerClosePreviewOpen(true);
+        } else {
+          setCloseConfirmOpen(true);
+        }
+      }
+    } catch {
+      setCloseConfirmOpen(true);
+    }
   };
 
   const confirmCloseDay = async () => {
@@ -292,14 +421,14 @@ const OwnerDashboard = () => {
       const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
       const data = await res.json();
       if (data.success) {
-        setSuccessMessage(data.message);
-        fetchStats(); // Refresh stats after closing day
+        setSuccessMessage(data.message || `Day closed! PKR ${(data.data?.closedAmount || 0).toLocaleString()} moved to verified.`);
+        fetchStats();
+        fetchInlinePreview();
+        fetchAcademyPoolReport();
       } else {
         setError(data.message || "Failed to close day.");
       }
@@ -309,6 +438,7 @@ const OwnerDashboard = () => {
     } finally {
       setIsClosing(false);
       setCloseConfirmOpen(false);
+      setOwnerClosePreviewOpen(false);
     }
   };
 
@@ -332,6 +462,22 @@ const OwnerDashboard = () => {
         // Fetch analytics
         await fetchAnalytics();
 
+        // Fetch payout summary
+        await fetchPayoutSummary();
+
+        // Fetch inline close preview + academy pool report
+        await fetchInlinePreview();
+        await fetchAcademyPoolReport();
+
+        // Fetch academy config (owner name)
+        try {
+          const configRes = await fetch(`${API_BASE_URL}/config`, { credentials: "include" });
+          const configData = await configRes.json();
+          if (configData.success && configData.data?.academyOwner) {
+            setAcademyOwner(configData.data.academyOwner);
+          }
+        } catch (_) {}
+
         setLoading(false);
       } catch (err) {
         console.error("Error:", err);
@@ -345,6 +491,9 @@ const OwnerDashboard = () => {
     const pollInterval = setInterval(() => {
       fetchStats();
       fetchAnalytics();
+      fetchPayoutSummary();
+      fetchInlinePreview();
+      fetchAcademyPoolReport();
     }, 30000);
 
     return () => clearInterval(pollInterval);
@@ -378,7 +527,7 @@ const OwnerDashboard = () => {
           <div className="relative z-10">
             <h1 className="text-4xl font-bold text-white mb-2">
               Welcome back,{" "}
-              <span className="text-red-400">{user?.fullName || "Owner"}</span>
+              <span className="text-red-400">{academyOwner || user?.fullName || "Owner"}</span>
             </h1>
             <p className="text-slate-300 text-lg">
               Edwardian Academy - Management Dashboard
@@ -457,6 +606,215 @@ const OwnerDashboard = () => {
             </div>
           </div>
 
+        </div>
+
+        {/* ======= DAILY REVENUE CLOSE — Real-time calculation proof ======= */}
+        <div className="mt-6">
+          <Card className="border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-white shadow-xl overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg">
+                    <Lock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl text-slate-900">Daily Revenue Close</CardTitle>
+                    <CardDescription className="text-slate-600">
+                      Real-time calculation of your uncollected revenue — tuition splits + academy share
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Floating Cash</p>
+                  <p className="text-3xl font-black text-emerald-700">
+                    PKR {(inlinePreview?.netTotal ?? stats.floatingCash ?? 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Wallet Verified: <span className="font-semibold text-slate-700">PKR {(user as any)?.walletBalance?.verified?.toLocaleString() || "0"}</span></p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Inline Revenue Breakdown — always visible */}
+              {inlinePreviewLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-500 mr-2" />
+                  <span className="text-sm text-slate-500">Loading revenue breakdown...</span>
+                </div>
+              ) : inlinePreview && (inlinePreview.totalEntries > 0) ? (
+                <div className="space-y-3">
+                  {/* Summary Row */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-emerald-100/60 rounded-xl p-3 border border-emerald-200">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <GraduationCap className="h-3.5 w-3.5 text-emerald-700" />
+                        <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Tuition Revenue</p>
+                      </div>
+                      <p className="text-xl font-black text-emerald-800">PKR {(inlinePreview.tuitionRevenue?.total || 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-emerald-600">{inlinePreview.tuitionRevenue?.count || 0} fee entries (100% share)</p>
+                    </div>
+                    <div className="bg-blue-100/60 rounded-xl p-3 border border-blue-200">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Briefcase className="h-3.5 w-3.5 text-blue-700" />
+                        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Academy Share</p>
+                      </div>
+                      <p className="text-xl font-black text-blue-800">PKR {(inlinePreview.academyShareRevenue?.total || 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-blue-600">{inlinePreview.academyShareRevenue?.count || 0} entries from teacher splits</p>
+                    </div>
+                    <div className="bg-amber-100/60 rounded-xl p-3 border border-amber-200">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-700" />
+                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Adjustments</p>
+                      </div>
+                      <p className="text-xl font-black text-amber-800">PKR {(inlinePreview.withdrawalAdjustments?.total || 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-amber-600">{inlinePreview.withdrawalAdjustments?.count || 0} withdrawal deductions</p>
+                    </div>
+                  </div>
+
+                  {/* Expandable Calculation Proof */}
+                  <button
+                    onClick={() => setCloseBreakdownExpanded(!closeBreakdownExpanded)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors border border-slate-200"
+                  >
+                    <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <Receipt className="h-4 w-4" />
+                      Calculation Proof — Per Student Breakdown
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${closeBreakdownExpanded ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {closeBreakdownExpanded && (
+                    <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                      {/* Tuition Items */}
+                      {inlinePreview.tuitionRevenue?.items?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <GraduationCap className="h-3.5 w-3.5" />
+                            Tuition Revenue — Your classes (100% share, split with partners)
+                          </p>
+                          <div className="space-y-1.5">
+                            {inlinePreview.tuitionRevenue.items.map((item: any, idx: number) => (
+                              <div key={item._id || idx} className="flex items-center justify-between p-3 rounded-lg bg-white border border-emerald-100 hover:border-emerald-200 transition-colors">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm text-slate-800">{item.studentName}</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">{item.className}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {item.splitDetails?.description || item.description || "Equal split among owner/partners"}
+                                    {item.splitDetails?.totalFee && (
+                                      <span className="ml-1 text-slate-400">
+                                        · Total fee: PKR {item.splitDetails.totalFee.toLocaleString()} ÷ {item.splitDetails.splitCount} = PKR {item.amount?.toLocaleString()}
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                                <span className="font-bold text-emerald-700 text-sm ml-3">+PKR {(item.amount || 0).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Academy Share Items */}
+                      {inlinePreview.academyShareRevenue?.items?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <Briefcase className="h-3.5 w-3.5" />
+                            Academy Share — From teacher split classes (your % from config)
+                          </p>
+                          <div className="space-y-1.5">
+                            {inlinePreview.academyShareRevenue.items.map((item: any, idx: number) => (
+                              <div key={item._id || idx} className="flex items-center justify-between p-3 rounded-lg bg-white border border-blue-100 hover:border-blue-200 transition-colors">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm text-slate-800">{item.studentName}</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">{item.className}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {item.splitDetails?.description || item.description || "Academy share"}
+                                  </p>
+                                </div>
+                                <span className="font-bold text-blue-700 text-sm ml-3">+PKR {(item.amount || 0).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Withdrawal Adjustment Items */}
+                      {inlinePreview.withdrawalAdjustments?.items?.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-red-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            Withdrawal Adjustments — Deductions for student refunds
+                          </p>
+                          <div className="space-y-1.5">
+                            {inlinePreview.withdrawalAdjustments.items.map((item: any, idx: number) => (
+                              <div key={item._id || idx} className="flex items-center justify-between p-3 rounded-lg bg-white border border-red-100 hover:border-red-200 transition-colors">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm text-slate-800">{item.studentName}</span>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">{item.className}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-0.5">Refund deduction</p>
+                                </div>
+                                <span className="font-bold text-red-700 text-sm ml-3">PKR {(item.amount || 0).toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Net Total Calculation */}
+                      <div className="bg-slate-900 text-white rounded-xl p-4 mt-2">
+                        <div className="space-y-1.5 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-300">Tuition Revenue (100% share)</span>
+                            <span className="font-semibold text-emerald-400">+PKR {(inlinePreview.tuitionRevenue?.total || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-300">Academy Share (config %)</span>
+                            <span className="font-semibold text-blue-400">+PKR {(inlinePreview.academyShareRevenue?.total || 0).toLocaleString()}</span>
+                          </div>
+                          {(inlinePreview.withdrawalAdjustments?.total || 0) !== 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-300">Withdrawal Adjustments</span>
+                              <span className="font-semibold text-red-400">PKR {(inlinePreview.withdrawalAdjustments?.total || 0).toLocaleString()}</span>
+                            </div>
+                          )}
+                          <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between">
+                            <span className="font-bold text-white text-base">NET CLOSEABLE</span>
+                            <span className="font-black text-emerald-400 text-lg">PKR {(inlinePreview.netTotal || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-slate-50 rounded-xl p-6 text-center border border-slate-200">
+                  <p className="text-sm text-slate-500">No uncollected revenue to close. Revenue will appear here when students pay fees.</p>
+                </div>
+              )}
+
+              {/* Close Day Button */}
+              <div className="flex items-center gap-4 pt-2">
+                <Button
+                  size="lg"
+                  className="flex-1 h-14 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                  onClick={handleCloseDay}
+                  disabled={isClosing || !inlinePreview?.totalEntries}
+                >
+                  {isClosing ? (
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  ) : (
+                    <Lock className="h-5 w-5 mr-2" />
+                  )}
+                  Close Day — Review &amp; Verify
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Secondary Stats Row */}
@@ -693,6 +1051,423 @@ const OwnerDashboard = () => {
             </div>
           </>
         ) : null}
+
+        {/* ======= ACADEMY POOL & REVENUE DISTRIBUTION ======= */}
+        <Card className="mt-6 border-slate-200 bg-white shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl text-slate-900">
+              <HandCoins className="h-6 w-6 text-emerald-600" />
+              Revenue Distribution &amp; Academy Pool
+            </CardTitle>
+            <CardDescription className="text-slate-600">
+              Real-time breakdown: how every PKR flows from student fees to teachers, academy pool, and stakeholders — {payoutSummary?.month || "This Month"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+
+            {/* === Academy Pool Summary === */}
+            {academyPoolLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-blue-500 mr-2" />
+                <span className="text-sm text-slate-500">Loading academy pool data...</span>
+              </div>
+            ) : academyPoolReport?.summary ? (
+              <div className="space-y-4">
+                {/* Pool Summary Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-3 border border-sky-200">
+                    <p className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">Total Fee Collected</p>
+                    <p className="text-xl font-black text-sky-900">PKR {(academyPoolReport.summary.totalFeeCollected || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-sky-600">All classes this month</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-3 border border-violet-200">
+                    <p className="text-[10px] font-bold text-violet-700 uppercase tracking-wider">Academy Pool</p>
+                    <p className="text-xl font-black text-violet-900">PKR {(academyPoolReport.summary.totalAcademyPool || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-violet-600">From teacher splits (30% etc)</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-3 border border-emerald-200">
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Tuition Revenue</p>
+                    <p className="text-xl font-black text-emerald-900">PKR {(academyPoolReport.summary.totalTuitionRevenue || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-emerald-600">Owner/Partner 100% share</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl p-3 border border-amber-200">
+                    <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Academy Distributed</p>
+                    <p className="text-xl font-black text-amber-900">PKR {(academyPoolReport.summary.totalAcademyRevenue || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-amber-600">Split by config %</p>
+                  </div>
+                </div>
+
+                {/* Academy Share Split Config */}
+                {academyPoolReport.summary.academyShareSplit?.length > 0 && (
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Academy Pool Distribution Config</p>
+                    <div className="flex items-center gap-3">
+                      {academyPoolReport.summary.academyShareSplit.map((s: any) => (
+                        <div key={s.userId} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${s.role === "OWNER" ? "bg-red-100 border border-red-200" : "bg-blue-100 border border-blue-200"}`}>
+                          <span className={`text-xs font-bold ${s.role === "OWNER" ? "text-red-700" : "text-blue-700"}`}>{s.fullName}</span>
+                          <span className={`text-sm font-black ${s.role === "OWNER" ? "text-red-800" : "text-blue-800"}`}>{s.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-Class Revenue Breakdown */}
+                {academyPoolReport.classBreakdown?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-sky-600" />
+                      Per-Class Revenue Trail — How Each PKR Was Generated
+                    </p>
+                    <div className="space-y-2">
+                      {academyPoolReport.classBreakdown.map((cls: any) => (
+                        <div key={cls.classId} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                          {/* Class Header */}
+                          <button
+                            onClick={() => setExpandedClass(expandedClass === cls.classId ? null : cls.classId)}
+                            className="w-full flex items-center justify-between p-3 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700 font-bold text-xs">
+                                {cls.classTitle?.charAt(0) || "?"}
+                              </div>
+                              <div className="text-left">
+                                <p className="text-sm font-semibold text-slate-800">{cls.classTitle}</p>
+                                <p className="text-[10px] text-slate-500">{cls.gradeLevel} · {cls.students?.length || 0} students paid · {cls.teachers?.length || 0} teachers</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-xs text-slate-500">Fee Collected</p>
+                                <p className="text-sm font-bold text-slate-900">PKR {(cls.totalFeeCollected || 0).toLocaleString()}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-violet-500">→ Academy Pool</p>
+                                <p className="text-sm font-bold text-violet-700">PKR {(cls.totalAcademyPool || 0).toLocaleString()}</p>
+                              </div>
+                              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${expandedClass === cls.classId ? "rotate-180" : ""}`} />
+                            </div>
+                          </button>
+
+                          {/* Expanded: Teacher splits + Student details */}
+                          {expandedClass === cls.classId && (
+                            <div className="border-t border-slate-100 p-3 space-y-3 bg-slate-50/50">
+                              {/* Teachers in this class */}
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Teachers &amp; Their Splits</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {cls.teachers?.map((t: any, tidx: number) => (
+                                    <div key={tidx} className={`px-3 py-1.5 rounded-lg border text-xs ${
+                                      t.role === "OWNER" ? "bg-red-50 border-red-200 text-red-800" :
+                                      t.role === "PARTNER" ? "bg-blue-50 border-blue-200 text-blue-800" :
+                                      "bg-white border-slate-200 text-slate-800"
+                                    }`}>
+                                      <span className="font-semibold">{t.name}</span>
+                                      <span className="text-slate-500 ml-1">({t.subject})</span>
+                                      {t.compType === "tuition" && (
+                                        <span className="ml-1 text-emerald-600 font-bold">100% tuition</span>
+                                      )}
+                                      {t.compType === "percentage" && (
+                                        <span className="ml-1">
+                                          <span className="text-emerald-600 font-bold">{t.teacherShare}%</span>
+                                          <span className="text-slate-400"> / </span>
+                                          <span className="text-violet-600 font-bold">{t.academyShare}% academy</span>
+                                        </span>
+                                      )}
+                                      {t.compType === "perStudent" && (
+                                        <span className="ml-1 text-orange-600 font-bold">PKR {(t.perStudentAmount || 0).toLocaleString()}/student</span>
+                                      )}
+                                      {t.compType === "fixed" && (
+                                        <span className="ml-1 text-purple-600 font-bold">Fixed PKR {(t.fixedSalary || 0).toLocaleString()}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Student-by-student breakdown */}
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Student Fee Breakdown</p>
+                                <div className="space-y-1">
+                                  {cls.students?.map((s: any, sidx: number) => (
+                                    <div key={sidx} className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-100 text-sm">
+                                      <div>
+                                        <span className="font-medium text-slate-800">{s.studentName}</span>
+                                        {s.studentId && <span className="text-xs text-slate-400 ml-2">#{s.studentId}</span>}
+                                      </div>
+                                      <div className="flex items-center gap-4 text-xs">
+                                        <span className="text-slate-600">Fee: <span className="font-bold">PKR {(s.feePaid || 0).toLocaleString()}</span></span>
+                                        <span className="text-emerald-700">Teacher: <span className="font-bold">PKR {(s.teacherPayout || 0).toLocaleString()}</span></span>
+                                        <span className="text-violet-700">Academy: <span className="font-bold">PKR {(s.academyContribution || 0).toLocaleString()}</span></span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Class Total */}
+                              <div className="flex items-center justify-between p-2.5 bg-slate-900 text-white rounded-lg text-sm">
+                                <span className="font-medium">Class Total</span>
+                                <div className="flex items-center gap-4">
+                                  <span>Fees: <span className="font-bold">PKR {(cls.totalFeeCollected || 0).toLocaleString()}</span></span>
+                                  <span className="text-emerald-400">Teachers: <span className="font-bold">PKR {(cls.totalTeacherPayout || 0).toLocaleString()}</span></span>
+                                  <span className="text-violet-400">Academy Pool: <span className="font-bold">PKR {(cls.totalAcademyPool || 0).toLocaleString()}</span></span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-Stakeholder DailyRevenue Breakdown */}
+                {academyPoolReport.stakeholders?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                      <Users className="h-4 w-4 text-emerald-600" />
+                      Stakeholder Revenue Trail — Owner &amp; Partners
+                    </p>
+                    <div className="space-y-3">
+                      {academyPoolReport.stakeholders.map((sh: any) => (
+                        <div key={sh.userId} className={`rounded-xl border-2 p-4 ${sh.role === "OWNER" ? "border-red-200 bg-red-50/30" : "border-blue-200 bg-blue-50/30"}`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`flex h-8 w-8 items-center justify-center rounded-lg text-white font-bold text-xs shadow ${sh.role === "OWNER" ? "bg-gradient-to-br from-red-500 to-red-700" : "bg-gradient-to-br from-blue-500 to-blue-700"}`}>
+                                {sh.fullName?.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-900 text-sm">{sh.fullName}</p>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${sh.role === "OWNER" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>{sh.role} · {sh.configPercentage}% config</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-right">
+                              <div>
+                                <p className="text-[10px] text-emerald-600 font-medium">Tuition</p>
+                                <p className="text-sm font-bold text-emerald-700">PKR {(sh.tuitionTotal || 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-blue-600 font-medium">Academy Share</p>
+                                <p className="text-sm font-bold text-blue-700">PKR {(sh.academyTotal || 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-orange-600 font-medium">Uncollected</p>
+                                <p className="text-sm font-bold text-orange-700">PKR {(sh.uncollected || 0).toLocaleString()}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-slate-600 font-medium">Collected</p>
+                                <p className="text-sm font-bold text-slate-700">PKR {(sh.collected || 0).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          </div>
+                          {/* Recent entries */}
+                          {sh.entries?.length > 0 && (
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {sh.entries.slice(0, 10).map((e: any, eidx: number) => (
+                                <div key={eidx} className="flex items-center justify-between px-2 py-1 rounded bg-white/60 text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-1.5 py-0.5 rounded-full font-bold ${e.type === "TUITION_SHARE" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                                      {e.type === "TUITION_SHARE" ? "TUI" : "ACA"}
+                                    </span>
+                                    <span className="text-slate-700">{e.studentName} · {e.className}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-semibold ${e.status === "UNCOLLECTED" ? "text-orange-600" : "text-green-600"}`}>
+                                      {e.status === "UNCOLLECTED" ? "⏳" : "✅"} PKR {(e.amount || 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              {sh.entries.length > 10 && (
+                                <p className="text-[10px] text-slate-400 text-center py-1">+ {sh.entries.length - 10} more entries</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* === Legacy Revenue Distribution (existing payout summary) === */}
+            {payoutLoading ? (
+              <div className="flex items-center justify-center h-20">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+              </div>
+            ) : payoutSummary?.partnersAndOwner?.length > 0 ? (
+              <div className="space-y-4">
+                <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-amber-600" />
+                  Partner &amp; Owner Balances
+                </p>
+                {payoutSummary.partnersAndOwner.map((p: any) => (
+                  <div key={p.userId} className={`rounded-xl border-2 transition-all ${p.role === "OWNER" ? "border-red-200 bg-red-50/30" : "border-blue-200 bg-blue-50/30"}`}>
+                    {/* Partner/Owner Header */}
+                    <div
+                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/50 transition-colors rounded-t-xl"
+                      onClick={() => setExpandedPartner(expandedPartner === p.userId ? null : p.userId)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-white font-bold shadow ${p.role === "OWNER" ? "bg-gradient-to-br from-red-500 to-red-700" : "bg-gradient-to-br from-blue-500 to-blue-700"}`}>
+                          {p.fullName?.charAt(0) || "?"}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{p.fullName}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.role === "OWNER" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>{p.role}</span>
+                            {p.subject && <span className="text-xs text-slate-500">{p.subject}</span>}
+                            <span className="text-xs text-slate-400">{p.totalStudents} students</span>
+                            <span className="text-xs text-slate-400">{p.classes?.length || 0} classes</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">This Month</p>
+                          <p className="text-lg font-bold text-emerald-700">PKR {(p.monthlyEarnings?.totalMonthly || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">Balance</p>
+                          <p className="text-lg font-bold text-sky-700">PKR {(p.balance?.total || 0).toLocaleString()}</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCreditTarget(p);
+                            setCreditModalOpen(true);
+                          }}
+                        >
+                          <DollarSign className="h-3.5 w-3.5 mr-1" />
+                          Credit
+                        </Button>
+                        <ArrowRight className={`h-5 w-5 text-slate-400 transition-transform ${expandedPartner === p.userId ? "rotate-90" : ""}`} />
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {expandedPartner === p.userId && (
+                      <div className="border-t p-4 space-y-4">
+                        {/* Earnings Breakdown */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                            <p className="text-xs text-emerald-600 font-medium">Teaching Income</p>
+                            <p className="text-lg font-bold text-emerald-700">PKR {(p.monthlyEarnings?.teachingIncome || 0).toLocaleString()}</p>
+                          </div>
+                          <div className="p-3 bg-violet-50 rounded-lg border border-violet-100">
+                            <p className="text-xs text-violet-600 font-medium">Pool Dividends</p>
+                            <p className="text-lg font-bold text-violet-700">PKR {(p.monthlyEarnings?.dividendIncome || 0).toLocaleString()}</p>
+                          </div>
+                          <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
+                            <p className="text-xs text-orange-600 font-medium">Floating</p>
+                            <p className="text-lg font-bold text-orange-700">PKR {(p.balance?.floating || 0).toLocaleString()}</p>
+                          </div>
+                          <div className="p-3 bg-green-50 rounded-lg border border-green-100">
+                            <p className="text-xs text-green-600 font-medium">Verified</p>
+                            <p className="text-lg font-bold text-green-700">PKR {(p.balance?.verified || 0).toLocaleString()}</p>
+                          </div>
+                        </div>
+
+                        {/* Classes */}
+                        {p.classes?.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+                              <BookOpen className="h-4 w-4 text-sky-500" /> Classes ({p.classes.length})
+                            </h4>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {p.classes.map((c: any) => (
+                                <div key={c.classId} className="flex items-center justify-between p-2.5 bg-white rounded-lg border">
+                                  <div>
+                                    <p className="text-sm font-medium text-slate-800">{c.classTitle}</p>
+                                    <p className="text-xs text-slate-500">{c.gradeLevel} — {c.mySubjects?.join(", ") || "All subjects"}</p>
+                                  </div>
+                                  <span className="text-xs font-semibold text-sky-600 bg-sky-50 px-2 py-1 rounded-full">{c.enrolledCount} students</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* All-Time Summary */}
+                        <div className="flex items-center justify-between p-3 bg-slate-100 rounded-lg">
+                          <span className="text-sm font-medium text-slate-600">All-Time Earnings</span>
+                          <span className="text-sm font-bold text-slate-900">PKR {(p.allTimeEarnings?.totalAllTime || 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                <HandCoins className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No partner/owner data available yet</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Credit Balance Modal */}
+        <Dialog open={creditModalOpen} onOpenChange={setCreditModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-emerald-500" />
+                Credit Balance — {creditTarget?.fullName}
+              </DialogTitle>
+              <DialogDescription>
+                Manually credit or adjust the verified balance for this partner/owner.
+                Use negative amounts to deduct.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {creditTarget && (
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Current Balance:</span>
+                    <span className="font-semibold">PKR {(creditTarget.balance?.total || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Amount (PKR)</label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="Enter amount..."
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Note (optional)</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  placeholder="Reason for adjustment..."
+                  value={creditNote}
+                  onChange={(e) => setCreditNote(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={handleCreditBalance}
+                disabled={creditLoading || !creditAmount}
+              >
+                {creditLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {Number(creditAmount) >= 0 ? "Credit" : "Deduct"} Balance
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Financial Reports Section */}
         <Card className="mt-6 border-slate-200 bg-white shadow-xl">
@@ -937,6 +1712,152 @@ const OwnerDashboard = () => {
           </DialogContent>
         </Dialog>
 
+        {/* --- OWNER CLOSE DAY PREVIEW DIALOG --- */}
+        <Dialog open={ownerClosePreviewOpen} onOpenChange={setOwnerClosePreviewOpen}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Lock className="h-5 w-5 text-emerald-600" />
+                Daily Revenue Close — Review
+              </DialogTitle>
+              <DialogDescription className="text-slate-500">
+                Review your revenue breakdown before closing. Floating cash → Verified.
+              </DialogDescription>
+            </DialogHeader>
+
+            {ownerClosePreview && (
+              <div className="space-y-4">
+                {/* Net Total Banner */}
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-emerald-700 font-bold">Net Closeable Amount</p>
+                    <p className="text-3xl font-black text-emerald-900">PKR {(ownerClosePreview.netTotal || ownerClosePreview.totalAmount || 0).toLocaleString()}</p>
+                  </div>
+                  <div className="text-right text-sm text-emerald-700">
+                    <p><span className="font-semibold">{ownerClosePreview.totalEntries || ownerClosePreview.transactionCount || 0}</span> entries</p>
+                  </div>
+                </div>
+
+                {/* Tuition Revenue Section */}
+                {ownerClosePreview.tuitionRevenue && ownerClosePreview.tuitionRevenue.count > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                        <GraduationCap className="h-4 w-4" />
+                        Tuition Revenue (100% Share)
+                      </p>
+                      <span className="text-sm font-bold text-emerald-700">PKR {ownerClosePreview.tuitionRevenue.total.toLocaleString()}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {ownerClosePreview.tuitionRevenue.items.map((item: any, idx: number) => (
+                        <div key={item._id || idx} className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                            <span className="font-bold text-emerald-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                          </div>
+                          <p className="text-xs text-slate-500">{item.className} · {item.description || "Equal split among teachers"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Academy Share Revenue Section */}
+                {ownerClosePreview.academyShareRevenue && ownerClosePreview.academyShareRevenue.count > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-blue-700 flex items-center gap-1.5">
+                        <Briefcase className="h-4 w-4" />
+                        Academy Share Revenue
+                      </p>
+                      <span className="text-sm font-bold text-blue-700">PKR {ownerClosePreview.academyShareRevenue.total.toLocaleString()}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {ownerClosePreview.academyShareRevenue.items.map((item: any, idx: number) => (
+                        <div key={item._id || idx} className="bg-blue-50/50 border border-blue-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                            <span className="font-bold text-blue-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                          </div>
+                          <p className="text-xs text-slate-500">{item.className} · {item.description || "Academy share split"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Withdrawal Adjustments Section */}
+                {ownerClosePreview.withdrawalAdjustments && ownerClosePreview.withdrawalAdjustments.count > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
+                        <AlertCircle className="h-4 w-4" />
+                        Withdrawal Adjustments
+                      </p>
+                      <span className="text-sm font-bold text-red-700">PKR {ownerClosePreview.withdrawalAdjustments.total.toLocaleString()}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {ownerClosePreview.withdrawalAdjustments.items.map((item: any, idx: number) => (
+                        <div key={item._id || idx} className="bg-red-50/50 border border-red-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                            <span className="font-bold text-red-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                          </div>
+                          <p className="text-xs text-slate-500">{item.className} · Refund deduction</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fallback: Old-format breakdown for backwards compatibility */}
+                {!ownerClosePreview.tuitionRevenue && (ownerClosePreview.breakdown || []).length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700 mb-2">Student Breakdown</p>
+                    <div className="space-y-2">
+                      {ownerClosePreview.breakdown.map((item: any, idx: number) => (
+                        <div key={item.studentId || idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium text-slate-800 text-sm">{item.studentName}</span>
+                            <span className="font-bold text-emerald-700 text-sm">PKR {(item.totalMyShare || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(item.subjects || []).map((s: any, si: number) => (
+                              <span key={si} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.shareType === 'PARTNER_100' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {s.subject}: PKR {(s.teacherShare || 0).toLocaleString()}
+                                {s.shareType === 'PARTNER_100' && <span className="text-[10px]">(100%)</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {ownerClosePreview.totalEntries === 0 && (!ownerClosePreview.breakdown || ownerClosePreview.breakdown?.length === 0) && (
+                  <p className="text-sm text-slate-500 text-center py-4">No uncollected revenue to close.</p>
+                )}
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 mt-2">
+              <Button variant="outline" onClick={() => setOwnerClosePreviewOpen(false)} className="h-10">
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmCloseDay}
+                disabled={isClosing}
+                className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              >
+                {isClosing ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Lock className="h-4 w-4 mr-1.5" />}
+                Confirm &amp; Close Day
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* --- DAILY CLOSING DIALOG --- */}
         <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
           <AlertDialogContent className="max-w-md border-2 border-emerald-100 shadow-2xl">
@@ -997,6 +1918,19 @@ const PartnerDashboard = () => {
   // Settlement history
   const [settlements, setSettlements] = useState<any[]>([]);
 
+  // Payout summary (classes, students, money trail)
+  const [payoutData, setPayoutData] = useState<any>(null);
+  const [payoutLoading, setPayoutLoading] = useState(true);
+  const [isClosingDay, setIsClosingDay] = useState(false);
+  const [showMoneyTrail, setShowMoneyTrail] = useState(false);
+  const [closePreview, setClosePreview] = useState<any>(null);
+  const [closePreviewOpen, setClosePreviewOpen] = useState(false);
+
+  // Inline close preview for partner
+  const [partnerInlinePreview, setPartnerInlinePreview] = useState<any>(null);
+  const [partnerPreviewLoading, setPartnerPreviewLoading] = useState(true);
+  const [partnerBreakdownExpanded, setPartnerBreakdownExpanded] = useState(false);
+
   const dayOrder = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
   const capitalizeSubject = (s: string) => {
@@ -1043,6 +1977,18 @@ const PartnerDashboard = () => {
       const settlementsRes = await fetch(`${API_BASE_URL}/finance/partner/settlements`, { credentials: "include" });
       const settlementsData = await settlementsRes.json();
       if (settlementsData.success) setSettlements(settlementsData.data || []);
+
+      // Fetch payout summary (classes, students, revenue trail)
+      try {
+        const payoutRes = await fetch(`${API_BASE_URL}/finance/partner/payout-summary`, { credentials: "include" });
+        const payoutResData = await payoutRes.json();
+        if (payoutResData.success && payoutResData.data?.partnersAndOwner?.length > 0) {
+          setPayoutData(payoutResData.data.partnersAndOwner[0]);
+        }
+      } catch (e) {
+        console.error("Payout summary fetch error:", e);
+      }
+      setPayoutLoading(false);
     } catch (err) {
       console.error("Error fetching partner data:", err);
     } finally {
@@ -1103,6 +2049,80 @@ const PartnerDashboard = () => {
   };
 
   // Payment request handler
+
+  // Fetch inline close preview for partner (auto-loads on mount + polls)
+  const fetchPartnerInlinePreview = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/finance/close-preview`, { credentials: "include" });
+      const data = await res.json();
+      if (data.success) {
+        setPartnerInlinePreview(data.data);
+      }
+    } catch (err) {
+      // silent
+    } finally {
+      setPartnerPreviewLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPartnerInlinePreview();
+    const interval = setInterval(fetchPartnerInlinePreview, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Daily Closing handler for partners — shows preview first
+  const handlePartnerCloseDay = async () => {
+    try {
+      setIsClosingDay(true);
+      const res = await fetch(`${API_BASE_URL}/finance/close-preview`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setClosePreview(data.data);
+        setClosePreviewOpen(true);
+      } else {
+        // Fallback to old preview
+        const res2 = await fetch(`${API_BASE_URL}/finance/close-day/preview`, { credentials: "include" });
+        const data2 = await res2.json();
+        if (data2.success) {
+          setClosePreview(data2.data);
+          setClosePreviewOpen(true);
+        } else {
+          setError(data2.message || "Nothing to close today.");
+        }
+      }
+    } catch (err) {
+      setError("Failed to connect to server.");
+    } finally {
+      setIsClosingDay(false);
+    }
+  };
+
+  const confirmPartnerCloseDay = async () => {
+    try {
+      setIsClosingDay(true);
+      const res = await fetch(`${API_BASE_URL}/finance/close-day`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMessage(`Day closed! PKR ${(data.data?.closedAmount || data.data?.totalAmount || 0).toLocaleString()} verified.`);
+        setClosePreviewOpen(false);
+        fetchPartnerData();
+        fetchPartnerInlinePreview();
+      } else {
+        setError(data.message || "Failed to close day.");
+      }
+    } catch (err) {
+      setError("Failed to connect to server.");
+    } finally {
+      setIsClosingDay(false);
+    }
+  };
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const todayClasses = timetable.filter((t: any) => t.day === today);
@@ -1202,7 +2222,7 @@ const PartnerDashboard = () => {
         {([ "overview", "expenses", "transactions", "earnings", "timetable"] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
-            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "transactions" ? "Transactions" : tab === "earnings" ? "Teacher Earnings" : "Timetable"}
+            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "transactions" ? "Transactions" : tab === "earnings" ? "Earnings & Trail" : "Timetable"}
           </button>
         ))}
       </div>
@@ -1210,6 +2230,160 @@ const PartnerDashboard = () => {
       {/* ======= OVERVIEW TAB ======= */}
       {activeTab === "overview" && (
         <div className="mt-6 space-y-6">
+          {/* ── Daily Revenue Close ── */}
+          {(() => {
+            const pip = partnerInlinePreview;
+            const netTotal = pip?.netTotal || 0;
+            const tuitionTotal = pip?.tuitionRevenue?.total || 0;
+            const academyTotal = pip?.academyShareRevenue?.total || 0;
+            const adjustTotal = pip?.withdrawalAdjustments?.total || 0;
+            const hasData = netTotal > 0 || (tc?.floating || 0) > 0;
+            if (!hasData && !partnerPreviewLoading) return null;
+
+            return (
+              <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 overflow-hidden">
+                {/* Header */}
+                <div className="p-5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-xl bg-amber-500 flex items-center justify-center shadow-lg">
+                      <Lock className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-amber-900">Daily Revenue Close</h3>
+                      <p className="text-xs text-amber-600">{new Date().toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-amber-700 font-medium">Closeable Amount</p>
+                    <p className="text-3xl font-black text-amber-900">PKR {(netTotal || tc?.floating || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {/* Summary cards */}
+                {pip && (
+                  <div className="px-5 pb-3 grid grid-cols-3 gap-3">
+                    <div className="bg-white/70 rounded-lg p-3 text-center">
+                      <p className="text-xs text-emerald-600 font-medium">Tuition Revenue</p>
+                      <p className="text-lg font-bold text-emerald-700">PKR {tuitionTotal.toLocaleString()}</p>
+                      <p className="text-xs text-slate-500">{pip.tuitionRevenue?.count || 0} entries</p>
+                    </div>
+                    <div className="bg-white/70 rounded-lg p-3 text-center">
+                      <p className="text-xs text-blue-600 font-medium">Academy Share</p>
+                      <p className="text-lg font-bold text-blue-700">PKR {academyTotal.toLocaleString()}</p>
+                      <p className="text-xs text-slate-500">{pip.academyShareRevenue?.count || 0} entries</p>
+                    </div>
+                    <div className="bg-white/70 rounded-lg p-3 text-center">
+                      <p className="text-xs text-red-600 font-medium">Adjustments</p>
+                      <p className="text-lg font-bold text-red-700">{adjustTotal < 0 ? "−" : ""}PKR {Math.abs(adjustTotal).toLocaleString()}</p>
+                      <p className="text-xs text-slate-500">{pip.withdrawalAdjustments?.count || 0} entries</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expandable calculation proof */}
+                {pip && (pip.tuitionRevenue?.items?.length > 0 || pip.academyShareRevenue?.items?.length > 0) && (
+                  <div className="px-5 pb-3">
+                    <button
+                      onClick={() => setPartnerBreakdownExpanded(!partnerBreakdownExpanded)}
+                      className="w-full flex items-center justify-between py-2 px-3 bg-white/50 rounded-lg text-sm font-medium text-amber-800 hover:bg-white/70 transition"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Receipt className="h-4 w-4" />
+                        Calculation Proof — Per-Student Breakdown
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${partnerBreakdownExpanded ? "rotate-180" : ""}`} />
+                    </button>
+                    {partnerBreakdownExpanded && (
+                      <div className="mt-2 space-y-3 max-h-[400px] overflow-y-auto">
+                        {/* Tuition items */}
+                        {pip.tuitionRevenue?.items?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-emerald-700 mb-1 uppercase tracking-wide">Tuition Revenue</p>
+                            {pip.tuitionRevenue.items.map((item: any, i: number) => (
+                              <div key={i} className="bg-white rounded-lg p-3 mb-2 border border-emerald-100">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-semibold text-sm text-slate-800">{item.studentName || "Student"}</p>
+                                    <p className="text-xs text-slate-500">{item.className || "Class"}</p>
+                                  </div>
+                                  <p className="font-bold text-emerald-700">+PKR {(item.amount || 0).toLocaleString()}</p>
+                                </div>
+                                {item.splitDetails && (
+                                  <div className="mt-1.5 p-2 bg-emerald-50 rounded text-xs text-emerald-700">
+                                    {item.splitDetails.totalFee && <span>Fee: PKR {item.splitDetails.totalFee.toLocaleString()}</span>}
+                                    {item.splitDetails.splitCount && <span className="ml-2">÷ {item.splitDetails.splitCount} teachers</span>}
+                                    {item.splitDetails.yourShare && <span className="ml-2">= PKR {item.splitDetails.yourShare.toLocaleString()}/each</span>}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Academy share items */}
+                        {pip.academyShareRevenue?.items?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-blue-700 mb-1 uppercase tracking-wide">Academy Share Revenue</p>
+                            {pip.academyShareRevenue.items.map((item: any, i: number) => (
+                              <div key={i} className="bg-white rounded-lg p-3 mb-2 border border-blue-100">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-semibold text-sm text-slate-800">{item.studentName || "Student"}</p>
+                                    <p className="text-xs text-slate-500">{item.className || "Class"}</p>
+                                  </div>
+                                  <p className="font-bold text-blue-700">+PKR {(item.amount || 0).toLocaleString()}</p>
+                                </div>
+                                {item.splitDetails && (
+                                  <div className="mt-1.5 p-2 bg-blue-50 rounded text-xs text-blue-700">
+                                    {item.splitDetails.totalFee && <span>Fee: PKR {item.splitDetails.totalFee.toLocaleString()}</span>}
+                                    {item.splitDetails.teacherShare && <span className="ml-2">Teacher: {item.splitDetails.teacherShare}%</span>}
+                                    {item.splitDetails.academyShare && <span className="ml-2">Academy: {item.splitDetails.academyShare}%</span>}
+                                    {item.splitDetails.yourConfigShare && <span className="ml-2">Your split: {item.splitDetails.yourConfigShare}%</span>}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Withdrawal adjustments */}
+                        {pip.withdrawalAdjustments?.items?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-red-700 mb-1 uppercase tracking-wide">Withdrawal Adjustments</p>
+                            {pip.withdrawalAdjustments.items.map((item: any, i: number) => (
+                              <div key={i} className="bg-white rounded-lg p-3 mb-2 border border-red-100">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-semibold text-sm text-slate-800">{item.studentName || "Adjustment"}</p>
+                                    <p className="text-xs text-slate-500">{item.className || ""}</p>
+                                  </div>
+                                  <p className="font-bold text-red-600">−PKR {Math.abs(item.amount || 0).toLocaleString()}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Net total bar + Close button */}
+                <div className="bg-amber-900 text-white px-5 py-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-amber-200">Net Closeable</p>
+                    <p className="text-2xl font-black">PKR {(netTotal || tc?.floating || 0).toLocaleString()}</p>
+                  </div>
+                  <Button
+                    className="bg-white text-amber-900 hover:bg-amber-100 font-bold px-6"
+                    onClick={handlePartnerCloseDay}
+                    disabled={isClosingDay || netTotal === 0}
+                  >
+                    {isClosingDay ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
+                    Close Day — Review & Verify
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
           {/* KPI Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {/* Expense Debt */}
@@ -1364,6 +2538,123 @@ const PartnerDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* My Classes & Students (from payout data) */}
+          {!payoutLoading && payoutData && (
+            <>
+              {/* My Classes */}
+              {payoutData.classes?.length > 0 && (
+                <Card className="border-sky-200 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg text-sky-800">
+                      <BookOpen className="h-5 w-5" /> My Classes ({payoutData.classes.length})
+                    </CardTitle>
+                    <CardDescription>Classes you teach with student count</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {payoutData.classes.map((c: any) => (
+                        <div key={c.classId} className="flex items-center justify-between p-3 bg-white rounded-lg border border-sky-100 hover:shadow-md transition-all">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{c.classTitle}</p>
+                            <p className="text-xs text-slate-500">{c.gradeLevel} — {c.mySubjects?.join(", ") || "All subjects"}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-200">{c.enrolledCount} students</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Monthly Earnings Summary */}
+              <Card className="border-violet-200 shadow-lg">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg text-violet-800">
+                        <TrendingUp className="h-5 w-5" /> Monthly Revenue
+                      </CardTitle>
+                      <CardDescription>Your earnings this month</CardDescription>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-emerald-700">PKR {(payoutData.monthlyEarnings?.totalMonthly || 0).toLocaleString()}</p>
+                      <p className="text-xs text-slate-500">This Month</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                      <p className="text-xs text-emerald-600 font-medium">Teaching Income (100%)</p>
+                      <p className="text-lg font-bold text-emerald-700">PKR {(payoutData.monthlyEarnings?.teachingIncome || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="p-3 bg-violet-50 rounded-lg border border-violet-100">
+                      <p className="text-xs text-violet-600 font-medium">Pool Dividends</p>
+                      <p className="text-lg font-bold text-violet-700">PKR {(payoutData.monthlyEarnings?.dividendIncome || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* New Students This Month */}
+              {payoutData.newStudents?.length > 0 && (
+                <Card className="border-emerald-200 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg text-emerald-800">
+                      <UserPlus className="h-5 w-5" /> New Students This Month ({payoutData.newStudents.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {payoutData.newStudents.map((s: any) => (
+                        <div key={s.studentId} className="flex items-center justify-between p-2.5 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">{s.studentName}</p>
+                            <p className="text-xs text-slate-500">{s.class} — ID: {s.studentId}</p>
+                          </div>
+                          <span className="text-sm font-semibold text-emerald-700">PKR {(s.totalFee || 0).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* My Students */}
+              {payoutData.students?.length > 0 && (
+                <Card className="border-slate-200 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg text-slate-800">
+                      <GraduationCap className="h-5 w-5" /> My Students ({payoutData.totalStudents})
+                    </CardTitle>
+                    <CardDescription>Students enrolled in your classes</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="max-h-80 overflow-y-auto space-y-1.5">
+                      {payoutData.students.map((s: any) => (
+                        <div key={s.studentId} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border hover:bg-white transition-colors">
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-lg bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">{s.studentName?.charAt(0)}</div>
+                            <div>
+                              <p className="text-sm font-medium text-slate-800">{s.studentName}</p>
+                              <p className="text-xs text-slate-500">{s.class} — ID: {s.studentId}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-slate-700">PKR {(s.paidAmount || 0).toLocaleString()} / {(s.totalFee || 0).toLocaleString()}</p>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${s.feeStatus === "paid" ? "bg-green-100 text-green-700" : s.feeStatus === "partial" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{s.feeStatus}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1569,6 +2860,120 @@ const PartnerDashboard = () => {
                 </CardContent>
               </Card>
 
+              {/* Monthly Money Trail */}
+              {payoutData && (
+                <>
+                  <Card className="border-violet-200 shadow-lg">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg text-violet-800">
+                        <TrendingUp className="h-5 w-5" /> Revenue Trail — This Month
+                      </CardTitle>
+                      <CardDescription>Per-student fee breakdown showing your 100% teaching income</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                        <div className="p-3 bg-violet-50 rounded-xl border border-violet-200 text-center">
+                          <p className="text-xs text-violet-600 font-semibold uppercase tracking-wider">Teaching Income</p>
+                          <p className="text-xl font-bold text-violet-700 mt-1">PKR {(payoutData.monthlyEarnings?.teachingIncome || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                          <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Pool Dividends</p>
+                          <p className="text-xl font-bold text-emerald-700 mt-1">PKR {(payoutData.monthlyEarnings?.dividendIncome || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
+                          <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">Total This Month</p>
+                          <p className="text-xl font-bold text-blue-700 mt-1">PKR {(payoutData.monthlyEarnings?.totalMonthly || 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+
+                      {/* Per-student breakdown */}
+                      {payoutData.moneyTrail?.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Per-Student Fee Payments</p>
+                          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                            {payoutData.moneyTrail.map((trail: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-violet-50 border border-violet-100 hover:bg-violet-100 transition-colors">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-200 text-violet-700 font-bold text-sm">
+                                    {(trail.studentName || "?")[0].toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{trail.studentName}</p>
+                                    <p className="text-xs text-slate-500">
+                                      {trail.month} · {trail.splitType?.replace(/_/g, " ")}
+                                      {trail.date ? ` · ${new Date(trail.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-violet-700">+PKR {(trail.teacherShare || 0).toLocaleString()}</p>
+                                  <p className="text-xs text-slate-400">of PKR {(trail.feeAmount || 0).toLocaleString()} total</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <TrendingUp className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+                          <p className="text-sm text-slate-500">No fee payments recorded this month</p>
+                        </div>
+                      )}
+
+                      {/* Pool dividends */}
+                      {payoutData.dividends?.length > 0 && (
+                        <div className="mt-4">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Pool Dividend Payments</p>
+                          <div className="space-y-2">
+                            {payoutData.dividends.map((d: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">{d.description || "Pool Dividend"}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {d.poolType} pool · {d.percentage}% share
+                                    {d.date ? ` · ${new Date(d.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
+                                  </p>
+                                </div>
+                                <p className="text-sm font-bold text-emerald-700">+PKR {(d.amount || 0).toLocaleString()}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* All-Time Summary */}
+                  <Card className="border-slate-200 shadow-lg">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <BarChart2 className="h-5 w-5 text-slate-600" /> All-Time Earnings Summary
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Teaching</p>
+                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.teachingIncome || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Dividends</p>
+                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.dividendIncome || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
+                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Earned</p>
+                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.totalAllTime || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                          <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Paid Out</p>
+                          <p className="text-lg font-bold text-emerald-700 mt-1">PKR {(payoutData.allTimeEarnings?.totalPaid || 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+
               {/* Payout History */}
               <Card className="border-slate-200 shadow-lg">
                 <CardHeader className="pb-3">
@@ -1672,6 +3077,152 @@ const PartnerDashboard = () => {
         </div>
       )}
 
+
+      {/* ======= CLOSE DAY PREVIEW DIALOG ======= */}
+      <Dialog open={closePreviewOpen} onOpenChange={setClosePreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Lock className="h-5 w-5 text-amber-600" />
+              Daily Revenue Close — Review
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Review your revenue breakdown before closing. Floating cash → Verified.
+            </DialogDescription>
+          </DialogHeader>
+
+          {closePreview && (
+            <div className="space-y-4">
+              {/* Net Total Banner */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-amber-700 font-bold">Net Closeable Amount</p>
+                  <p className="text-3xl font-black text-amber-900">PKR {(closePreview.netTotal || closePreview.totalAmount || 0).toLocaleString()}</p>
+                </div>
+                <div className="text-right text-sm text-amber-700">
+                  <p><span className="font-semibold">{closePreview.totalEntries || closePreview.transactionCount || 0}</span> entries</p>
+                </div>
+              </div>
+
+              {/* Tuition Revenue Section */}
+              {closePreview.tuitionRevenue && closePreview.tuitionRevenue.count > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                      <GraduationCap className="h-4 w-4" />
+                      Tuition Revenue (100% Share)
+                    </p>
+                    <span className="text-sm font-bold text-emerald-700">PKR {closePreview.tuitionRevenue.total.toLocaleString()}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {closePreview.tuitionRevenue.items.map((item: any, idx: number) => (
+                      <div key={item._id || idx} className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                          <span className="font-bold text-emerald-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-slate-500">{item.className} · {item.description || "Equal split among teachers"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Academy Share Revenue Section */}
+              {closePreview.academyShareRevenue && closePreview.academyShareRevenue.count > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-blue-700 flex items-center gap-1.5">
+                      <Briefcase className="h-4 w-4" />
+                      Academy Share Revenue
+                    </p>
+                    <span className="text-sm font-bold text-blue-700">PKR {closePreview.academyShareRevenue.total.toLocaleString()}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {closePreview.academyShareRevenue.items.map((item: any, idx: number) => (
+                      <div key={item._id || idx} className="bg-blue-50/50 border border-blue-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                          <span className="font-bold text-blue-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-slate-500">{item.className} · {item.description || "Academy share split"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Withdrawal Adjustments Section */}
+              {closePreview.withdrawalAdjustments && closePreview.withdrawalAdjustments.count > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4" />
+                      Withdrawal Adjustments
+                    </p>
+                    <span className="text-sm font-bold text-red-700">PKR {closePreview.withdrawalAdjustments.total.toLocaleString()}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {closePreview.withdrawalAdjustments.items.map((item: any, idx: number) => (
+                      <div key={item._id || idx} className="bg-red-50/50 border border-red-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-medium text-slate-800 text-sm">{item.studentName || "Student"}</span>
+                          <span className="font-bold text-red-700 text-sm">PKR {(item.amount || 0).toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-slate-500">{item.className} · Refund deduction</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback: Old-format breakdown for backwards compatibility */}
+              {!closePreview.tuitionRevenue && (closePreview.breakdown || []).length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-slate-700 mb-2">Student Breakdown</p>
+                  <div className="space-y-2">
+                    {closePreview.breakdown.map((item: any, idx: number) => (
+                      <div key={item.studentId || idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-slate-800 text-sm">{item.studentName}</span>
+                          <span className="font-bold text-emerald-700 text-sm">PKR {(item.totalMyShare || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(item.subjects || []).map((s: any, si: number) => (
+                            <span key={si} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.shareType === 'PARTNER_100' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {s.subject}: PKR {(s.teacherShare || 0).toLocaleString()}
+                              {s.shareType === 'PARTNER_100' && <span className="text-[10px]">(100%)</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {closePreview.totalEntries === 0 && (!closePreview.breakdown || closePreview.breakdown?.length === 0) && (
+                <p className="text-sm text-slate-500 text-center py-4">No uncollected revenue to close.</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 mt-2">
+            <Button variant="outline" onClick={() => setClosePreviewOpen(false)} className="h-10">
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmPartnerCloseDay}
+              disabled={isClosingDay}
+              className="h-10 bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+            >
+              {isClosingDay ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Lock className="h-4 w-4 mr-1.5" />}
+              Confirm &amp; Close Day
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </DashboardLayout>
   );

@@ -65,12 +65,12 @@ const TeacherSchema = new mongoose.Schema(
     // Total paid out to teacher (lifetime)
     totalPaid: { type: Number, default: 0 },
 
-    // Compensation Package (Triple-Mode Support)
+    // Compensation Package (Quad-Mode Support)
     compensation: {
-      // Compensation Type: 'percentage', 'fixed', or 'hybrid'
+      // Compensation Type: 'percentage', 'fixed', 'hybrid', or 'perStudent'
       type: {
         type: String,
-        enum: ["percentage", "fixed", "hybrid"],
+        enum: ["percentage", "fixed", "hybrid", "perStudent"],
         required: true,
         default: "percentage",
       },
@@ -108,6 +108,13 @@ const TeacherSchema = new mongoose.Schema(
         max: 100,
         default: null,
       },
+
+      // For Per-Student Mode (amount per active student per session)
+      perStudentAmount: {
+        type: Number,
+        min: 0,
+        default: null,
+      },
     },
   },
   {
@@ -124,14 +131,17 @@ TeacherSchema.virtual("compensationSummary").get(function () {
     fixedSalary,
     baseSalary,
     profitShare,
+    perStudentAmount,
   } = this.compensation;
 
   if (type === "percentage") {
     return `${teacherShare}% / ${academyShare}% Split`;
   } else if (type === "fixed") {
-    return `PKR ${fixedSalary.toLocaleString()} /month`;
+    return `PKR ${fixedSalary?.toLocaleString() || 0} /month`;
   } else if (type === "hybrid") {
-    return `PKR ${baseSalary.toLocaleString()} + ${profitShare}% Bonus`;
+    return `PKR ${baseSalary?.toLocaleString() || 0} + ${profitShare}% Bonus`;
+  } else if (type === "perStudent") {
+    return `PKR ${perStudentAmount?.toLocaleString() || 0} /student`;
   }
   return "Not Set";
 });
@@ -162,6 +172,7 @@ TeacherSchema.pre("save", async function () {
   this.compensation.fixedSalary = convertToNull(this.compensation.fixedSalary);
   this.compensation.baseSalary = convertToNull(this.compensation.baseSalary);
   this.compensation.profitShare = convertToNull(this.compensation.profitShare);
+  this.compensation.perStudentAmount = convertToNull(this.compensation.perStudentAmount);
 
   const {
     type,
@@ -170,6 +181,7 @@ TeacherSchema.pre("save", async function () {
     fixedSalary,
     baseSalary,
     profitShare,
+    perStudentAmount,
   } = this.compensation;
 
   if (type === "percentage") {
@@ -195,6 +207,7 @@ TeacherSchema.pre("save", async function () {
     this.compensation.fixedSalary = null;
     this.compensation.baseSalary = null;
     this.compensation.profitShare = null;
+    this.compensation.perStudentAmount = null;
   } else if (type === "fixed") {
     // Validate fixed salary is present and is a number
     if (
@@ -212,6 +225,7 @@ TeacherSchema.pre("save", async function () {
     this.compensation.academyShare = null;
     this.compensation.baseSalary = null;
     this.compensation.profitShare = null;
+    this.compensation.perStudentAmount = null;
   } else if (type === "hybrid") {
     // Validate hybrid fields are present and are numbers
     if (baseSalary === null || baseSalary === undefined || isNaN(baseSalary)) {
@@ -228,6 +242,25 @@ TeacherSchema.pre("save", async function () {
     this.compensation.teacherShare = null;
     this.compensation.academyShare = null;
     this.compensation.fixedSalary = null;
+    this.compensation.perStudentAmount = null;
+  } else if (type === "perStudent") {
+    // Validate perStudentAmount is present and is a number
+    if (
+      perStudentAmount === null ||
+      perStudentAmount === undefined ||
+      isNaN(perStudentAmount)
+    ) {
+      throw new Error("Per-student amount is required for perStudent compensation");
+    }
+    if (perStudentAmount < 0) {
+      throw new Error("Per-student amount must be a positive number");
+    }
+    // Clear other fields
+    this.compensation.teacherShare = null;
+    this.compensation.academyShare = null;
+    this.compensation.fixedSalary = null;
+    this.compensation.baseSalary = null;
+    this.compensation.profitShare = null;
   }
 
   console.log("✅ PRE-SAVE HOOK - After processing:", {

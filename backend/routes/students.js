@@ -9,6 +9,7 @@ const Notification = require("../models/Notification");
 const User = require("../models/User");
 const Configuration = require("../models/Configuration");
 const Teacher = require("../models/Teacher");
+const DailyRevenue = require("../models/DailyRevenue");
 const { protect } = require("../middleware/authMiddleware");
 const { handlePhotoUpload } = require("../middleware/upload");
 const {
@@ -17,6 +18,7 @@ const {
   trackPrint,
   findByToken,
 } = require("../controllers/studentController");
+const { createWithdrawalAdjustments } = require("../helpers/revenueEngine");
 
 // ========================================
 // FEE COLLECTION ROUTES (Module 2)
@@ -726,6 +728,48 @@ router.delete("/:id", async (req, res) => {
         }
       } catch (notifErr) {
         console.log("Refund notification skipped:", notifErr.message);
+      }
+
+      // ── Reverse Owner/Partner revenue entries proportionally ──
+      try {
+        const studentRevEntries = await DailyRevenue.find({
+          studentRef: student._id,
+          status: "UNCOLLECTED",
+          amount: { $gt: 0 },
+        }).lean();
+
+        if (studentRevEntries.length > 0) {
+          const totalRevenue = studentRevEntries.reduce((s, e) => s + e.amount, 0);
+          const refundRatio = Math.min(1, refundNum / (student.paidAmount + refundNum));
+
+          const deductions = [];
+          for (const entry of studentRevEntries) {
+            const deductAmt = Math.round(entry.amount * refundRatio);
+            if (deductAmt > 0) {
+              deductions.push({
+                userId: entry.partner,
+                amount: deductAmt,
+                className: entry.className,
+                studentName: student.studentName,
+                description: `Withdrawal refund reversal: ${student.studentName} — PKR ${refundNum.toLocaleString()} refunded`,
+              });
+
+              // Deduct from user's floating wallet
+              const userToDeduct = await User.findById(entry.partner);
+              if (userToDeduct && userToDeduct.walletBalance) {
+                userToDeduct.walletBalance.floating = Math.max(0,
+                  (userToDeduct.walletBalance.floating || 0) - deductAmt);
+                await userToDeduct.save();
+              }
+            }
+          }
+
+          if (deductions.length > 0) {
+            await createWithdrawalAdjustments(deductions);
+          }
+        }
+      } catch (revErr) {
+        console.log("Revenue reversal during withdrawal:", revErr.message);
       }
     } else {
       // No refund — just withdrawal notification

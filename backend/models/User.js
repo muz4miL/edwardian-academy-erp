@@ -250,8 +250,8 @@ userSchema.methods.getPublicProfile = function () {
     profileImage: this.profileImage,
   };
 
-  // Include teacherId for TEACHER role so dashboard can fetch teacher profile
-  if (this.role === "TEACHER" && this.teacherId) {
+  // Include teacherId for roles that may also teach (TEACHER and PARTNER)
+  if ((this.role === "TEACHER" || this.role === "PARTNER") && this.teacherId) {
     profile.teacherId = this.teacherId;
   }
 

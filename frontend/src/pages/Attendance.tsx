@@ -30,12 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   UserCheck,
@@ -939,7 +934,7 @@ function StudentLookup() {
       });
       if (!res.ok) throw new Error("Failed to fetch students");
       const all = await res.json();
-      const list = Array.isArray(all) ? all : all.students || [];
+      const list = Array.isArray(all) ? all : all.data || all.students || [];
       const filtered = list.filter(
         (s: any) =>
           s.studentId?.toString().includes(searchId) ||
@@ -972,8 +967,8 @@ function StudentLookup() {
     enabled: !!activeStudentId,
   });
 
-  const stats = history?.stats || {};
-  const attendanceRecords = history?.records || [];
+  const stats = history?.data?.stats || {};
+  const attendanceRecords = history?.data?.records || [];
 
   return (
     <div className="space-y-6">
@@ -1187,8 +1182,17 @@ function MonthlyOverview() {
     },
   });
 
-  const days = data?.days || [];
-  const monthStats = data?.monthStats || {};
+  const days = data?.data?.days || [];
+  const totalEnrolled = data?.data?.totalEnrolled || 0;
+
+  const monthStats = useMemo(() => {
+    if (days.length === 0) return {} as any;
+    const totalPresent = days.reduce((sum: number, d: any) => sum + d.present, 0);
+    const avgDaily = Math.round(totalPresent / days.length);
+    const avgRate = Math.round(days.reduce((sum: number, d: any) => sum + (d.rate || 0), 0) / days.length);
+    const bestDay = days.reduce((best: any, d: any) => (!best || d.present > best.present) ? d : best, null);
+    return { avgDaily, avgRate, bestDay };
+  }, [days]);
 
   const monthName = new Date(year, month - 1).toLocaleString("en-US", {
     month: "long",
@@ -1319,7 +1323,7 @@ function MonthlyOverview() {
                   const dayNum = i + 1;
                   const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
                   const dayData = dayDataMap[dateKey];
-                  const rate = dayData?.attendanceRate || 0;
+                  const rate = dayData?.rate || 0;
                   const present = dayData?.present || 0;
 
                   return (
@@ -1387,7 +1391,7 @@ function MonthlyOverview() {
                         weekday: "long",
                       }),
                       d.present,
-                      `${d.attendanceRate}%`,
+                      `${d.rate}%`,
                     ])
                   )
                 }
@@ -1422,14 +1426,14 @@ function MonthlyOverview() {
                     <TableCell className="text-right">
                       <Badge
                         className={
-                          d.attendanceRate >= 90
+                          d.rate >= 90
                             ? "bg-emerald-100 text-emerald-700"
-                            : d.attendanceRate >= 75
+                            : d.rate >= 75
                               ? "bg-amber-100 text-amber-700"
                               : "bg-red-100 text-red-700"
                         }
                       >
-                        {d.attendanceRate}%
+                        {d.rate}%
                       </Badge>
                     </TableCell>
                   </TableRow>
@@ -1444,205 +1448,9 @@ function MonthlyOverview() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MANUAL MARKING DIALOG
-// ═══════════════════════════════════════════════════════════
-function ManualMarkDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [studentSearch, setStudentSearch] = useState("");
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [marking, setMarking] = useState(false);
-  const [markDate, setMarkDate] = useState(getTodayStr());
-  const [markStatus, setMarkStatus] = useState("present");
-  const [markType, setMarkType] = useState("check-in");
-
-  const searchStudents = async () => {
-    if (!studentSearch.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/students`, {
-        credentials: "include",
-      });
-      const all = await res.json();
-      const list = Array.isArray(all) ? all : all.students || [];
-      setSearchResults(
-        list
-          .filter(
-            (s: any) =>
-              s.studentId?.toString().includes(studentSearch) ||
-              s.studentName?.toLowerCase().includes(studentSearch.toLowerCase())
-          )
-          .slice(0, 10)
-      );
-    } catch {
-      toast.error("Search failed");
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleMark = async () => {
-    if (!selectedStudent) return;
-    setMarking(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/attendance/manual`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          studentId: selectedStudent._id,
-          date: markDate,
-          status: markStatus,
-          type: markType,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to mark attendance");
-      }
-      toast.success(
-        `Attendance marked for ${selectedStudent.studentName}`
-      );
-      onOpenChange(false);
-      setSelectedStudent(null);
-      setStudentSearch("");
-      setSearchResults([]);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to mark attendance");
-    } finally {
-      setMarking(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Manual Attendance Marking</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Student Search */}
-          {!selectedStudent ? (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search student by ID or name..."
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && searchStudents()}
-                />
-                <Button size="sm" onClick={searchStudents} disabled={searching}>
-                  {searching ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-              {searchResults.map((s: any) => (
-                <div
-                  key={s._id}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent cursor-pointer"
-                  onClick={() => setSelectedStudent(s)}
-                >
-                  <div>
-                    <span className="font-medium">{s.studentName}</span>
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      #{s.studentId}
-                    </span>
-                  </div>
-                  <Badge variant="outline">{s.class}</Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="p-3 rounded-lg border bg-muted/50 flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{selectedStudent.studentName}</p>
-                  <p className="text-sm text-muted-foreground">
-                    #{selectedStudent.studentId} • {selectedStudent.class}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedStudent(null)}
-                >
-                  Change
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Date</label>
-                  <Input
-                    type="date"
-                    value={markDate}
-                    onChange={(e) => setMarkDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Type</label>
-                  <Select value={markType} onValueChange={setMarkType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="check-in">Check In</SelectItem>
-                      <SelectItem value="check-out">Check Out</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Status</label>
-                <Select value={markStatus} onValueChange={setMarkStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="present">Present</SelectItem>
-                    <SelectItem value="late">Late</SelectItem>
-                    <SelectItem value="early-leave">Early Leave</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                className="w-full"
-                onClick={handleMark}
-                disabled={marking}
-              >
-                {marking ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <UserCheck className="mr-2 h-4 w-4" />
-                )}
-                Mark Attendance
-              </Button>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════
 // MAIN ATTENDANCE PAGE
 // ═══════════════════════════════════════════════════════════
 export default function Attendance() {
-  const [showManualDialog, setShowManualDialog] = useState(false);
-
   return (
     <DashboardLayout title="Attendance">
       <div className="space-y-6">
@@ -1651,25 +1459,20 @@ export default function Attendance() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Attendance</h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Track and manage student attendance via gate scanner and manual entry
+              Track and manage student attendance via gate scanner
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowManualDialog(true)}>
-              <UserCheck className="mr-1.5 h-4 w-4" /> Manual Entry
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => window.open("/gatekeeper", "_blank")}
-            >
-              <ScanBarcode className="mr-1.5 h-4 w-4" /> Open Scanner
-            </Button>
-          </div>
+          <Button
+            variant="default"
+            onClick={() => window.open("/gatekeeper", "_blank")}
+          >
+            <ScanBarcode className="mr-1.5 h-4 w-4" /> Open Scanner
+          </Button>
         </div>
 
         {/* Tabs */}
         <Tabs defaultValue="today" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-xl">
+          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
             <TabsTrigger value="today" className="flex items-center gap-1.5">
               <Activity className="h-4 w-4" />
               Today
@@ -1682,6 +1485,10 @@ export default function Attendance() {
               <Search className="h-4 w-4" />
               Student Lookup
             </TabsTrigger>
+            <TabsTrigger value="monthly" className="flex items-center gap-1.5">
+              <CalendarDays className="h-4 w-4" />
+              Monthly Overview
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="today" className="mt-6">
@@ -1693,13 +1500,10 @@ export default function Attendance() {
           <TabsContent value="student" className="mt-6">
             <StudentLookup />
           </TabsContent>
+          <TabsContent value="monthly" className="mt-6">
+            <MonthlyOverview />
+          </TabsContent>
         </Tabs>
-
-        {/* Manual Mark Dialog */}
-        <ManualMarkDialog
-          open={showManualDialog}
-          onOpenChange={setShowManualDialog}
-        />
       </div>
     </DashboardLayout>
   );

@@ -7,6 +7,7 @@ const configurationSchema = new mongoose.Schema(
     academyLogo: { type: String, default: "" },
     academyAddress: { type: String, default: "Peshawar, Pakistan" },
     academyPhone: { type: String, default: "" },
+    academyOwner: { type: String, default: "" },
 
     // Card 1: Global Staff Split (Revenue IN) - for non-owner teachers
     salaryConfig: {
@@ -35,6 +36,20 @@ const configurationSchema = new mongoose.Schema(
       {
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
         fullName: { type: String },
+        percentage: { type: Number, default: 0, min: 0, max: 100 },
+      },
+    ],
+
+    // ========================================
+    // ACADEMY SHARE SPLIT (Revenue from teacher-split classes)
+    // When a teacher gets 70%, the remaining 30% is split among Owner/Partners per this config
+    // ========================================
+    academyShareSplit: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
+        fullName: { type: String },
+        role: { type: String, enum: ["OWNER", "PARTNER"] },
         percentage: { type: Number, default: 0, min: 0, max: 100 },
       },
     ],
@@ -143,6 +158,14 @@ configurationSchema.pre("save", function () {
       this.expenseSplit.waqar + this.expenseSplit.zahid + this.expenseSplit.saud;
     if (total !== 100) {
       throw new Error(`Expense split must total 100%, got ${total}%`);
+    }
+  }
+
+  // Academy share split must total 100% (if configured)
+  if (this.academyShareSplit && this.academyShareSplit.length > 0) {
+    const academyTotal = this.academyShareSplit.reduce((sum, s) => sum + (s.percentage || 0), 0);
+    if (academyTotal !== 100) {
+      throw new Error(`Academy share split must total 100%, got ${academyTotal}%`);
     }
   }
 

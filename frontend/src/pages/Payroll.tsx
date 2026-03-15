@@ -12,6 +12,8 @@ import {
   Loader2,
   Eye,
   Calendar,
+  FileText,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -464,6 +466,195 @@ export default function Payroll() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ======= TEACHER REVENUE REPORT ======= */}
+      <TeacherPayrollReportSection />
     </DashboardLayout>
+  );
+}
+
+// ========================================
+// TEACHER PAYROLL REPORT SECTION
+// ========================================
+function TeacherPayrollReportSection() {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["teacher-payroll-report"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/finance/teacher-payroll-report`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch teacher payroll report");
+      return res.json();
+    },
+  });
+
+  const report = data?.data || [];
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-violet-500" />
+            Teacher Revenue Report
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-violet-500" />
+            Teacher Revenue Report
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-muted-foreground">
+            <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-400" />
+            <p className="text-sm">Failed to load report. The endpoint may not be available yet.</p>
+            <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const compTypeLabels: Record<string, string> = {
+    percentage: "Percentage Split",
+    perStudent: "Per Student",
+    fixed: "Fixed Salary",
+    hybrid: "Hybrid",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-violet-500" />
+            Teacher Revenue Report
+          </CardTitle>
+          <Badge variant="outline" className="text-xs">
+            {report.length} teachers
+          </Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Calculated amounts owed to academy teachers (excludes Owner/Partner — they close from their dashboards).
+        </p>
+      </CardHeader>
+      <CardContent>
+        {report.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p>No teacher payroll data available.</p>
+            <p className="text-sm">Teachers with percentage, per-student, or fixed compensation will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {report.map((t: any) => (
+              <div
+                key={t.teacherId}
+                className="border rounded-lg overflow-hidden"
+              >
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setExpanded(expanded === t.teacherId ? null : t.teacherId)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700 font-bold">
+                      {(t.teacherName || "T").charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">{t.teacherName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge variant="secondary" className="text-[10px] h-5">
+                          {compTypeLabels[t.compensationType] || t.compensationType}
+                        </Badge>
+                        {t.subject && (
+                          <span className="text-xs text-muted-foreground">{t.subject}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-lg font-bold ${t.netOwed > 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                      PKR {(t.netOwed || 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Net owed</p>
+                  </div>
+                </div>
+
+                {expanded === t.teacherId && (
+                  <div className="border-t bg-muted/20 p-4 space-y-3">
+                    {/* Calculation proof */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="text-xs text-muted-foreground">Gross Earned</p>
+                        <p className="text-sm font-bold text-emerald-600">PKR {(t.grossEarned || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="text-xs text-muted-foreground">Already Paid</p>
+                        <p className="text-sm font-bold text-blue-600">PKR {(t.alreadyPaid || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="text-xs text-muted-foreground">Adjustments</p>
+                        <p className="text-sm font-bold text-red-600">PKR {(t.withdrawalAdjustments || 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border">
+                        <p className="text-xs text-muted-foreground font-semibold">Net Owed</p>
+                        <p className="text-sm font-bold text-violet-700">PKR {(t.netOwed || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    {/* Proof details */}
+                    {t.proof && (
+                      <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-1">
+                        <p className="font-semibold text-slate-700 mb-1">Calculation Breakdown:</p>
+                        {t.compensationType === "percentage" && (
+                          <>
+                            <p>Teacher Share: {t.proof.teacherSharePercent}% of fee collections</p>
+                            <p>Total from {t.proof.feeRecordCount || 0} fee records = PKR {(t.proof.totalFromFees || 0).toLocaleString()}</p>
+                          </>
+                        )}
+                        {t.compensationType === "perStudent" && (
+                          <>
+                            <p>Rate: PKR {(t.proof.perStudentAmount || 0).toLocaleString()} per student</p>
+                            <p>Active Students: {t.proof.activeStudentCount || 0}</p>
+                            <p>Total: {t.proof.activeStudentCount || 0} × PKR {(t.proof.perStudentAmount || 0).toLocaleString()} = PKR {(t.proof.calculatedAmount || 0).toLocaleString()}</p>
+                          </>
+                        )}
+                        {t.compensationType === "fixed" && (
+                          <p>Fixed Monthly Salary: PKR {(t.proof.fixedSalary || 0).toLocaleString()}</p>
+                        )}
+                        {t.compensationType === "hybrid" && (
+                          <>
+                            <p>Base Salary: PKR {(t.proof.baseSalary || 0).toLocaleString()}</p>
+                            <p>Profit Share: {t.proof.profitSharePercent}% = PKR {(t.proof.profitShareAmount || 0).toLocaleString()}</p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

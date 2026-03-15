@@ -669,3 +669,130 @@ export const examApi = {
         return data;
     },
 };
+
+// ========================================
+// Inventory API Endpoints
+// ========================================
+export const inventoryApi = {
+    getStats: async () => {
+        const response = await fetch(`${API_BASE_URL}/inventory/stats`, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch inventory stats');
+        return data;
+    },
+
+    getItems: async (filters?: { category?: string; status?: string; search?: string; lowStock?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.category) queryParams.append('category', filters.category);
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.search) queryParams.append('search', filters.search);
+        if (filters?.lowStock) queryParams.append('lowStock', filters.lowStock);
+
+        const url = `${API_BASE_URL}/inventory/items${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch inventory items');
+        return data;
+    },
+
+    getItem: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items/${id}`, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch item');
+        return data;
+    },
+
+    createItem: async (itemData: any) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(itemData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to create item');
+        return data;
+    },
+
+    updateItem: async (id: string, itemData: any) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(itemData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to update item');
+        return data;
+    },
+
+    deleteItem: async (id: string) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to delete item');
+        return data;
+    },
+
+    stockTransaction: async (id: string, txData: any) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items/${id}/stock`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(txData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Stock transaction failed');
+        return data;
+    },
+
+    getTransactions: async (filters?: { type?: string; itemId?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.type) queryParams.append('type', filters.type);
+        if (filters?.itemId) queryParams.append('itemId', filters.itemId);
+
+        const url = `${API_BASE_URL}/inventory/transactions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch transactions');
+        return data;
+    },
+
+    createMaintenance: async (itemId: string, maintData: any) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/items/${itemId}/maintenance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(maintData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to create maintenance log');
+        return data;
+    },
+
+    updateMaintenance: async (id: string, maintData: any) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/maintenance/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(maintData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to update maintenance');
+        return data;
+    },
+
+    getMaintenanceLogs: async (filters?: { status?: string; priority?: string }) => {
+        const queryParams = new URLSearchParams();
+        if (filters?.status) queryParams.append('status', filters.status);
+        if (filters?.priority) queryParams.append('priority', filters.priority);
+
+        const url = `${API_BASE_URL}/inventory/maintenance${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch maintenance logs');
+        return data;
+    },
+};

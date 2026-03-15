@@ -249,6 +249,7 @@ exports.updateUser = async (req, res) => {
     // Update password if provided
     if (password && password.length >= 8) {
       user.password = password; // Will be hashed by pre-save hook
+      console.log(`🔑 Password update for ${user.fullName} (${user.username}): new password set (${password.length} chars)`);
 
       // Sync plaintext password to Teacher model for admin display
       if (user.teacherId) {
@@ -258,6 +259,14 @@ exports.updateUser = async (req, res) => {
     }
 
     await user.save();
+
+    // Verify password was saved correctly by re-reading and comparing
+    if (password && password.length >= 8) {
+      const bcrypt = require("bcryptjs");
+      const verifyUser = await User.findById(user._id);
+      const passwordVerified = await bcrypt.compare(password, verifyUser.password);
+      console.log(`🔑 Password verification for ${user.username}: ${passwordVerified ? '✅ OK' : '❌ FAILED'}`);
+    }
 
     console.log(`✅ User updated: ${user.fullName}`);
 

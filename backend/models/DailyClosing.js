@@ -16,6 +16,10 @@ const dailyClosingSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        closedByRole: {
+            type: String,
+            enum: ['OWNER', 'PARTNER'],
+        },
         date: {
             type: Date,
             required: [true, 'Closing date is required'],
@@ -29,6 +33,20 @@ const dailyClosingSchema = new mongoose.Schema(
         transactionCount: {
             type: Number,
             default: 0,
+        },
+        // Breakdown for audit trail / proof
+        breakdown: {
+            tuitionRevenue: { type: Number, default: 0 },
+            academyShareRevenue: { type: Number, default: 0 },
+            withdrawalAdjustments: { type: Number, default: 0 },
+            // Detailed line items for proof
+            lineItems: [{
+                type: { type: String, enum: ['TUITION_SHARE', 'ACADEMY_SHARE', 'WITHDRAWAL_ADJUSTMENT'] },
+                className: { type: String },
+                studentName: { type: String },
+                amount: { type: Number },
+                description: { type: String },
+            }],
         },
         status: {
             type: String,

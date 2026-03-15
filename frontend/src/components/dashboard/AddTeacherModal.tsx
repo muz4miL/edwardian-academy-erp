@@ -47,7 +47,7 @@ interface AddTeacherModalProps {
   defaultFixedSalary?: string;
 }
 
-type CompensationType = "percentage" | "fixed";
+type CompensationType = "percentage" | "fixed" | "perStudent";
 
 export const AddTeacherModal = ({
   open,
@@ -93,6 +93,7 @@ export const AddTeacherModal = ({
   const [teacherShare, setTeacherShare] = useState(defaultTeacherShare);
   const [academyShare, setAcademyShare] = useState(defaultAcademyShare);
   const [fixedSalary, setFixedSalary] = useState(defaultFixedSalary);
+  const [perStudentAmount, setPerStudentAmount] = useState("");
   const [baseSalary, setBaseSalary] = useState("");
   const [bonusPercent, setBonusPercent] = useState("");
 
@@ -252,6 +253,23 @@ export const AddTeacherModal = ({
       compensation.fixedSalary = salary;
       compensation.teacherShare = null;
       compensation.academyShare = null;
+      compensation.baseSalary = null;
+      compensation.profitShare = null;
+      compensation.perStudentAmount = null;
+    } else if (compType === "perStudent") {
+      const psAmount = toNumberOrNull(perStudentAmount);
+      if (psAmount === null || psAmount <= 0) {
+        toast({
+          title: "⚠️ Invalid Amount",
+          description: "Please provide a valid per-student amount.",
+          variant: "destructive",
+        });
+        return;
+      }
+      compensation.perStudentAmount = psAmount;
+      compensation.teacherShare = null;
+      compensation.academyShare = null;
+      compensation.fixedSalary = null;
       compensation.baseSalary = null;
       compensation.profitShare = null;
     }
@@ -550,7 +568,7 @@ export const AddTeacherModal = ({
                     onValueChange={(value) =>
                       setCompType(value as CompensationType)
                     }
-                    className="grid grid-cols-2 gap-3"
+                    className="grid grid-cols-3 gap-3"
                   >
                     {[
                       {
@@ -564,6 +582,12 @@ export const AddTeacherModal = ({
                         label: "Fixed Salary",
                         icon: "PKR",
                         desc: "Monthly amount",
+                      },
+                      {
+                        value: "perStudent",
+                        label: "Per Student",
+                        icon: "👤",
+                        desc: "Per enrolled student",
                       },
                     ].map((type) => (
                       <div key={type.value}>
@@ -681,6 +705,27 @@ export const AddTeacherModal = ({
                             className="pl-9 h-11 font-medium"
                           />
                         </div>
+                      </div>
+                    )}
+
+                    {compType === "perStudent" && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-500">
+                          Amount Per Student (PKR)
+                        </Label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            type="number"
+                            placeholder="e.g. 3000"
+                            value={perStudentAmount}
+                            onChange={(e) => setPerStudentAmount(e.target.value)}
+                            className="pl-9 h-11 font-medium"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Teacher earns this amount per active enrolled student per session. Shown in payroll reports.
+                        </p>
                       </div>
                     )}
                   </div>

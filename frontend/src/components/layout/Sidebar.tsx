@@ -21,6 +21,7 @@ import {
   Video,
   BarChart,
   FileQuestion,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -123,6 +124,12 @@ const navItems = [
     label: "Reports",
     path: "/reports",
     permission: "reports",
+  },
+  {
+    icon: Package,
+    label: "Inventory",
+    path: "/inventory",
+    permission: "inventory",
   },
 
   {

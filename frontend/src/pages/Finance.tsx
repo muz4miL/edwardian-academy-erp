@@ -1642,7 +1642,7 @@ const PartnerSettlements = () => {
           </div>
         ) : (
           partnerDebts.map((partner: any) => (
-            <Card key={partner.partnerKey} className={`shadow-lg border-l-4 ${partner.expenseDebt > 0 ? "border-red-500" : "border-green-500"}`}>
+            <Card key={partner.userId} className={`shadow-lg border-l-4 ${partner.expenseDebt > 0 ? "border-red-500" : "border-green-500"}`}>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div>

@@ -292,11 +292,11 @@ router.patch("/:id/mark-paid", async (req, res) => {
 });
 
 // @route   DELETE /api/expenses/:id
-// @desc    Delete expense
+// @desc    Delete expense and reverse partner debts
 // @access  Public
 router.delete("/:id", async (req, res) => {
   try {
-    const expense = await Expense.findByIdAndDelete(req.params.id);
+    const expense = await Expense.findById(req.params.id);
 
     if (!expense) {
       return res.status(404).json({
@@ -304,6 +304,19 @@ router.delete("/:id", async (req, res) => {
         message: "Expense not found",
       });
     }
+
+    // Reverse partner debts before deleting
+    if (expense.shares && expense.shares.length > 0) {
+      for (const share of expense.shares) {
+        if (share.partner && share.status === "UNPAID") {
+          await User.findByIdAndUpdate(share.partner, {
+            $inc: { expenseDebt: -share.amount, debtToOwner: -share.amount },
+          });
+        }
+      }
+    }
+
+    await Expense.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,

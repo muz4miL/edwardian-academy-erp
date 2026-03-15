@@ -91,6 +91,10 @@ const Configuration = () => {
   const [poolSaudShare, setPoolSaudShare] = useState(30);
   const [poolSplitError, setPoolSplitError] = useState("");
 
+  // --- Academy Share Split (NEW: for academy class revenue distribution to Owner/Partners) ---
+  const [academyShareSplit, setAcademyShareSplit] = useState<Array<{ userId: string; fullName: string; role: string; percentage: number }>>([]);
+  const [academyShareError, setAcademyShareError] = useState("");
+
   // --- Card 8: Waqar's Protocol - Dual Pool Splits ---
   // Protocol A: Tuition Pool (50/30/20)
   const [tuitionPoolWaqar, setTuitionPoolWaqar] = useState(50);
@@ -108,6 +112,7 @@ const Configuration = () => {
   const [academyName, setAcademyName] = useState("Edwardian Academy");
   const [academyAddress, setAcademyAddress] = useState("Peshawar, Pakistan");
   const [academyPhone, setAcademyPhone] = useState("");
+  const [academyOwner, setAcademyOwner] = useState("");
 
   // --- Card 5: Master Subject Pricing ---
   const [defaultSubjectFees, setDefaultSubjectFees] = useState<
@@ -190,6 +195,7 @@ const Configuration = () => {
           setAcademyName(data.academyName || "Edwardian Academy");
           setAcademyAddress(data.academyAddress || "Peshawar, Pakistan");
           setAcademyPhone(data.academyPhone || "");
+          setAcademyOwner(data.academyOwner || "");
 
           // Card 5: Master Subject Pricing
           setDefaultSubjectFees(data.defaultSubjectFees || []);
@@ -203,6 +209,11 @@ const Configuration = () => {
           // Card 9: Session Rate Master (Waqar Protocol v2)
           if (data.sessionPrices) {
             setSessionPrices(data.sessionPrices);
+          }
+
+          // Academy Share Split (NEW: for academy class revenue)
+          if (data.academyShareSplit && data.academyShareSplit.length > 0) {
+            setAcademyShareSplit(data.academyShareSplit);
           }
         }
       } catch (error) {
@@ -254,6 +265,17 @@ const Configuration = () => {
           }
 
           setExpenseShares(shares);
+
+          // Auto-populate academyShareSplit from partners if not already loaded from config
+          setAcademyShareSplit(prev => {
+            if (prev.length > 0) return prev;
+            return partners.map((p: any) => ({
+              userId: p.userId,
+              fullName: p.fullName,
+              role: p.role || "PARTNER",
+              percentage: Math.floor(100 / partners.length) + (partners.indexOf(p) === 0 ? 100 - Math.floor(100 / partners.length) * partners.length : 0),
+            }));
+          });
         }
       } catch {
         /* use empty */
@@ -279,6 +301,20 @@ const Configuration = () => {
       setSplitError("");
     }
   }, [expenseShares]);
+
+  // --- Validate Academy Share Split (must total 100%) ---
+  useEffect(() => {
+    if (academyShareSplit.length === 0) {
+      setAcademyShareError("");
+      return;
+    }
+    const total = academyShareSplit.reduce((sum, s) => sum + (s.percentage || 0), 0);
+    if (total !== 100) {
+      setAcademyShareError(`Total must be 100%. Current: ${total}%`);
+    } else {
+      setAcademyShareError("");
+    }
+  }, [academyShareSplit]);
 
   // --- Validate Pool Distribution (must total 100%) ---
   useEffect(() => {
@@ -367,8 +403,15 @@ const Configuration = () => {
       academyName,
       academyAddress,
       academyPhone,
+      academyOwner,
       defaultSubjectFees: subjects || defaultSubjectFees,
       sessionPrices,
+      academyShareSplit: academyShareSplit.map(s => ({
+        userId: s.userId,
+        fullName: s.fullName,
+        role: s.role,
+        percentage: s.percentage,
+      })),
     };
   };
 
@@ -551,6 +594,59 @@ const Configuration = () => {
                 <span>Super Admin</span>
               </div>
             </div>
+
+            {/* ========== CARD: Academy Profile (TOP) ========== */}
+            <Card className="shadow-md">
+              <CardHeader className="pb-4 border-b">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Academy Profile</CardTitle>
+                    <CardDescription>Branding information</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Academy Name</Label>
+                    <Input
+                      value={academyName}
+                      onChange={(e) => setAcademyName(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Academy Owner</Label>
+                    <Input
+                      value={academyOwner}
+                      onChange={(e) => setAcademyOwner(e.target.value)}
+                      placeholder="e.g. Sir Waqar Baig"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Address</Label>
+                    <Input
+                      value={academyAddress}
+                      onChange={(e) => setAcademyAddress(e.target.value)}
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Phone</Label>
+                    <Input
+                      value={academyPhone}
+                      onChange={(e) => setAcademyPhone(e.target.value)}
+                      placeholder="+92 XXX XXXXXXX"
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* ========== SYSTEM PARTNERS & OWNER (Dynamic) ========== */}
             <Card className="shadow-md">
@@ -862,6 +958,137 @@ const Configuration = () => {
               </CardContent>
             </Card>
 
+            {/* ========== ACADEMY SHARE SPLIT (Revenue from Academy Classes) ========== */}
+            <Card className="shadow-md border-l-4 border-l-violet-500">
+              <CardHeader className="pb-4 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-violet-100 to-purple-100">
+                      <DollarSign className="h-5 w-5 text-violet-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Academy Revenue Share Split</CardTitle>
+                      <CardDescription>How academy's share from teacher classes is distributed among Owner/Partners (must total 100%)</CardDescription>
+                    </div>
+                  </div>
+                  {academyShareSplit.length > 0 && (
+                    academyShareError ? (
+                      <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>{academyShareError}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>Valid (100%)</span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-violet-800">
+                    <strong>How it works:</strong> When a student pays for an academy class (MDCAT/ETEA), the teacher gets their share (e.g., 70%).
+                    The remaining academy share (e.g., 30%) is distributed among Owner/Partners using these percentages, flowing to their dashboard for daily closing.
+                  </p>
+                </div>
+
+                {academyShareSplit.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Percent className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium">No partners configured</p>
+                    <p className="text-sm mt-1">Partners will appear here once fetched.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      {academyShareSplit.map((share, index) => {
+                        const isOwner = share.role === "OWNER";
+                        return (
+                          <div
+                            key={share.userId}
+                            className={cn(
+                              "flex items-center gap-4 p-4 rounded-xl border transition-all",
+                              isOwner
+                                ? "bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200"
+                                : "bg-white border-gray-200 hover:border-violet-200"
+                            )}
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className={cn(
+                                "h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm",
+                                isOwner
+                                  ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                                  : "bg-gradient-to-br from-violet-400 to-purple-500"
+                              )}>
+                                {share.fullName?.charAt(0)?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-900 truncate">{share.fullName}</p>
+                                <p className="text-xs text-gray-500">{isOwner ? "Owner" : "Partner"}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="relative w-24">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={share.percentage}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                    setAcademyShareSplit(prev => prev.map((s, i) =>
+                                      i === index ? { ...s, percentage: val } : s
+                                    ));
+                                  }}
+                                  className="h-10 pr-8 text-right font-bold text-violet-700"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">%</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Total Bar */}
+                    <div className="pt-2">
+                      {(() => {
+                        const total = academyShareSplit.reduce((sum, s) => sum + (s.percentage || 0), 0);
+                        const isValid = total === 100;
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium text-gray-700">Total</span>
+                              <span className={cn("font-bold text-lg", isValid ? "text-green-600" : "text-red-600")}>
+                                {total}%
+                              </span>
+                            </div>
+                            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-300",
+                                  isValid ? "bg-gradient-to-r from-violet-400 to-purple-500" : total > 100 ? "bg-red-500" : "bg-amber-400"
+                                )}
+                                style={{ width: `${Math.min(total, 100)}%` }}
+                              />
+                            </div>
+                            {!isValid && (
+                              <p className="text-xs text-red-500 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {total > 100 ? `Exceeds 100% by ${total - 100}%` : `${100 - total}% remaining to allocate`}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* ========== OWNER & PARTNER COMPENSATION MODEL ========== */}
             <Card className="shadow-md">
               <CardHeader className="pb-4 border-b">
@@ -957,50 +1184,6 @@ const Configuration = () => {
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* ========== CARD 4: Academy Info ========== */}
-              <Card className="shadow-md">
-                <CardHeader className="pb-4 border-b">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                      <Building2 className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">Academy Profile</CardTitle>
-                      <CardDescription>Branding information</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold">
-                      Academy Name
-                    </Label>
-                    <Input
-                      value={academyName}
-                      onChange={(e) => setAcademyName(e.target.value)}
-                      className="h-10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Address</Label>
-                    <Input
-                      value={academyAddress}
-                      onChange={(e) => setAcademyAddress(e.target.value)}
-                      className="h-10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold">Phone</Label>
-                    <Input
-                      value={academyPhone}
-                      onChange={(e) => setAcademyPhone(e.target.value)}
-                      placeholder="+92 XXX XXXXXXX"
-                      className="h-10"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* ========== CARD 5: Master Subject Pricing ========== */}
               <Card className="shadow-md lg:col-span-2">
                 <CardHeader className="pb-4 border-b">

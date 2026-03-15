@@ -87,8 +87,11 @@ router.get('/', protect, async (req, res) => {
         } else if (user.role === 'TEACHER') {
             query.teacherId = user.teacherId || user.teacherProfile?._id || user._id;
         } else if (user.role === 'PARTNER') {
-            if (!classId) {
-                query.teacherId = user.teacherProfile?._id || user._id;
+            if (!classId && user.teacherId) {
+                query.teacherId = user.teacherId;
+            } else if (!classId) {
+                // Partner not linked to teacher — return empty
+                return res.json({ success: true, count: 0, data: [] });
             }
         }
         // OWNER/STAFF sees everything by default
