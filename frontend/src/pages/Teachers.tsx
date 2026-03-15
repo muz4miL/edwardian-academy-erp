@@ -491,17 +491,6 @@ const Teachers = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {/* Wallet Button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 hover:bg-green-100 hover:text-green-600"
-                        onClick={() => handleWallet(teacher)}
-                        title="Finance Manager"
-                      >
-                        <Wallet className="h-4 w-4" />
-                      </Button>
-
 
 
                       {/* Edit Button */}

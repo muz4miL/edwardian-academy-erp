@@ -1936,17 +1936,44 @@ exports.getTeacherPayrollReport = async (req, res) => {
       let proof = [];
 
       if (compType === "percentage") {
-        // Sum of teacher's share from fee records
+        // Use per-teacher Transaction records (NOT FeeRecord.splitBreakdown which is the TOTAL for all teachers)
         const teacherShare = teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70;
-        owedAmount = feeRecords.reduce((sum, fr) => sum + (fr.splitBreakdown?.teacherShare || 0), 0);
-        proof = feeRecords.map(fr => ({
-          studentName: fr.studentName,
-          className: fr.className,
-          amount: fr.amount,
-          teacherShare: fr.splitBreakdown?.teacherShare || 0,
-          date: fr.createdAt,
-          receipt: fr.receiptNumber,
-        }));
+        const teacherTransactions = await Transaction.find({
+          type: "INCOME",
+          category: "Tuition",
+          "splitDetails.teacherId": teacher._id,
+          status: { $in: ["FLOATING", "VERIFIED"] },
+          ...(Object.keys(dateFilter).length > 0 ? { date: dateFilter } : {}),
+        }).lean();
+
+        owedAmount = teacherTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+        proof = teacherTransactions.map(tx => {
+          // Parse student name and subject from description: "Biology teacher share: Kashif Ullah (March 2026)"
+          const desc = tx.description || "";
+          const subjectMatch = desc.match(/^(.+?) teacher share:/);
+          const studentMatch = desc.match(/teacher share: (.+?) \(/);
+          return {
+            studentName: tx.splitDetails?.studentName || studentMatch?.[1] || "Student",
+            className: feeRecords.find(fr => fr.student?.toString() === tx.splitDetails?.studentId?.toString())?.className || "",
+            amount: tx.splitDetails?.subjectFee || tx.amount || 0,
+            teacherShare: tx.amount || 0,
+            date: tx.date || tx.createdAt,
+            subject: tx.splitDetails?.subject || subjectMatch?.[1] || "",
+          };
+        });
+
+        // Fallback: if no transactions found, use FeeRecord method (legacy data)
+        if (teacherTransactions.length === 0 && feeRecords.length > 0) {
+          owedAmount = feeRecords.reduce((sum, fr) => sum + (fr.splitBreakdown?.teacherShare || 0), 0);
+          proof = feeRecords.map(fr => ({
+            studentName: fr.studentName,
+            className: fr.className,
+            amount: fr.amount,
+            teacherShare: fr.splitBreakdown?.teacherShare || 0,
+            date: fr.createdAt,
+            receipt: fr.receiptNumber,
+          }));
+        }
       } else if (compType === "perStudent") {
         // Count active enrolled students per class × perStudentAmount
         const perStudentAmount = teacher.compensation?.perStudentAmount || 0;
@@ -2021,7 +2048,7 @@ exports.getTeacherPayrollReport = async (req, res) => {
         netOwed,
         proof: compType === "percentage" ? {
           teacherSharePercent: teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70,
-          feeRecordCount: feeRecords.length,
+          feeRecordCount: proof.length,
           totalFromFees: owedAmount,
           items: proof,
         } : compType === "perStudent" ? {
@@ -2128,6 +2155,12 @@ exports.getAcademyPoolReport = async (req, res) => {
     // Get all DailyRevenue entries for TUITION_SHARE this month
     const tuitionEntries = await DailyRevenue.find({
       revenueType: "TUITION_SHARE",
+      date: { $gte: startOfMonth, $lte: endOfMonth },
+    }).sort({ date: -1 }).lean();
+
+    // Get WITHDRAWAL_ADJUSTMENT entries this month
+    const adjustmentEntries = await DailyRevenue.find({
+      revenueType: "WITHDRAWAL_ADJUSTMENT",
       date: { $gte: startOfMonth, $lte: endOfMonth },
     }).sort({ date: -1 }).lean();
 
@@ -2257,7 +2290,7 @@ exports.getAcademyPoolReport = async (req, res) => {
 
     // === SECTION 2: Per-stakeholder breakdown from DailyRevenue ===
     const stakeholderMap = new Map();
-    for (const entry of [...tuitionEntries, ...academyEntries]) {
+    for (const entry of [...tuitionEntries, ...academyEntries, ...adjustmentEntries]) {
       const partnerId = entry.partner?.toString();
       if (!partnerId) continue;
       if (!stakeholderMap.has(partnerId)) {
@@ -2267,6 +2300,8 @@ exports.getAcademyPoolReport = async (req, res) => {
           tuitionCount: 0,
           academyTotal: 0,
           academyCount: 0,
+          adjustmentTotal: 0,
+          adjustmentCount: 0,
           uncollected: 0,
           collected: 0,
           entries: [],
@@ -2276,6 +2311,9 @@ exports.getAcademyPoolReport = async (req, res) => {
       if (entry.revenueType === "TUITION_SHARE") {
         sh.tuitionTotal += entry.amount;
         sh.tuitionCount++;
+      } else if (entry.revenueType === "WITHDRAWAL_ADJUSTMENT") {
+        sh.adjustmentTotal += entry.amount; // Already negative
+        sh.adjustmentCount++;
       } else {
         sh.academyTotal += entry.amount;
         sh.academyCount++;

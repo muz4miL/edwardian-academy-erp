@@ -114,6 +114,14 @@ const transactionSchema = new mongoose.Schema(
       teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
       teacherName: { type: String },
       isPaid: { type: Boolean, default: false }, // Has teacher been paid?
+      // Per-subject fee tracking
+      teacherRole: { type: String }, // "TEACHER", "OWNER", "PARTNER"
+      studentId: { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
+      studentName: { type: String },
+      subject: { type: String },
+      subjectFee: { type: Number },
+      shareType: { type: String },
+      month: { type: String },
       // Pool dividend tracking (Waqar's Protocol)
       partnerName: { type: String }, // "Waqar", "Zahid", "Saud"
       percentage: { type: Number }, // Partner's percentage (e.g., 50)

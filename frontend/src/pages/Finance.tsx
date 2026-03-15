@@ -1869,18 +1869,30 @@ const TeacherPayrollTab = () => {
 
   const creditMutation = useMutation({
     mutationFn: async ({ teacherId, amount, description }: { teacherId: string; amount: number; description: string }) => {
-      const res = await fetch(`${API_BASE_URL}/api/teachers/${teacherId}/wallet`, {
+      // Step 1: Credit the teacher's wallet (adds to pending balance)
+      const creditRes = await fetch(`${API_BASE_URL}/api/teachers/${teacherId}/wallet/credit`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "credit", amount, description }),
+        body: JSON.stringify({ amount, description }),
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || "Credit failed");
-      return data;
+      const creditData = await creditRes.json();
+      if (!creditData.success) throw new Error(creditData.message || "Credit failed");
+
+      // Step 2: Immediately release payment (debit from pending, creates TeacherPayment + Expense)
+      const debitRes = await fetch(`${API_BASE_URL}/api/teachers/${teacherId}/wallet/debit`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, description: description || `Salary payment — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}` }),
+      });
+      const debitData = await debitRes.json();
+      if (!debitData.success) throw new Error(debitData.message || "Payment release failed");
+
+      return debitData;
     },
-    onSuccess: () => {
-      toast.success("Teacher credited successfully!");
+    onSuccess: (data) => {
+      toast.success(`Payment of ${formatCurrency(Number(creditAmount))} released successfully! Voucher: ${data.voucherId || "Generated"}`);
       setCreditTeacher(null);
       setCreditAmount("");
       setCreditNote("");
@@ -1888,7 +1900,7 @@ const TeacherPayrollTab = () => {
       queryClient.invalidateQueries({ queryKey: ["teacher-payroll-report-finance"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Failed to credit teacher");
+      toast.error(err.message || "Failed to pay teacher");
     },
   });
 
@@ -1938,7 +1950,7 @@ const TeacherPayrollTab = () => {
                 Teacher Payroll Report
               </CardTitle>
               <CardDescription>
-                Calculated amounts owed to academy teachers. Owner/Partner close revenue from their dashboards.
+                Click a teacher to see how their salary is calculated. "Pay" releases payment and generates a voucher.
               </CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -1982,9 +1994,6 @@ const TeacherPayrollTab = () => {
                             {compTypeLabels[t.compensationType] || t.compensationType}
                           </Badge>
                           {t.subject && <span className="text-xs text-muted-foreground">{t.subject}</span>}
-                          {t.classes?.length > 0 && (
-                            <span className="text-xs text-muted-foreground">• {t.classes.map((c: any) => c.title).join(", ")}</span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -2002,7 +2011,7 @@ const TeacherPayrollTab = () => {
                           className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
                           onClick={(e) => { e.stopPropagation(); setCreditTeacher(t); setCreditAmount(String(t.netOwed)); }}
                         >
-                          <Plus className="h-3 w-3 mr-1" /> Credit
+                          <Plus className="h-3 w-3 mr-1" /> Pay
                         </Button>
                       )}
                       <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded === t.teacherId ? "rotate-180" : ""}`} />
@@ -2031,64 +2040,56 @@ const TeacherPayrollTab = () => {
                       </div>
 
                       {t.proof && (
-                        <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-1">
-                          <p className="font-semibold text-slate-700 mb-1">Calculation Breakdown:</p>
+                        <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-2">
+                          <p className="font-semibold text-slate-700">How this was calculated:</p>
                           {t.compensationType === "percentage" && (
-                            <>
-                              <p>Teacher Share: {t.proof.teacherSharePercent}% of fee collections</p>
-                              <p>Total from {t.proof.feeRecordCount || 0} fee records = {formatCurrency(t.proof.totalFromFees || 0)}</p>
-                            </>
+                            <p>Gets {t.proof.teacherSharePercent}% of each fee payment ({t.proof.feeRecordCount || 0} payments this month = {formatCurrency(t.proof.totalFromFees || 0)})</p>
                           )}
                           {t.compensationType === "perStudent" && (
-                            <>
-                              <p>Rate: {formatCurrency(t.proof.perStudentAmount || 0)} per student</p>
-                              <p>Active Students: {t.proof.activeStudentCount || 0}</p>
-                              <p>Total: {t.proof.activeStudentCount || 0} × {formatCurrency(t.proof.perStudentAmount || 0)} = {formatCurrency(t.proof.calculatedAmount || 0)}</p>
-                            </>
+                            <p>{formatCurrency(t.proof.perStudentAmount || 0)} per student x {t.proof.activeStudentCount || 0} active students = {formatCurrency(t.proof.calculatedAmount || 0)}</p>
                           )}
                           {t.compensationType === "fixed" && (
-                            <p>Fixed Monthly Salary: {formatCurrency(t.proof.fixedSalary || 0)}</p>
+                            <p>Fixed monthly salary: {formatCurrency(t.proof.fixedSalary || 0)}</p>
                           )}
                           {t.compensationType === "hybrid" && (
-                            <>
-                              <p>Base Salary: {formatCurrency(t.proof.baseSalary || 0)}</p>
-                              <p>Profit Share: {t.proof.profitSharePercent}% = {formatCurrency(t.proof.profitShareAmount || 0)}</p>
-                            </>
+                            <p>Base {formatCurrency(t.proof.baseSalary || 0)} + {t.proof.profitSharePercent}% profit share ({formatCurrency(t.proof.profitShareAmount || 0)})</p>
                           )}
-                          {/* Per-fee-record detail items */}
-                          {t.proof.items?.length > 0 && t.compensationType === "percentage" && (
-                            <div className="mt-2 border-t pt-2 space-y-1">
-                              <p className="font-semibold text-slate-600">Fee Records:</p>
-                              {t.proof.items.slice(0, 10).map((item: any, i: number) => (
-                                <p key={i} className="text-[11px]">
-                                  {item.studentName} — {item.className} — {formatCurrency(item.teacherShare || item.amount || 0)}
-                                  {item.receipt && <span className="text-slate-400 ml-1">({item.receipt})</span>}
-                                </p>
-                              ))}
-                              {t.proof.items.length > 10 && (
-                                <p className="text-[11px] text-slate-400">...and {t.proof.items.length - 10} more</p>
-                              )}
-                            </div>
-                          )}
-                          {t.proof.items?.length > 0 && t.compensationType === "perStudent" && (
-                            <div className="mt-2 border-t pt-2 space-y-1">
-                              <p className="font-semibold text-slate-600">Per Class:</p>
-                              {t.proof.items.map((item: any, i: number) => (
-                                <p key={i} className="text-[11px]">
-                                  {item.className} — {item.studentCount} students × {formatCurrency(item.perStudentAmount || 0)} = {formatCurrency(item.total || 0)}
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
 
-                      {/* Current balance info */}
-                      {t.currentBalance && (
-                        <div className="flex gap-4 text-xs text-muted-foreground">
-                          <span>Floating: {formatCurrency(t.currentBalance.floating || 0)}</span>
-                          <span>Verified: {formatCurrency(t.currentBalance.verified || 0)}</span>
-                          <span>Pending: {formatCurrency(t.currentBalance.pending || 0)}</span>
+                          {/* Per-student fee breakdown for percentage teachers */}
+                          {t.proof.items?.length > 0 && t.compensationType === "percentage" && (
+                            <div className="mt-2 border-t pt-2 space-y-1.5">
+                              <p className="font-semibold text-slate-600">Fee-wise breakdown:</p>
+                              {t.proof.items.map((item: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between py-1 px-2 bg-emerald-50/50 rounded">
+                                  <span className="text-slate-700">
+                                    {item.studentName}
+                                    {item.subject && <span className="text-slate-500 ml-1">({item.subject})</span>}
+                                    {!item.subject && item.className && <span className="text-slate-500 ml-1">— {item.className}</span>}
+                                    {item.date && <span className="text-slate-400 ml-1">({new Date(item.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })})</span>}
+                                  </span>
+                                  <span className="font-semibold text-emerald-700">
+                                    {formatCurrency(item.teacherShare || 0)}
+                                    {item.amount !== item.teacherShare && <span className="text-slate-400 font-normal ml-1">of {formatCurrency(item.amount || 0)}</span>}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Per-class breakdown for perStudent teachers */}
+                          {t.proof.items?.length > 0 && t.compensationType === "perStudent" && (
+                            <div className="mt-2 border-t pt-2 space-y-1.5">
+                              <p className="font-semibold text-slate-600">Per-class breakdown:</p>
+                              {t.proof.items.map((item: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between py-1 px-2 bg-blue-50/50 rounded">
+                                  <span className="text-slate-700">{item.className}</span>
+                                  <span className="font-semibold text-blue-700">
+                                    {item.studentCount} students x {formatCurrency(item.perStudentAmount || 0)} = {formatCurrency(item.total || 0)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2100,13 +2101,13 @@ const TeacherPayrollTab = () => {
         </CardContent>
       </Card>
 
-      {/* Credit Teacher Dialog */}
+      {/* Pay Teacher Dialog */}
       <Dialog open={!!creditTeacher} onOpenChange={(open) => !open && setCreditTeacher(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Credit Teacher — {creditTeacher?.teacherName}</DialogTitle>
+            <DialogTitle>Pay Teacher — {creditTeacher?.teacherName}</DialogTitle>
             <DialogDescription>
-              Record a manual payment to this teacher. Net owed: {formatCurrency(creditTeacher?.netOwed || 0)}
+              Release salary payment. This creates a payment voucher and expense record. Net owed: {formatCurrency(creditTeacher?.netOwed || 0)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -2138,13 +2139,13 @@ const TeacherPayrollTab = () => {
                   creditMutation.mutate({
                     teacherId: creditTeacher.teacherId,
                     amount: Number(creditAmount),
-                    description: creditNote || `Payroll credit — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
+                    description: creditNote || `Salary payment — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
                   });
                 }
               }}
             >
               {creditMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-              Credit {formatCurrency(Number(creditAmount) || 0)}
+              Pay {formatCurrency(Number(creditAmount) || 0)}
             </Button>
           </DialogFooter>
         </DialogContent>

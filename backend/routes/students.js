@@ -731,10 +731,12 @@ router.delete("/:id", async (req, res) => {
       }
 
       // ── Reverse Owner/Partner revenue entries proportionally ──
+      // Query both UNCOLLECTED and COLLECTED entries (owner may have already closed)
       try {
         const studentRevEntries = await DailyRevenue.find({
           studentRef: student._id,
-          status: "UNCOLLECTED",
+          status: { $in: ["UNCOLLECTED", "COLLECTED"] },
+          revenueType: { $in: ["TUITION_SHARE", "ACADEMY_SHARE"] },
           amount: { $gt: 0 },
         }).lean();
 
@@ -754,11 +756,16 @@ router.delete("/:id", async (req, res) => {
                 description: `Withdrawal refund reversal: ${student.studentName} — PKR ${refundNum.toLocaleString()} refunded`,
               });
 
-              // Deduct from user's floating wallet
+              // Deduct from the correct wallet field based on entry status
               const userToDeduct = await User.findById(entry.partner);
               if (userToDeduct && userToDeduct.walletBalance) {
-                userToDeduct.walletBalance.floating = Math.max(0,
-                  (userToDeduct.walletBalance.floating || 0) - deductAmt);
+                if (entry.status === "COLLECTED") {
+                  userToDeduct.walletBalance.verified = Math.max(0,
+                    (userToDeduct.walletBalance.verified || 0) - deductAmt);
+                } else {
+                  userToDeduct.walletBalance.floating = Math.max(0,
+                    (userToDeduct.walletBalance.floating || 0) - deductAmt);
+                }
                 await userToDeduct.save();
               }
             }

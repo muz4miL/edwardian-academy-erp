@@ -1251,6 +1251,12 @@ const OwnerDashboard = () => {
                                 <p className="text-[10px] text-blue-600 font-medium">Academy Share</p>
                                 <p className="text-sm font-bold text-blue-700">PKR {(sh.academyTotal || 0).toLocaleString()}</p>
                               </div>
+                              {(sh.adjustmentTotal || 0) < 0 && (
+                                <div>
+                                  <p className="text-[10px] text-red-600 font-medium">Adjustments</p>
+                                  <p className="text-sm font-bold text-red-700">PKR {(sh.adjustmentTotal || 0).toLocaleString()}</p>
+                                </div>
+                              )}
                               <div>
                                 <p className="text-[10px] text-orange-600 font-medium">Uncollected</p>
                                 <p className="text-sm font-bold text-orange-700">PKR {(sh.uncollected || 0).toLocaleString()}</p>
@@ -1267,14 +1273,14 @@ const OwnerDashboard = () => {
                               {sh.entries.slice(0, 10).map((e: any, eidx: number) => (
                                 <div key={eidx} className="flex items-center justify-between px-2 py-1 rounded bg-white/60 text-xs">
                                   <div className="flex items-center gap-2">
-                                    <span className={`px-1.5 py-0.5 rounded-full font-bold ${e.type === "TUITION_SHARE" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
-                                      {e.type === "TUITION_SHARE" ? "TUI" : "ACA"}
+                                    <span className={`px-1.5 py-0.5 rounded-full font-bold ${e.type === "TUITION_SHARE" ? "bg-emerald-100 text-emerald-700" : e.type === "WITHDRAWAL_ADJUSTMENT" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>
+                                      {e.type === "TUITION_SHARE" ? "TUI" : e.type === "WITHDRAWAL_ADJUSTMENT" ? "REF" : "ACA"}
                                     </span>
                                     <span className="text-slate-700">{e.studentName} · {e.className}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className={`font-semibold ${e.status === "UNCOLLECTED" ? "text-orange-600" : "text-green-600"}`}>
-                                      {e.status === "UNCOLLECTED" ? "⏳" : "✅"} PKR {(e.amount || 0).toLocaleString()}
+                                    <span className={`font-semibold ${e.type === "WITHDRAWAL_ADJUSTMENT" ? "text-red-600" : e.status === "UNCOLLECTED" ? "text-orange-600" : "text-green-600"}`}>
+                                      {e.type === "WITHDRAWAL_ADJUSTMENT" ? "🔴" : e.status === "UNCOLLECTED" ? "⏳" : "✅"} PKR {(e.amount || 0).toLocaleString()}
                                     </span>
                                   </div>
                                 </div>
@@ -1785,7 +1791,7 @@ const OwnerDashboard = () => {
 // ========================================
 const PartnerDashboard = () => {
   const { user, checkAuth } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "expenses" | "transactions" | "earnings" | "timetable">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "expenses" | "transactions" | "timetable">("overview");
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2103,10 +2109,10 @@ const PartnerDashboard = () => {
 
       {/* Tab Navigation */}
       <div className="mt-6 flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
-        {([ "overview", "expenses", "transactions", "earnings", "timetable"] as const).map(tab => (
+        {([ "overview", "expenses", "transactions", "timetable"] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`flex-1 min-w-[100px] px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
-            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "transactions" ? "Transactions" : tab === "earnings" ? "Earnings & Trail" : "Timetable"}
+            {tab === "overview" ? "Overview" : tab === "expenses" ? "My Expenses" : tab === "transactions" ? "Transactions" : "Timetable"}
           </button>
         ))}
       </div>
@@ -2121,8 +2127,8 @@ const PartnerDashboard = () => {
             const tuitionTotal = pip?.tuitionRevenue?.total || 0;
             const academyTotal = pip?.academyShareRevenue?.total || 0;
             const adjustTotal = pip?.withdrawalAdjustments?.total || 0;
+            const walletVerified = (user as any)?.walletBalance?.verified || 0;
             const hasData = netTotal > 0 || (tc?.floating || 0) > 0;
-            if (!hasData && !partnerPreviewLoading) return null;
 
             return (
               <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 overflow-hidden">
@@ -2140,29 +2146,32 @@ const PartnerDashboard = () => {
                   <div className="text-right">
                     <p className="text-sm text-amber-700 font-medium">Closeable Amount</p>
                     <p className="text-3xl font-black text-amber-900">PKR {(netTotal || tc?.floating || 0).toLocaleString()}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Wallet Verified: <span className="font-semibold text-slate-700">PKR {walletVerified.toLocaleString()}</span></p>
                   </div>
                 </div>
 
-                {/* Summary cards */}
-                {pip && (
-                  <div className="px-5 pb-3 grid grid-cols-3 gap-3">
-                    <div className="bg-white/70 rounded-lg p-3 text-center">
-                      <p className="text-xs text-emerald-600 font-medium">Tuition Revenue</p>
-                      <p className="text-lg font-bold text-emerald-700">PKR {tuitionTotal.toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">{pip.tuitionRevenue?.count || 0} entries</p>
-                    </div>
-                    <div className="bg-white/70 rounded-lg p-3 text-center">
-                      <p className="text-xs text-blue-600 font-medium">Academy Share</p>
-                      <p className="text-lg font-bold text-blue-700">PKR {academyTotal.toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">{pip.academyShareRevenue?.count || 0} entries</p>
-                    </div>
-                    <div className="bg-white/70 rounded-lg p-3 text-center">
-                      <p className="text-xs text-red-600 font-medium">Adjustments</p>
-                      <p className="text-lg font-bold text-red-700">{adjustTotal < 0 ? "−" : ""}PKR {Math.abs(adjustTotal).toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">{pip.withdrawalAdjustments?.count || 0} entries</p>
-                    </div>
-                  </div>
-                )}
+                {hasData ? (
+                  <>
+                    {/* Summary cards */}
+                    {pip && (
+                      <div className="px-5 pb-3 grid grid-cols-3 gap-3">
+                        <div className="bg-white/70 rounded-lg p-3 text-center">
+                          <p className="text-xs text-emerald-600 font-medium">Tuition Revenue</p>
+                          <p className="text-lg font-bold text-emerald-700">PKR {tuitionTotal.toLocaleString()}</p>
+                          <p className="text-xs text-slate-500">{pip.tuitionRevenue?.count || 0} entries</p>
+                        </div>
+                        <div className="bg-white/70 rounded-lg p-3 text-center">
+                          <p className="text-xs text-blue-600 font-medium">Academy Share</p>
+                          <p className="text-lg font-bold text-blue-700">PKR {academyTotal.toLocaleString()}</p>
+                          <p className="text-xs text-slate-500">{pip.academyShareRevenue?.count || 0} entries</p>
+                        </div>
+                        <div className="bg-white/70 rounded-lg p-3 text-center">
+                          <p className="text-xs text-red-600 font-medium">Adjustments</p>
+                          <p className="text-lg font-bold text-red-700">{adjustTotal < 0 ? "−" : ""}PKR {Math.abs(adjustTotal).toLocaleString()}</p>
+                          <p className="text-xs text-slate-500">{pip.withdrawalAdjustments?.count || 0} entries</p>
+                        </div>
+                      </div>
+                    )}
 
                 {/* Expandable calculation proof */}
                 {pip && (pip.tuitionRevenue?.items?.length > 0 || pip.academyShareRevenue?.items?.length > 0) && (
@@ -2265,6 +2274,12 @@ const PartnerDashboard = () => {
                     Close Day — Review & Verify
                   </Button>
                 </div>
+                  </>
+                ) : (
+                  <div className="px-5 pb-5">
+                    <p className="text-sm text-slate-500 text-center py-4">No uncollected revenue to close. Revenue will appear here when students pay fees.</p>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -2365,40 +2380,6 @@ const PartnerDashboard = () => {
             </Card>
           )}
 
-          {/* Teacher Earnings Summary (if partner is also teacher) */}
-          {tc && (
-            <Card className="border-emerald-200 shadow-lg">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg text-emerald-800">
-                  <Wallet className="h-5 w-5" /> Teacher Earnings Summary
-                </CardTitle>
-                <CardDescription>
-                  Your teaching credits for {capitalizeSubject(tc.subject || "")}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 bg-orange-50 rounded-lg border border-orange-100">
-                    <p className="text-xs text-orange-600 font-medium">Floating</p>
-                    <p className="text-lg font-bold text-orange-700">PKR {(tc.floating || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-green-50 rounded-lg border border-green-100">
-                    <p className="text-xs text-green-600 font-medium">Verified</p>
-                    <p className="text-lg font-bold text-green-700">PKR {(tc.verified || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-                    <p className="text-xs text-blue-600 font-medium">Pending</p>
-                    <p className="text-lg font-bold text-blue-700">PKR {(tc.pending || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                    <p className="text-xs text-emerald-600 font-medium">Total Paid</p>
-                    <p className="text-lg font-bold text-emerald-700">PKR {(tc.totalPaid || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Today's Schedule Preview */}
           {todayClasses.length > 0 && (
             <Card className="border-slate-200 shadow-lg">
@@ -2453,36 +2434,6 @@ const PartnerDashboard = () => {
                   </CardContent>
                 </Card>
               )}
-
-              {/* Monthly Earnings Summary */}
-              <Card className="border-violet-200 shadow-lg">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2 text-lg text-violet-800">
-                        <TrendingUp className="h-5 w-5" /> Monthly Revenue
-                      </CardTitle>
-                      <CardDescription>Your earnings this month</CardDescription>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-emerald-700">PKR {(payoutData.monthlyEarnings?.totalMonthly || 0).toLocaleString()}</p>
-                      <p className="text-xs text-slate-500">This Month</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                      <p className="text-xs text-emerald-600 font-medium">Teaching Income (100%)</p>
-                      <p className="text-lg font-bold text-emerald-700">PKR {(payoutData.monthlyEarnings?.teachingIncome || 0).toLocaleString()}</p>
-                    </div>
-                    <div className="p-3 bg-violet-50 rounded-lg border border-violet-100">
-                      <p className="text-xs text-violet-600 font-medium">Pool Dividends</p>
-                      <p className="text-lg font-bold text-violet-700">PKR {(payoutData.monthlyEarnings?.dividendIncome || 0).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* New Students This Month */}
               {payoutData.newStudents?.length > 0 && (
@@ -2663,255 +2614,6 @@ const PartnerDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Teacher Payouts in Transactions view */}
-          {tc && tc.payoutHistory && tc.payoutHistory.length > 0 && (
-            <Card className="border-slate-200 shadow-lg">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Wallet className="h-5 w-5 text-emerald-600" /> Teacher Salary Payouts
-                </CardTitle>
-                <CardDescription>Payments received for your teaching work</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                  {tc.payoutHistory.map((p: any) => (
-                    <div key={p._id} className="flex items-center justify-between p-3 rounded-lg bg-emerald-50/60 border border-emerald-100 hover:bg-emerald-50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
-                          <ArrowUpRight className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">
-                            {p.voucherId || "Salary Payout"}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(p.paymentDate || p.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                            {p.month && p.year ? ` — ${p.month} ${p.year}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-emerald-700">+PKR {(p.amountPaid || 0).toLocaleString()}</p>
-                        <p className={`text-xs ${p.status === "paid" ? "text-green-600" : "text-orange-500"}`}>{p.status}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ======= TEACHER EARNINGS TAB ======= */}
-      {activeTab === "earnings" && (
-        <div className="mt-6 space-y-6">
-          {tc ? (
-            <>
-              {/* Current Balance Card */}
-              <Card className="border-emerald-200 shadow-lg">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg text-emerald-800">
-                    <Wallet className="h-5 w-5" /> Current Balance
-                  </CardTitle>
-                  <CardDescription>
-                    Teaching credits for {capitalizeSubject(tc.subject || "")} ({tc.compensationType})
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
-                      <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider">Floating</p>
-                      <p className="text-2xl font-bold text-orange-700 mt-1">PKR {(tc.floating || 0).toLocaleString()}</p>
-                      <p className="text-xs text-orange-500 mt-1">Today's unverified</p>
-                    </div>
-                    <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-                      <p className="text-xs text-green-600 font-semibold uppercase tracking-wider">Verified</p>
-                      <p className="text-2xl font-bold text-green-700 mt-1">PKR {(tc.verified || 0).toLocaleString()}</p>
-                      <p className="text-xs text-green-500 mt-1">Ready for payout</p>
-                    </div>
-                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                      <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">Pending</p>
-                      <p className="text-2xl font-bold text-blue-700 mt-1">PKR {(tc.pending || 0).toLocaleString()}</p>
-                      <p className="text-xs text-blue-500 mt-1">Awaiting processing</p>
-                    </div>
-                    <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Total Paid</p>
-                      <p className="text-2xl font-bold text-emerald-700 mt-1">PKR {(tc.totalPaid || 0).toLocaleString()}</p>
-                      <p className="text-xs text-emerald-500 mt-1">Lifetime payouts</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Monthly Money Trail */}
-              {payoutData && (
-                <>
-                  <Card className="border-violet-200 shadow-lg">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg text-violet-800">
-                        <TrendingUp className="h-5 w-5" /> Revenue Trail — This Month
-                      </CardTitle>
-                      <CardDescription>Per-student fee breakdown showing your 100% teaching income</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                        <div className="p-3 bg-violet-50 rounded-xl border border-violet-200 text-center">
-                          <p className="text-xs text-violet-600 font-semibold uppercase tracking-wider">Teaching Income</p>
-                          <p className="text-xl font-bold text-violet-700 mt-1">PKR {(payoutData.monthlyEarnings?.teachingIncome || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                          <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Pool Dividends</p>
-                          <p className="text-xl font-bold text-emerald-700 mt-1">PKR {(payoutData.monthlyEarnings?.dividendIncome || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
-                          <p className="text-xs text-blue-600 font-semibold uppercase tracking-wider">Total This Month</p>
-                          <p className="text-xl font-bold text-blue-700 mt-1">PKR {(payoutData.monthlyEarnings?.totalMonthly || 0).toLocaleString()}</p>
-                        </div>
-                      </div>
-
-                      {/* Per-student breakdown */}
-                      {payoutData.moneyTrail?.length > 0 ? (
-                        <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Per-Student Fee Payments</p>
-                          <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                            {payoutData.moneyTrail.map((trail: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-violet-50 border border-violet-100 hover:bg-violet-100 transition-colors">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-200 text-violet-700 font-bold text-sm">
-                                    {(trail.studentName || "?")[0].toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-semibold text-slate-900">{trail.studentName}</p>
-                                    <p className="text-xs text-slate-500">
-                                      {trail.month} · {trail.splitType?.replace(/_/g, " ")}
-                                      {trail.date ? ` · ${new Date(trail.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-bold text-violet-700">+PKR {(trail.teacherShare || 0).toLocaleString()}</p>
-                                  <p className="text-xs text-slate-400">of PKR {(trail.feeAmount || 0).toLocaleString()} total</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-8">
-                          <TrendingUp className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                          <p className="text-sm text-slate-500">No fee payments recorded this month</p>
-                        </div>
-                      )}
-
-                      {/* Pool dividends */}
-                      {payoutData.dividends?.length > 0 && (
-                        <div className="mt-4">
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Pool Dividend Payments</p>
-                          <div className="space-y-2">
-                            {payoutData.dividends.map((d: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-900">{d.description || "Pool Dividend"}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {d.poolType} pool · {d.percentage}% share
-                                    {d.date ? ` · ${new Date(d.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
-                                  </p>
-                                </div>
-                                <p className="text-sm font-bold text-emerald-700">+PKR {(d.amount || 0).toLocaleString()}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* All-Time Summary */}
-                  <Card className="border-slate-200 shadow-lg">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <BarChart2 className="h-5 w-5 text-slate-600" /> All-Time Earnings Summary
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Teaching</p>
-                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.teachingIncome || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Dividends</p>
-                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.dividendIncome || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center">
-                          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Earned</p>
-                          <p className="text-lg font-bold text-slate-800 mt-1">PKR {(payoutData.allTimeEarnings?.totalAllTime || 0).toLocaleString()}</p>
-                        </div>
-                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                          <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wider">Paid Out</p>
-                          <p className="text-lg font-bold text-emerald-700 mt-1">PKR {(payoutData.allTimeEarnings?.totalPaid || 0).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </>
-              )}
-
-              {/* Payout History */}
-              <Card className="border-slate-200 shadow-lg">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <FileText className="h-5 w-5 text-blue-600" /> Payout History
-                  </CardTitle>
-                  <CardDescription>Your teacher salary payouts</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {!tc.payoutHistory || tc.payoutHistory.length === 0 ? (
-                    <div className="text-center py-12">
-                      <FileText className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-                      <p className="text-sm text-slate-500">No payouts recorded yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                      {tc.payoutHistory.map((p: any) => (
-                        <div key={p._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white shadow-sm">
-                              <ArrowUpRight className="h-4 w-4" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-slate-900">
-                                {p.voucherId || "Payout"}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {new Date(p.paymentDate || p.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                                {p.month && p.year ? ` — ${p.month} ${p.year}` : ""}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-emerald-600">+PKR {(p.amountPaid || 0).toLocaleString()}</p>
-                            <p className={`text-xs ${p.status === "paid" ? "text-green-500" : "text-orange-500"}`}>{p.status}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <Card className="border-slate-200 shadow-lg">
-              <CardContent className="py-12">
-                <div className="text-center text-slate-500">
-                  <GraduationCap className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-                  <p className="text-sm font-medium">No Teacher Record Linked</p>
-                  <p className="text-xs mt-1">Your account is not linked to a teacher profile.</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
 
