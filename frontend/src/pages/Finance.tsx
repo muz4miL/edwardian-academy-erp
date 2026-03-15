@@ -49,6 +49,10 @@ import {
   Search,
   HandCoins,
   Calculator,
+  Users,
+  FileText,
+  ChevronDown,
+  AlertCircle,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -1844,6 +1848,311 @@ const PartnerSettlements = () => {
   );
 };
 
+// ==================== TEACHER PAYROLL TAB ====================
+const TeacherPayrollTab = () => {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [creditTeacher, setCreditTeacher] = useState<any>(null);
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditNote, setCreditNote] = useState("");
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["teacher-payroll-report-finance"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE_URL}/api/finance/teacher-payroll-report`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch teacher payroll report");
+      return res.json();
+    },
+  });
+
+  const creditMutation = useMutation({
+    mutationFn: async ({ teacherId, amount, description }: { teacherId: string; amount: number; description: string }) => {
+      const res = await fetch(`${API_BASE_URL}/api/teachers/${teacherId}/wallet`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "credit", amount, description }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || "Credit failed");
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Teacher credited successfully!");
+      setCreditTeacher(null);
+      setCreditAmount("");
+      setCreditNote("");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["teacher-payroll-report-finance"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to credit teacher");
+    },
+  });
+
+  const report = data?.data || [];
+  const totalOwed = data?.totalOwed || 0;
+
+  const compTypeLabels: Record<string, string> = {
+    percentage: "Percentage Split",
+    perStudent: "Per Student",
+    fixed: "Fixed Salary",
+    hybrid: "Hybrid",
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Teachers</p>
+            <p className="text-2xl font-bold text-slate-900">{report.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Regular teachers (excl. Owner/Partner)</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Total Owed</p>
+            <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalOwed)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Net amount due this month</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Period</p>
+            <p className="text-2xl font-bold text-slate-900">{new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
+            <p className="text-xs text-muted-foreground mt-1">Current billing cycle</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-violet-500" />
+                Teacher Payroll Report
+              </CardTitle>
+              <CardDescription>
+                Calculated amounts owed to academy teachers. Owner/Partner close revenue from their dashboards.
+              </CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-400" />
+              <p className="text-sm">Failed to load report.</p>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>Retry</Button>
+            </div>
+          ) : report.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No teacher payroll data for this period.</p>
+              <p className="text-sm mt-1">When students pay fees, teacher earnings will appear here based on their compensation type.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {report.map((t: any) => (
+                <div key={t.teacherId} className="border rounded-lg overflow-hidden">
+                  <div
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setExpanded(expanded === t.teacherId ? null : t.teacherId)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700 font-bold">
+                        {(t.teacherName || "T").charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{t.teacherName}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="secondary" className="text-[10px] h-5">
+                            {compTypeLabels[t.compensationType] || t.compensationType}
+                          </Badge>
+                          {t.subject && <span className="text-xs text-muted-foreground">{t.subject}</span>}
+                          {t.classes?.length > 0 && (
+                            <span className="text-xs text-muted-foreground">• {t.classes.map((c: any) => c.title).join(", ")}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className={`text-lg font-bold ${t.netOwed > 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                          {formatCurrency(t.netOwed || 0)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Net owed</p>
+                      </div>
+                      {t.netOwed > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                          onClick={(e) => { e.stopPropagation(); setCreditTeacher(t); setCreditAmount(String(t.netOwed)); }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Credit
+                        </Button>
+                      )}
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded === t.teacherId ? "rotate-180" : ""}`} />
+                    </div>
+                  </div>
+
+                  {expanded === t.teacherId && (
+                    <div className="border-t bg-muted/20 p-4 space-y-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-white rounded-lg p-3 border">
+                          <p className="text-xs text-muted-foreground">Gross Earned</p>
+                          <p className="text-sm font-bold text-emerald-600">{formatCurrency(t.grossEarned || t.grossOwed || 0)}</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border">
+                          <p className="text-xs text-muted-foreground">Already Paid</p>
+                          <p className="text-sm font-bold text-blue-600">{formatCurrency(t.alreadyPaid || 0)}</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border">
+                          <p className="text-xs text-muted-foreground">Adjustments</p>
+                          <p className="text-sm font-bold text-red-600">{formatCurrency(t.withdrawalAdjustments || t.withdrawalDeduction || 0)}</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-violet-200">
+                          <p className="text-xs text-muted-foreground font-semibold">Net Owed</p>
+                          <p className="text-sm font-bold text-violet-700">{formatCurrency(t.netOwed || 0)}</p>
+                        </div>
+                      </div>
+
+                      {t.proof && (
+                        <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-1">
+                          <p className="font-semibold text-slate-700 mb-1">Calculation Breakdown:</p>
+                          {t.compensationType === "percentage" && (
+                            <>
+                              <p>Teacher Share: {t.proof.teacherSharePercent}% of fee collections</p>
+                              <p>Total from {t.proof.feeRecordCount || 0} fee records = {formatCurrency(t.proof.totalFromFees || 0)}</p>
+                            </>
+                          )}
+                          {t.compensationType === "perStudent" && (
+                            <>
+                              <p>Rate: {formatCurrency(t.proof.perStudentAmount || 0)} per student</p>
+                              <p>Active Students: {t.proof.activeStudentCount || 0}</p>
+                              <p>Total: {t.proof.activeStudentCount || 0} × {formatCurrency(t.proof.perStudentAmount || 0)} = {formatCurrency(t.proof.calculatedAmount || 0)}</p>
+                            </>
+                          )}
+                          {t.compensationType === "fixed" && (
+                            <p>Fixed Monthly Salary: {formatCurrency(t.proof.fixedSalary || 0)}</p>
+                          )}
+                          {t.compensationType === "hybrid" && (
+                            <>
+                              <p>Base Salary: {formatCurrency(t.proof.baseSalary || 0)}</p>
+                              <p>Profit Share: {t.proof.profitSharePercent}% = {formatCurrency(t.proof.profitShareAmount || 0)}</p>
+                            </>
+                          )}
+                          {/* Per-fee-record detail items */}
+                          {t.proof.items?.length > 0 && t.compensationType === "percentage" && (
+                            <div className="mt-2 border-t pt-2 space-y-1">
+                              <p className="font-semibold text-slate-600">Fee Records:</p>
+                              {t.proof.items.slice(0, 10).map((item: any, i: number) => (
+                                <p key={i} className="text-[11px]">
+                                  {item.studentName} — {item.className} — {formatCurrency(item.teacherShare || item.amount || 0)}
+                                  {item.receipt && <span className="text-slate-400 ml-1">({item.receipt})</span>}
+                                </p>
+                              ))}
+                              {t.proof.items.length > 10 && (
+                                <p className="text-[11px] text-slate-400">...and {t.proof.items.length - 10} more</p>
+                              )}
+                            </div>
+                          )}
+                          {t.proof.items?.length > 0 && t.compensationType === "perStudent" && (
+                            <div className="mt-2 border-t pt-2 space-y-1">
+                              <p className="font-semibold text-slate-600">Per Class:</p>
+                              {t.proof.items.map((item: any, i: number) => (
+                                <p key={i} className="text-[11px]">
+                                  {item.className} — {item.studentCount} students × {formatCurrency(item.perStudentAmount || 0)} = {formatCurrency(item.total || 0)}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Current balance info */}
+                      {t.currentBalance && (
+                        <div className="flex gap-4 text-xs text-muted-foreground">
+                          <span>Floating: {formatCurrency(t.currentBalance.floating || 0)}</span>
+                          <span>Verified: {formatCurrency(t.currentBalance.verified || 0)}</span>
+                          <span>Pending: {formatCurrency(t.currentBalance.pending || 0)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Credit Teacher Dialog */}
+      <Dialog open={!!creditTeacher} onOpenChange={(open) => !open && setCreditTeacher(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Credit Teacher — {creditTeacher?.teacherName}</DialogTitle>
+            <DialogDescription>
+              Record a manual payment to this teacher. Net owed: {formatCurrency(creditTeacher?.netOwed || 0)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Amount (PKR)</Label>
+              <Input
+                type="number"
+                value={creditAmount}
+                onChange={(e) => setCreditAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+            </div>
+            <div>
+              <Label>Note / Description</Label>
+              <Input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="e.g. March 2026 salary payment"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreditTeacher(null)}>Cancel</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={!creditAmount || Number(creditAmount) <= 0 || creditMutation.isPending}
+              onClick={() => {
+                if (creditTeacher) {
+                  creditMutation.mutate({
+                    teacherId: creditTeacher.teacherId,
+                    amount: Number(creditAmount),
+                    description: creditNote || `Payroll credit — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
+                  });
+                }
+              }}
+            >
+              {creditMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Credit {formatCurrency(Number(creditAmount) || 0)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
 // ==================== MAIN FINANCE COMPONENT ====================
 const Finance = () => {
   // Get tab from URL params
@@ -1878,7 +2187,7 @@ const Finance = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 max-w-4xl">
+          <TabsList className="grid w-full grid-cols-6 max-w-5xl">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -1890,6 +2199,10 @@ const Finance = () => {
             <TabsTrigger value="expenses" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Daily Expenses
+            </TabsTrigger>
+            <TabsTrigger value="payroll" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Teacher Payroll
             </TabsTrigger>
             <TabsTrigger value="settlements" className="flex items-center gap-2">
               <HandCoins className="h-4 w-4" />
@@ -1911,6 +2224,10 @@ const Finance = () => {
 
           <TabsContent value="expenses" className="mt-6">
             <DailyExpenses />
+          </TabsContent>
+
+          <TabsContent value="payroll" className="mt-6">
+            <TeacherPayrollTab />
           </TabsContent>
 
           <TabsContent value="settlements" className="mt-6">

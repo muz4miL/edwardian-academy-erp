@@ -333,7 +333,7 @@ export const TeacherFinanceModal = ({
                   <History className="h-4 w-4" />
                   <span className="font-medium text-sm">Transaction History</span>
                 </div>
-                {isLoadingTransactions ? (
+                {loadingTransactions ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
