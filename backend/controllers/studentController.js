@@ -311,13 +311,22 @@ exports.collectFee = async (req, res) => {
           }
         }
 
-        for (const subj of studentSubjects) {
+        let allocatedSoFar = 0;
+        for (let idx = 0; idx < studentSubjects.length; idx++) {
+          const subj = studentSubjects[idx];
           const subjName = typeof subj === "string" ? subj : subj.name;
           const subjFee = typeof subj === "object" ? subj.fee || 0 : 0;
-          const subjShare =
-            totalSubjectFees > 0
-              ? Math.round((subjFee / totalSubjectFees) * amountNum)
-              : Math.round(amountNum / studentSubjects.length);
+          let subjShare;
+          if (idx === studentSubjects.length - 1) {
+            // Last subject gets remainder to avoid rounding loss
+            subjShare = amountNum - allocatedSoFar;
+          } else {
+            subjShare =
+              totalSubjectFees > 0
+                ? Math.round((subjFee / totalSubjectFees) * amountNum)
+                : Math.round(amountNum / studentSubjects.length);
+          }
+          allocatedSoFar += subjShare;
 
           if (subjShare <= 0) continue;
 

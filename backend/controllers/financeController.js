@@ -1406,10 +1406,11 @@ exports.getAnalyticsDashboard = async (req, res) => {
     };
     feeStats.forEach((f) => {
       const key = f._id?.toLowerCase();
-      if (key === "paid") {
-        feeCollection.paid = { amount: f.total, count: f.count };
-      } else if (key === "pending" || key === "partial") {
-        // Combine pending and partial into one "Pending" category
+      if (key === "paid" || key === "partial") {
+        // Both fully paid and partially paid students count as "Paid"
+        feeCollection.paid.amount += f.total;
+        feeCollection.paid.count += f.count;
+      } else if (key === "pending") {
         feeCollection.pending.amount += f.total;
         feeCollection.pending.count += f.count;
       }
@@ -2216,27 +2217,30 @@ exports.getAcademyPoolReport = async (req, res) => {
       entry.totalFeeCollected += paidAmt;
 
       // Calculate academy pool contribution for this student
+      // TUITION-mode classes (any Owner/Partner teaches) → 0 academy pool
+      const hasOwnerPartner = entry.teachers.some(t => t.role === "OWNER" || t.role === "PARTNER");
       let academyPool = 0;
       let teacherPayout = 0;
-      for (const t of entry.teachers) {
-        if (t.role === "OWNER" || t.role === "PARTNER") {
-          // Tuition: 100% goes to teacher (closed from dashboard)
-          continue;
+      if (!hasOwnerPartner) {
+        // ACADEMY mode only: regular teachers contribute to academy pool
+        const academyTeachers = entry.teachers.filter(t => t.role === "TEACHER");
+        for (const t of academyTeachers) {
+          const subjectShare = Math.round(paidAmt / (academyTeachers.length || 1));
+          if (t.compType === "percentage") {
+            const tShare = Math.round((subjectShare * t.teacherShare) / 100);
+            const aShare = subjectShare - tShare;
+            academyPool += aShare;
+            teacherPayout += tShare;
+          } else if (t.compType === "perStudent") {
+            teacherPayout += t.perStudentAmount;
+            academyPool += Math.max(0, subjectShare - t.perStudentAmount);
+          } else if (t.compType === "fixed") {
+            academyPool += subjectShare;
+          }
         }
-        const subjectShare = Math.round(paidAmt / (entry.teachers.length || 1));
-        if (t.compType === "percentage") {
-          const tShare = Math.round((subjectShare * t.teacherShare) / 100);
-          const aShare = subjectShare - tShare;
-          academyPool += aShare;
-          teacherPayout += tShare;
-        } else if (t.compType === "perStudent") {
-          // Teacher gets fixed per-student, rest goes to academy
-          teacherPayout += t.perStudentAmount;
-          academyPool += Math.max(0, subjectShare - t.perStudentAmount);
-        } else if (t.compType === "fixed") {
-          // Fixed salary: all student fees go to academy pool
-          academyPool += subjectShare;
-        }
+      } else {
+        // TUITION mode: 100% goes to Owner/Partners (closed from dashboard), no academy pool
+        teacherPayout = paidAmt;
       }
 
       entry.totalAcademyPool += academyPool;
