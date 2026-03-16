@@ -2170,8 +2170,9 @@ exports.getAcademyPoolReport = async (req, res) => {
       status: "PAID",
     }).populate("student", "fullName studentId").lean();
 
-    // Get all classes with teacher assignments
-    const classes = await Class.find({ status: "active" })
+    // Get all classes with teacher assignments (include inactive/archived)
+    // so monthly class totals remain consistent with fee records and summary cards.
+    const classes = await Class.find({})
       .populate({
         path: "subjectTeachers.teacherId",
         select: "name compensation userId",
@@ -2189,53 +2190,56 @@ exports.getAcademyPoolReport = async (req, res) => {
     // Group fee records by class with teacher split details
     const classRevenue = new Map();
     for (const fee of feeRecords) {
-      const classId = fee.class?.toString();
-      if (!classId) continue;
-      const cls = classMap.get(classId);
-      if (!cls) continue;
+      const classId = fee.class?.toString() || null;
+      const cls = classId ? classMap.get(classId) : null;
 
-      if (!classRevenue.has(classId)) {
+      // Use classRef when available; fallback to className bucket for archived/missing class docs.
+      const classKey = classId || `archived:${fee.className || "Unknown Class"}`;
+
+      if (!classRevenue.has(classKey)) {
         // Determine teachers and their splits
         const teachers = [];
         let hasAcademyTeachers = false;
-        for (const st of cls.subjectTeachers || []) {
-          if (!st.teacherId) continue;
-          const teacher = st.teacherId;
-          const userRole = teacher.userId?.role || "TEACHER";
-          const compType = teacher.compensation?.type || "percentage";
-          const teacherShare = teacher.compensation?.teacherShare || 70;
-          const academyShare = teacher.compensation?.academyShare || 30;
-          const perStudentAmount = teacher.compensation?.perStudentAmount || 0;
-          const fixedSalary = teacher.compensation?.fixedSalary || 0;
+        if (cls) {
+          for (const st of cls.subjectTeachers || []) {
+            if (!st.teacherId) continue;
+            const teacher = st.teacherId;
+            const userRole = teacher.userId?.role || "TEACHER";
+            const compType = teacher.compensation?.type || "percentage";
+            const teacherShare = teacher.compensation?.teacherShare || 70;
+            const academyShare = teacher.compensation?.academyShare || 30;
+            const perStudentAmount = teacher.compensation?.perStudentAmount || 0;
+            const fixedSalary = teacher.compensation?.fixedSalary || 0;
 
-          if (userRole === "OWNER" || userRole === "PARTNER") {
-            teachers.push({
-              name: teacher.userId?.fullName || teacher.name,
-              role: userRole,
-              subject: st.subject,
-              compType: "tuition",
-              teacherShare: 100,
-              academyShare: 0,
-            });
-          } else {
-            hasAcademyTeachers = true;
-            teachers.push({
-              name: teacher.userId?.fullName || teacher.name,
-              role: "TEACHER",
-              subject: st.subject,
-              compType,
-              teacherShare: compType === "percentage" ? teacherShare : 0,
-              academyShare: compType === "percentage" ? academyShare : (compType === "perStudent" ? 0 : 0),
-              perStudentAmount: compType === "perStudent" ? perStudentAmount : 0,
-              fixedSalary: compType === "fixed" ? fixedSalary : 0,
-            });
+            if (userRole === "OWNER" || userRole === "PARTNER") {
+              teachers.push({
+                name: teacher.userId?.fullName || teacher.name,
+                role: userRole,
+                subject: st.subject,
+                compType: "tuition",
+                teacherShare: 100,
+                academyShare: 0,
+              });
+            } else {
+              hasAcademyTeachers = true;
+              teachers.push({
+                name: teacher.userId?.fullName || teacher.name,
+                role: "TEACHER",
+                subject: st.subject,
+                compType,
+                teacherShare: compType === "percentage" ? teacherShare : 0,
+                academyShare: compType === "percentage" ? academyShare : (compType === "perStudent" ? 0 : 0),
+                perStudentAmount: compType === "perStudent" ? perStudentAmount : 0,
+                fixedSalary: compType === "fixed" ? fixedSalary : 0,
+              });
+            }
           }
         }
 
-        classRevenue.set(classId, {
-          classId,
-          classTitle: cls.classTitle || cls.title || cls.className,
-          gradeLevel: cls.gradeLevel,
+        classRevenue.set(classKey, {
+          classId: classId || null,
+          classTitle: cls?.classTitle || cls?.title || cls?.className || fee.className || "Archived Class",
+          gradeLevel: cls?.gradeLevel || "Archived",
           teachers,
           hasAcademyTeachers,
           students: [],
@@ -2245,7 +2249,7 @@ exports.getAcademyPoolReport = async (req, res) => {
         });
       }
 
-      const entry = classRevenue.get(classId);
+      const entry = classRevenue.get(classKey);
       const paidAmt = fee.amount || 0;
       entry.totalFeeCollected += paidAmt;
 
@@ -2254,7 +2258,7 @@ exports.getAcademyPoolReport = async (req, res) => {
       const hasOwnerPartner = entry.teachers.some(t => t.role === "OWNER" || t.role === "PARTNER");
       let academyPool = 0;
       let teacherPayout = 0;
-      if (!hasOwnerPartner) {
+      if (!hasOwnerPartner && entry.teachers.length > 0) {
         // ACADEMY mode only: regular teachers contribute to academy pool
         const academyTeachers = entry.teachers.filter(t => t.role === "TEACHER");
         for (const t of academyTeachers) {
@@ -2271,9 +2275,14 @@ exports.getAcademyPoolReport = async (req, res) => {
             academyPool += subjectShare;
           }
         }
-      } else {
+      } else if (hasOwnerPartner) {
         // TUITION mode: 100% goes to Owner/Partners (closed from dashboard), no academy pool
         teacherPayout = paidAmt;
+      } else {
+        // Fallback for archived/missing class definitions: use recorded split when available.
+        const fallbackAcademy = fee.splitBreakdown?.academyShare || 0;
+        academyPool = fallbackAcademy;
+        teacherPayout = Math.max(0, paidAmt - fallbackAcademy);
       }
 
       entry.totalAcademyPool += academyPool;

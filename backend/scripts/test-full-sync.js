@@ -6,7 +6,8 @@
 
 const http = require("http");
 
-const BASE = "http://localhost:5000/api";
+const API_PORT = Number(process.env.API_PORT || process.env.PORT || 5000);
+const BASE = `http://localhost:${API_PORT}/api`;
 let cookie = "";
 let testStudentId = null;
 let testTeacherId = null;
@@ -17,7 +18,7 @@ function req(method, path, body = null, useCookie = true) {
     const data = body ? JSON.stringify(body) : null;
     const options = {
       hostname: "localhost",
-      port: 5000,
+      port: API_PORT,
       path: `/api${path}`,
       method,
       headers: {
@@ -61,7 +62,7 @@ function assertEqual(val, expected, label) {
 // ─── TEST SUITE ─────────────────────────────────────────────────────────────────
 async function run() {
   console.log("\n🚀  EDWARDIAN ACADEMY — REAL-TIME SYNC TEST");
-  console.log("   Target: http://localhost:5000\n");
+  console.log(`   Target: ${BASE}\n`);
 
   // ── Step 1: Login ──────────────────────────────────────────────────────────
   HEAD("STEP 1 — Owner Login");
