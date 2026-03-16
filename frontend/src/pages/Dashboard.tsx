@@ -3077,6 +3077,47 @@ const TeacherDashboard = () => {
         </div>
       </div>
 
+      {/* Earnings Overview */}
+      {teacherProfile && (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-200 p-5 shadow-md">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-amber-700">Pending Earnings (Floating)</p>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+            </div>
+            <p className="text-3xl font-bold text-amber-800">PKR {((teacherProfile?.balance?.floating || 0)).toLocaleString()}</p>
+            <p className="text-xs text-amber-600 mt-1">Accumulated from fee collections, pending verification</p>
+          </div>
+
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 p-5 shadow-md">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-emerald-700">Compensation Method</p>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                <Wallet className="h-5 w-5" />
+              </div>
+            </div>
+            {teacherProfile?.compensation?.type === "percentage" && (
+              <p className="text-xl font-bold text-emerald-800">{teacherProfile.compensation.teacherShare || 70}% of fee</p>
+            )}
+            {teacherProfile?.compensation?.type === "fixed" && (
+              <p className="text-xl font-bold text-emerald-800">PKR {(teacherProfile.compensation.fixedSalary || 0).toLocaleString()}/month</p>
+            )}
+            {teacherProfile?.compensation?.type === "perStudent" && (
+              <p className="text-xl font-bold text-emerald-800">PKR {(teacherProfile.compensation.perStudentAmount || 0).toLocaleString()} / student</p>
+            )}
+            {teacherProfile?.compensation?.type === "hybrid" && (
+              <p className="text-xl font-bold text-emerald-800">PKR {(teacherProfile.compensation.baseSalary || 0).toLocaleString()} + {teacherProfile.compensation.profitShare || 0}%</p>
+            )}
+            {!teacherProfile?.compensation?.type && (
+              <p className="text-xl font-bold text-emerald-800">Not configured</p>
+            )}
+            <p className="text-xs text-emerald-600 mt-1 capitalize">{teacherProfile?.compensation?.type || "N/A"} compensation</p>
+          </div>
+        </div>
+      )}
+
       {/* Today's Schedule - Highlighted */}
       {todayClasses.length > 0 && (
         <Card className="mt-8 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white shadow-xl">

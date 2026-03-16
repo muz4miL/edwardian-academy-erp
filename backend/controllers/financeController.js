@@ -1978,18 +1978,19 @@ exports.getTeacherPayrollReport = async (req, res) => {
         // Count active enrolled students per class × perStudentAmount
         const perStudentAmount = teacher.compensation?.perStudentAmount || 0;
         for (const cls of assignedClasses) {
-          const studentCount = await Student.countDocuments({
+          const activeStudents = await Student.find({
             classRef: cls._id,
             status: "active",
             studentStatus: "Active",
-          });
-          const classOwed = studentCount * perStudentAmount;
+          }).select("studentName studentId").lean();
+          const classOwed = activeStudents.length * perStudentAmount;
           owedAmount += classOwed;
           proof.push({
             className: cls.classTitle,
-            studentCount,
+            studentCount: activeStudents.length,
             perStudentAmount,
             total: classOwed,
+            students: activeStudents.map(s => ({ name: s.studentName, id: s.studentId })),
           });
         }
       } else if (compType === "fixed") {
@@ -2231,6 +2232,7 @@ exports.getAcademyPoolReport = async (req, res) => {
                 academyShare: compType === "percentage" ? academyShare : (compType === "perStudent" ? 0 : 0),
                 perStudentAmount: compType === "perStudent" ? perStudentAmount : 0,
                 fixedSalary: compType === "fixed" ? fixedSalary : 0,
+                profitShare: compType === "hybrid" ? (teacher.compensation?.profitShare || 0) : 0,
               });
             }
           }
@@ -2254,32 +2256,46 @@ exports.getAcademyPoolReport = async (req, res) => {
       entry.totalFeeCollected += paidAmt;
 
       // Calculate academy pool contribution for this student
-      // TUITION-mode classes (any Owner/Partner teaches) → 0 academy pool
+      // Mixed classes (Owner/Partners + regular teachers) are handled per-subject.
       const hasOwnerPartner = entry.teachers.some(t => t.role === "OWNER" || t.role === "PARTNER");
       let academyPool = 0;
       let teacherPayout = 0;
-      if (!hasOwnerPartner && entry.teachers.length > 0) {
-        // ACADEMY mode only: regular teachers contribute to academy pool
-        const academyTeachers = entry.teachers.filter(t => t.role === "TEACHER");
-        for (const t of academyTeachers) {
-          const subjectShare = Math.round(paidAmt / (academyTeachers.length || 1));
-          if (t.compType === "percentage") {
+      if (entry.teachers.length > 0) {
+        const numTeachers = entry.teachers.length;
+        for (const t of entry.teachers) {
+          const subjectShare = Math.round(paidAmt / numTeachers);
+          if (t.role === "OWNER" || t.role === "PARTNER") {
+            // Owner/Partner teaching this subject: 100% goes to them (TUITION_SHARE)
+            teacherPayout += subjectShare;
+          } else if (t.compType === "percentage") {
             const tShare = Math.round((subjectShare * t.teacherShare) / 100);
             const aShare = subjectShare - tShare;
             academyPool += aShare;
             teacherPayout += tShare;
           } else if (t.compType === "perStudent") {
-            teacherPayout += t.perStudentAmount;
-            academyPool += Math.max(0, subjectShare - t.perStudentAmount);
+            const perAmt = t.perStudentAmount || 0;
+            teacherPayout += perAmt;
+            academyPool += Math.max(0, subjectShare - perAmt);
           } else if (t.compType === "fixed") {
+            // Fixed salary teacher: full subject fee goes to academy pool
             academyPool += subjectShare;
+          } else if (t.compType === "hybrid") {
+            const profitShare = t.profitShare || 0;
+            const tShare = Math.round((subjectShare * profitShare) / 100);
+            academyPool += subjectShare - tShare;
+            teacherPayout += tShare;
+          } else if (t.compType === "tuition") {
+            // tuition type stored for Owner/Partners (legacy): same as OWNER/PARTNER handling
+            teacherPayout += subjectShare;
+          } else {
+            // Unknown comp type: default 70% teacher / 30% academy
+            const tShare = Math.round((subjectShare * 70) / 100);
+            academyPool += subjectShare - tShare;
+            teacherPayout += tShare;
           }
         }
-      } else if (hasOwnerPartner) {
-        // TUITION mode: 100% goes to Owner/Partners (closed from dashboard), no academy pool
-        teacherPayout = paidAmt;
       } else {
-        // Fallback for archived/missing class definitions: use recorded split when available.
+        // No teacher info in class: use the split recorded on the fee record
         const fallbackAcademy = fee.splitBreakdown?.academyShare || 0;
         academyPool = fallbackAcademy;
         teacherPayout = Math.max(0, paidAmt - fallbackAcademy);
