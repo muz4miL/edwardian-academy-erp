@@ -216,8 +216,20 @@ exports.collectFee = async (req, res) => {
     const creditTransactions = [];
     const dailyRevenueEntries = [];
 
-    if (mode === "TUITION") {
-      // ═══ TUITION MODE: 100% split equally among Owner/Partners ═══
+    // Build Owner/Partner lookup map (teacherId → entry)
+    const ownerPartnerMap = new Map(
+      ownerPartnerTeachers.map(t => [t.teacherId.toString(), t])
+    );
+
+    // Pre-calculate student subjects (used by both pure-TUITION fallback and academy/mixed paths)
+    const studentSubjects = (student.subjects || []).filter(
+      (s) => (typeof s === "string" ? s : s.name)
+    );
+    const hasSubjectTeachers =
+      classDoc?.subjectTeachers?.length > 0 && studentSubjects.length > 0;
+
+    if (mode === "TUITION" && regularTeachers.length === 0) {
+      // ═══ PURE TUITION MODE: all teachers in class are Owner/Partners — split equally ═══
       revenueSource = "tuition-auto";
       const splits = calculateTuitionSplit(amountNum, ownerPartnerTeachers);
 
@@ -288,16 +300,13 @@ exports.collectFee = async (req, res) => {
         });
       }
 
-      // Academy gets 0% in tuition mode
+      // Academy gets 0% in pure tuition mode
       totalAcademyShare = 0;
 
     } else {
-      // ═══ ACADEMY MODE: Teacher share + Academy share ═══
-      const studentSubjects = (student.subjects || []).filter(
-        (s) => (typeof s === "string" ? s : s.name)
-      );
-      const hasSubjectTeachers =
-        classDoc?.subjectTeachers?.length > 0 && studentSubjects.length > 0;
+      // ═══ ACADEMY or MIXED MODE: per-subject processing ═══
+      // Mixed mode = class has both Owner/Partner AND regular teachers.
+      // Each subject is processed independently based on its teacher's role/compensation.
 
       if (hasSubjectTeachers) {
         const totalSubjectFees = studentSubjects.reduce((sum, s) => {
@@ -333,100 +342,175 @@ exports.collectFee = async (req, res) => {
           const stEntry = subjectTeacherMap.get(subjName.toLowerCase().trim());
 
           if (stEntry?.teacherId) {
-            const subjectTeacher = await Teacher.findById(stEntry.teacherId);
-            if (subjectTeacher) {
-              const split = await calculateAcademySplit(subjShare, subjectTeacher, config);
+            // Check if this subject's teacher is an Owner/Partner
+            const opEntry = ownerPartnerMap.get(stEntry.teacherId.toString());
 
-              revenueSource = split.compensationType === "perStudent"
-                ? "academy-per-student" : "academy-teacher-split";
+            if (opEntry) {
+              // ── Owner/Partner teaching this subject: 100% TUITION_SHARE for this subject ──
+              revenueSource = mode === "TUITION" ? "tuition-auto" : "tuition-subject-split";
 
-              // Credit teacher floating balance (only for percentage/hybrid — NOT fixed/perStudent)
-              if (split.teacherAmount > 0) {
-                if (!subjectTeacher.balance) subjectTeacher.balance = { floating: 0, verified: 0, pending: 0 };
-                subjectTeacher.balance.floating = (subjectTeacher.balance.floating || 0) + split.teacherAmount;
-                await subjectTeacher.save();
-
-                creditTransactions.push({
-                  type: "INCOME",
-                  category: "Tuition",
-                  stream: "STAFF_TUITION",
-                  amount: split.teacherAmount,
-                  description: `${subjName} teacher share: ${student.studentName} (${month})`,
-                  collectedBy: req.user?._id,
-                  status: "FLOATING",
-                  date: new Date(),
-                  splitDetails: {
-                    teacherId: subjectTeacher._id,
-                    teacherName: subjectTeacher.name,
-                    teacherRole: "TEACHER",
-                    studentId: student._id,
-                    studentName: student.studentName,
-                    subject: subjName,
-                    subjectFee: subjShare,
-                    shareType: `TEACHER_${(subjectTeacher.compensation?.teacherShare || 70)}_${(subjectTeacher.compensation?.academyShare || 30)}`,
-                    month,
-                  },
-                });
+              // Credit teacher's floating balance
+              const opTeacherDoc = await Teacher.findById(stEntry.teacherId);
+              if (opTeacherDoc) {
+                if (!opTeacherDoc.balance) opTeacherDoc.balance = { floating: 0, verified: 0, pending: 0 };
+                opTeacherDoc.balance.floating = (opTeacherDoc.balance.floating || 0) + subjShare;
+                await opTeacherDoc.save();
               }
 
-              totalTeacherShare += split.teacherAmount;
-              totalAcademyShare += split.academyAmount;
-
-              if (!primaryTeacherId) {
-                primaryTeacherId = subjectTeacher._id;
-                primaryTeacherName = subjectTeacher.name;
-              }
-
-              // Create DailyRevenue entries for academy share → Owner/Partners
-              for (const dist of split.academyDistribution) {
-                if (dist.amount > 0 && dist.userId) {
-                  dailyRevenueEntries.push({
-                    userId: dist.userId,
-                    amount: dist.amount,
-                    revenueType: "ACADEMY_SHARE",
-                    classRef: classDoc?._id,
-                    className: classDoc?.classTitle || student.class,
-                    studentRef: student._id,
-                    studentName: student.studentName,
-                    splitDetails: {
-                      totalFee: subjShare,
-                      splitCount: split.academyDistribution.length,
-                      perPersonShare: dist.amount,
-                      description: `Academy share (${dist.percentage}%): ${subjName} — ${student.studentName}`,
-                    },
-                  });
-
-                  // Update Owner/Partner wallet floating balance
-                  const user = await User.findById(dist.userId);
-                  if (user) {
-                    if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
-                    user.walletBalance.floating = (user.walletBalance.floating || 0) + dist.amount;
-                    await user.save();
-                  }
+              // Credit Owner/Partner User's wallet floating balance
+              if (opEntry.userId) {
+                const opUser = await User.findById(opEntry.userId);
+                if (opUser) {
+                  if (!opUser.walletBalance) opUser.walletBalance = { floating: 0, verified: 0 };
+                  opUser.walletBalance.floating = (opUser.walletBalance.floating || 0) + subjShare;
+                  await opUser.save();
                 }
               }
 
-              if (split.academyAmount > 0) {
-                creditTransactions.push({
-                  type: "INCOME",
-                  category: "Academy Share",
-                  stream: "ACADEMY_POOL",
-                  amount: split.academyAmount,
-                  description: `Academy share: ${subjName} - ${student.studentName}`,
-                  collectedBy: req.user?._id,
-                  status: "FLOATING",
-                  date: new Date(),
-                  splitDetails: {
-                    studentId: student._id,
-                    studentName: student.studentName,
-                    subject: subjName,
-                    shareType: "ACADEMY_SHARE_SPLIT",
-                    month,
-                  },
-                });
+              totalTeacherShare += subjShare;
+              primaryIsPartner = true;
+
+              if (!primaryTeacherId || opEntry.role === "OWNER") {
+                primaryTeacherId = stEntry.teacherId;
+                primaryTeacherName = opEntry.teacherName;
               }
+
+              creditTransactions.push({
+                type: "INCOME",
+                category: "Tuition",
+                stream: opEntry.role === "OWNER" ? "OWNER_CHEMISTRY" : "PARTNER_BIO",
+                amount: subjShare,
+                description: `Tuition share (${subjName}): ${student.studentName} (${month}) — ${opEntry.teacherName} [${opEntry.role}]`,
+                collectedBy: req.user?._id,
+                status: "FLOATING",
+                date: new Date(),
+                splitDetails: {
+                  teacherId: stEntry.teacherId,
+                  teacherName: opEntry.teacherName,
+                  teacherRole: opEntry.role,
+                  studentId: student._id,
+                  studentName: student.studentName,
+                  subject: subjName,
+                  subjectFee: subjShare,
+                  shareType: "TUITION_100_SUBJECT",
+                  month,
+                },
+              });
+
+              // DailyRevenue entry for dashboard closing
+              dailyRevenueEntries.push({
+                userId: opEntry.userId,
+                amount: subjShare,
+                revenueType: "TUITION_SHARE",
+                classRef: classDoc?._id,
+                className: classDoc?.classTitle || student.class,
+                studentRef: student._id,
+                studentName: student.studentName,
+                splitDetails: {
+                  totalFee: amountNum,
+                  splitCount: ownerPartnerTeachers.length,
+                  perPersonShare: subjShare,
+                  description: `Tuition share (${subjName}): ${student.studentName} (${month}) — ${opEntry.teacherName} [${opEntry.role}]`,
+                },
+              });
+
             } else {
-              totalAcademyShare += subjShare;
+              // ── Regular teacher: academy split ──
+              const subjectTeacher = await Teacher.findById(stEntry.teacherId);
+              if (subjectTeacher) {
+                const split = await calculateAcademySplit(subjShare, subjectTeacher, config);
+
+                revenueSource = split.compensationType === "perStudent"
+                  ? "academy-per-student" : "academy-teacher-split";
+
+                // Credit teacher floating balance (only for percentage/hybrid — NOT fixed/perStudent)
+                if (split.teacherAmount > 0) {
+                  if (!subjectTeacher.balance) subjectTeacher.balance = { floating: 0, verified: 0, pending: 0 };
+                  subjectTeacher.balance.floating = (subjectTeacher.balance.floating || 0) + split.teacherAmount;
+                  await subjectTeacher.save();
+
+                  creditTransactions.push({
+                    type: "INCOME",
+                    category: "Tuition",
+                    stream: "STAFF_TUITION",
+                    amount: split.teacherAmount,
+                    description: `${subjName} teacher share: ${student.studentName} (${month})`,
+                    collectedBy: req.user?._id,
+                    status: "FLOATING",
+                    date: new Date(),
+                    splitDetails: {
+                      teacherId: subjectTeacher._id,
+                      teacherName: subjectTeacher.name,
+                      teacherRole: "TEACHER",
+                      studentId: student._id,
+                      studentName: student.studentName,
+                      subject: subjName,
+                      subjectFee: subjShare,
+                      shareType: `TEACHER_${(subjectTeacher.compensation?.teacherShare || 70)}_${(subjectTeacher.compensation?.academyShare || 30)}`,
+                      month,
+                    },
+                  });
+                }
+
+                totalTeacherShare += split.teacherAmount;
+                totalAcademyShare += split.academyAmount;
+
+                if (!primaryTeacherId) {
+                  primaryTeacherId = subjectTeacher._id;
+                  primaryTeacherName = subjectTeacher.name;
+                }
+
+                // Create DailyRevenue entries for academy share → Owner/Partners
+                for (const dist of split.academyDistribution) {
+                  if (dist.amount > 0 && dist.userId) {
+                    dailyRevenueEntries.push({
+                      userId: dist.userId,
+                      amount: dist.amount,
+                      revenueType: "ACADEMY_SHARE",
+                      classRef: classDoc?._id,
+                      className: classDoc?.classTitle || student.class,
+                      studentRef: student._id,
+                      studentName: student.studentName,
+                      splitDetails: {
+                        totalFee: subjShare,
+                        splitCount: split.academyDistribution.length,
+                        perPersonShare: dist.amount,
+                        description: `Academy share (${dist.percentage}%): ${subjName} — ${student.studentName}`,
+                      },
+                    });
+
+                    // Update Owner/Partner wallet floating balance
+                    const user = await User.findById(dist.userId);
+                    if (user) {
+                      if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
+                      user.walletBalance.floating = (user.walletBalance.floating || 0) + dist.amount;
+                      await user.save();
+                    }
+                  }
+                }
+
+                if (split.academyAmount > 0) {
+                  creditTransactions.push({
+                    type: "INCOME",
+                    category: "Academy Share",
+                    stream: "ACADEMY_POOL",
+                    amount: split.academyAmount,
+                    description: `Academy share: ${subjName} - ${student.studentName}`,
+                    collectedBy: req.user?._id,
+                    status: "FLOATING",
+                    date: new Date(),
+                    splitDetails: {
+                      studentId: student._id,
+                      studentName: student.studentName,
+                      subject: subjName,
+                      shareType: "ACADEMY_SHARE_SPLIT",
+                      month,
+                    },
+                  });
+                }
+              } else {
+                totalAcademyShare += subjShare;
+              }
             }
           } else {
             totalAcademyShare += subjShare;
@@ -438,6 +522,72 @@ exports.collectFee = async (req, res) => {
         if (allocatedTotal < amountNum) {
           totalAcademyShare += amountNum - allocatedTotal;
         }
+
+      } else if (mode === "TUITION") {
+        // Mixed mode but no subject teacher map defined — fall back to equal split among Owner/Partners
+        revenueSource = "tuition-auto";
+        const splits = calculateTuitionSplit(amountNum, ownerPartnerTeachers);
+
+        for (const split of splits) {
+          if (split.teacherId) {
+            const teacher = await Teacher.findById(split.teacherId);
+            if (teacher) {
+              if (!teacher.balance) teacher.balance = { floating: 0, verified: 0, pending: 0 };
+              teacher.balance.floating = (teacher.balance.floating || 0) + split.amount;
+              await teacher.save();
+            }
+          }
+          if (split.userId) {
+            const user = await User.findById(split.userId);
+            if (user) {
+              if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
+              user.walletBalance.floating = (user.walletBalance.floating || 0) + split.amount;
+              await user.save();
+            }
+          }
+          totalTeacherShare += split.amount;
+          if (!primaryTeacherId || split.role === "OWNER") {
+            primaryTeacherId = split.teacherId;
+            primaryTeacherName = split.teacherName;
+            primaryIsPartner = true;
+          }
+          creditTransactions.push({
+            type: "INCOME",
+            category: "Tuition",
+            stream: split.role === "OWNER" ? "OWNER_CHEMISTRY" : "PARTNER_BIO",
+            amount: split.amount,
+            description: `Tuition share: ${student.studentName} (${month}) — ${split.teacherName} [${split.role}]`,
+            collectedBy: req.user?._id,
+            status: "FLOATING",
+            date: new Date(),
+            splitDetails: {
+              teacherId: split.teacherId,
+              teacherName: split.teacherName,
+              teacherRole: split.role,
+              studentId: student._id,
+              studentName: student.studentName,
+              shareType: "TUITION_100_SPLIT",
+              month,
+            },
+          });
+          dailyRevenueEntries.push({
+            userId: split.userId,
+            amount: split.amount,
+            revenueType: "TUITION_SHARE",
+            classRef: classDoc?._id,
+            className: classDoc?.classTitle || student.class,
+            studentRef: student._id,
+            studentName: student.studentName,
+            splitDetails: {
+              totalFee: amountNum,
+              splitCount: splits.length,
+              perPersonShare: split.amount,
+              description: split.description,
+            },
+          });
+        }
+        totalAcademyShare = 0;
+
       } else {
         // Fallback: single-teacher or no class assignment (legacy path)
         const legacyTeacher = req.body.teacherId
@@ -518,7 +668,7 @@ exports.collectFee = async (req, res) => {
       studentName: student.studentName,
       className: student.class,
       class: classDoc?._id,
-      subject: mode === "TUITION" ? "Tuition (Auto)" : "Multi-Subject",
+      subject: (mode === "TUITION" && regularTeachers.length === 0) ? "Tuition (Auto)" : "Multi-Subject",
       amount: amountNum,
       month,
       status: "PAID",
@@ -589,7 +739,7 @@ exports.collectFee = async (req, res) => {
         await Notification.create({
           recipient: owner._id,
           recipientRole: "OWNER",
-          message: `Fee collected from ${student.studentName} (${student.studentId}): Rs. ${amountNum.toLocaleString()} [${mode}] | Remaining: Rs. ${newRemaining.toLocaleString()}`,
+          message: `Fee collected from ${student.studentName} (${student.studentId}): Rs. ${amountNum.toLocaleString()} [${revenueSource}] | Remaining: Rs. ${newRemaining.toLocaleString()}`,
           type: "FINANCE",
           relatedId: feeRecord._id.toString(),
         });

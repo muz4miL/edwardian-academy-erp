@@ -635,6 +635,14 @@ function TeacherPayrollReportSection() {
                             <p>Rate: PKR {(t.proof.perStudentAmount || 0).toLocaleString()} per student</p>
                             <p>Active Students: {t.proof.activeStudentCount || 0}</p>
                             <p>Total: {t.proof.activeStudentCount || 0} × PKR {(t.proof.perStudentAmount || 0).toLocaleString()} = PKR {(t.proof.calculatedAmount || 0).toLocaleString()}</p>
+                            {t.proof.items && t.proof.items.map((item: any, i: number) => (
+                              <div key={i} className="mt-1 pl-2 border-l border-slate-200">
+                                <p className="font-medium text-slate-600">{item.className}: {item.studentCount} student{item.studentCount !== 1 ? "s" : ""} × PKR {(item.perStudentAmount || 0).toLocaleString()} = PKR {(item.total || 0).toLocaleString()}</p>
+                                {item.students && item.students.length > 0 && (
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">{item.students.map((s: any) => s.name || s.id).join(", ")}</p>
+                                )}
+                              </div>
+                            ))}
                           </>
                         )}
                         {t.compensationType === "fixed" && (
