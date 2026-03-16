@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import {
   User,
@@ -291,9 +290,9 @@ export const AddTeacherModal = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] p-0 gap-0 overflow-hidden bg-white text-foreground max-h-[90vh] flex flex-col">
+        <DialogContent className="w-[95vw] max-w-[900px] p-0 gap-0 overflow-hidden bg-white text-foreground max-h-[90vh] flex flex-col">
           {/* Header */}
-          <DialogHeader className="px-8 py-6 border-b bg-gray-50/50">
+          <DialogHeader className="px-4 sm:px-8 py-6 border-b bg-gray-50/50">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-full">
                 <User className="h-5 w-5 text-primary" />
@@ -310,10 +309,10 @@ export const AddTeacherModal = ({
           </DialogHeader>
 
           {/* Scrollable Body */}
-          <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="grid grid-cols-12 gap-8">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
               {/* Left Column - Profile (4 cols) */}
-              <div className="col-span-12 md:col-span-4 lg:col-span-4 space-y-6">
+              <div className="col-span-1 md:col-span-4 space-y-6">
                 <div className="flex flex-col items-center">
                   <Label className="text-sm font-semibold text-gray-700 mb-3 w-full text-left">
                     Profile Photo
@@ -360,7 +359,7 @@ export const AddTeacherModal = ({
               </div>
 
               {/* Right Column - Form (8 cols) */}
-              <div className="col-span-12 md:col-span-8 lg:col-span-8 space-y-8">
+              <div className="col-span-1 md:col-span-8 space-y-8">
                 {/* Section 1: Personal Details */}
                 <section>
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -563,61 +562,36 @@ export const AddTeacherModal = ({
                   ) : (
                   <>
                   {/* Type Selection Cards */}
-                  <RadioGroup
-                    value={compType}
-                    onValueChange={(value) =>
-                      setCompType(value as CompensationType)
-                    }
-                    className="grid grid-cols-3 gap-3"
-                  >
-                    {[
-                      {
-                        value: "percentage",
-                        label: "Percentage",
-                        icon: "%",
-                        desc: "70/30 Split",
-                      },
-                      {
-                        value: "fixed",
-                        label: "Fixed Salary",
-                        icon: "PKR",
-                        desc: "Monthly amount",
-                      },
-                      {
-                        value: "perStudent",
-                        label: "Per Student",
-                        icon: "👤",
-                        desc: "Per enrolled student",
-                      },
-                    ].map((type) => (
-                      <div key={type.value}>
-                        <RadioGroupItem
-                          value={type.value}
-                          id={`comp-${type.value}`}
-                          className="peer sr-only"
-                        />
-                        <Label
-                          htmlFor={`comp-${type.value}`}
-                          className={cn(
-                            "flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all h-full",
-                            "hover:bg-gray-50 hover:border-gray-300",
-                            "peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:text-primary",
-                            "border-gray-200 text-gray-500",
-                          )}
-                        >
-                          <span className="text-xs font-bold uppercase tracking-wide mb-1">
-                            {type.icon}
-                          </span>
-                          <span className="text-sm font-medium">
-                            {type.label}
-                          </span>
-                        </Label>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {([
+                      { value: "percentage", label: "Percentage", icon: "%" },
+                      { value: "fixed", label: "Fixed Salary", icon: "PKR" },
+                      { value: "perStudent", label: "Per Student", icon: "👤" },
+                    ] as const).map((type) => (
+                      <button
+                        key={type.value}
+                        type="button"
+                        onClick={() => setCompType(type.value)}
+                        className={cn(
+                          "flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-all h-full",
+                          "hover:bg-gray-50 hover:border-gray-300",
+                          compType === type.value
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-gray-200 text-gray-500",
+                        )}
+                      >
+                        <span className="text-xs font-bold uppercase tracking-wide mb-1">
+                          {type.icon}
+                        </span>
+                        <span className="text-sm font-medium">
+                          {type.label}
+                        </span>
+                      </button>
                     ))}
-                  </RadioGroup>
+                  </div>
 
                   {/* Dynamic Inputs */}
-                  <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="mt-4 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                     {compType === "percentage" && (
                       <div className="space-y-4">
                         {/* Visual Split Bar */}

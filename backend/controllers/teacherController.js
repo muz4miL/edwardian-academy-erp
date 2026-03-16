@@ -147,6 +147,7 @@ exports.createTeacher = async (req, res) => {
       compensationData.fixedSalary = null;
       compensationData.baseSalary = null;
       compensationData.profitShare = null;
+      compensationData.perStudentAmount = null;
     } else if (compensationData.type === "fixed") {
       compensationData.fixedSalary =
         compensation?.fixedSalary ?? settings.defaultBaseSalary;
@@ -155,6 +156,7 @@ exports.createTeacher = async (req, res) => {
       compensationData.academyShare = null;
       compensationData.baseSalary = null;
       compensationData.profitShare = null;
+      compensationData.perStudentAmount = null;
     } else if (compensationData.type === "hybrid") {
       // Hybrid mode doesn't have defaults in settings, must be provided
       compensationData.baseSalary = compensation?.baseSalary;
@@ -163,6 +165,15 @@ exports.createTeacher = async (req, res) => {
       compensationData.teacherShare = null;
       compensationData.academyShare = null;
       compensationData.fixedSalary = null;
+      compensationData.perStudentAmount = null;
+    } else if (compensationData.type === "perStudent") {
+      compensationData.perStudentAmount = compensation?.perStudentAmount;
+      // Explicitly set unused fields to null
+      compensationData.teacherShare = null;
+      compensationData.academyShare = null;
+      compensationData.fixedSalary = null;
+      compensationData.baseSalary = null;
+      compensationData.profitShare = null;
     }
 
     console.log(

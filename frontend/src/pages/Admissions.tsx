@@ -317,27 +317,41 @@ const Admissions = () => {
   const getClassSubjectsWithFees = (): SubjectWithFee[] => {
     const selectedClass = getSelectedClass();
 
-    // Build a map of class subjects: name → fee
-    const classSubjectMap: Record<string, number> = {};
+    // Build a set of class subject names (lowercase) for quick lookup
+    const classSubjectSet = new Set<string>();
     if (selectedClass?.subjects) {
       for (const s of selectedClass.subjects) {
         const name = typeof s === "string" ? s : s.name;
-        const classFee = typeof s === "object" ? s.fee : 0;
-        classSubjectMap[name.toLowerCase()] = classFee;
+        classSubjectSet.add(name.toLowerCase());
       }
     }
 
-    // Return ALL global config subjects, enriching with class data
-    return globalSubjectFees.map((gs) => {
+    // Start with class subjects (marked as isClassSubject)
+    const result: SubjectWithFee[] = [];
+    const seen = new Set<string>();
+
+    // Add class subjects first (fee will be calculated at submission as totalFee / numSubjects)
+    if (selectedClass?.subjects) {
+      for (const s of selectedClass.subjects) {
+        const name = typeof s === "string" ? s : s.name;
+        const key = name.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push({ name, fee: 0, isClassSubject: true });
+        }
+      }
+    }
+
+    // Then add remaining config subjects that are NOT in the class
+    for (const gs of globalSubjectFees) {
       const key = gs.name.toLowerCase();
-      const classFee = classSubjectMap[key];
-      const fee = classFee && classFee > 0 ? classFee : gs.fee;
-      return {
-        name: gs.name,
-        fee,
-        isClassSubject: !!classFee || classSubjectMap.hasOwnProperty(key),
-      };
-    });
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({ name: gs.name, fee: 0, isClassSubject: false });
+      }
+    }
+
+    return result;
   };
 
   const classSubjects = getClassSubjectsWithFees();
@@ -354,17 +368,13 @@ const Admissions = () => {
     // Skip if custom fee mode is enabled
     if (isCustomFeeMode) return;
 
-    // Skip if session price mode is active (session pricing takes precedence)
+    // Use session price if available (session pricing takes precedence)
     if (isSessionPriceMode && sessionPrice && sessionPrice > 0) {
       console.log("📊 Using session-based pricing:", sessionPrice);
       return;
     }
 
-    // Fall back to subject-based pricing
-    if (selectedClassId && selectedSubjects.length > 0) {
-      const calculatedFee = calculateSubjectBasedFee();
-      setTotalFee(String(calculatedFee));
-    }
+    // Fee is entered manually - don't auto-calculate from subject fees
   }, [selectedSubjects, selectedClassId, isCustomFeeMode, globalSubjectFees, isSessionPriceMode, sessionPrice]);
 
   // WAQAR PROTOCOL V2: Calculate Discount when Custom Fee is used
@@ -538,14 +548,13 @@ const Admissions = () => {
       return;
     }
 
-    // ZERO-FEE PREVENTION: Warn if no payment received (for active students)
-    if (paidAmountNum === 0 ) {
-      toast.error("No Fee Received", {
+    // ZERO-FEE NOTE: Inform if no payment received (student will be marked as pending)
+    if (paidAmountNum === 0) {
+      toast.info("No Fee Received", {
         description:
-          "Active students must have an initial fee payment. Set status to 'inactive' if this is intentional.",
-        duration: 5000,
+          "Student will be added with fee status 'pending'. Fee can be collected later from the Students page.",
+        duration: 4000,
       });
-      return;
     }
 
     setFeeValidationError("");
@@ -561,14 +570,14 @@ const Admissions = () => {
     }
 
     // Prepare student data
-    // TASK 1 FIX: Transform subjects from string array to objects with locked pricing
-    const subjectsWithFees = selectedSubjects.map((subjectName) => {
-      const subject = classSubjects.find((s) => s.name === subjectName);
-      return {
-        name: subjectName,
-        fee: subject?.fee || 0,
-      };
-    });
+    // Split totalFee equally among selected subjects for clean revenue calculations
+    const numSubjects = selectedSubjects.length;
+    const feePerSubject = numSubjects > 0 ? Math.floor(Number(totalFee) / numSubjects) : 0;
+    const remainder = numSubjects > 0 ? Number(totalFee) - (feePerSubject * numSubjects) : 0;
+    const subjectsWithFees = selectedSubjects.map((subjectName, idx) => ({
+      name: subjectName,
+      fee: feePerSubject + (idx === numSubjects - 1 ? remainder : 0),
+    }));
 
     // Ensure we have a valid class name
     const classTitle =
