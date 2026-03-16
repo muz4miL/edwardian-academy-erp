@@ -16,10 +16,11 @@
 
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
+const path = require("path");
 const User = require("../models/User");
 const Teacher = require("../models/Teacher");
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 // Map of username → subject they teach
 // Adjust these to match your actual academy setup

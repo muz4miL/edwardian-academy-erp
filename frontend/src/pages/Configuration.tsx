@@ -1193,39 +1193,30 @@ const Configuration = () => {
                     </div>
                     <div>
                       <CardTitle className="text-lg">
-                        Master Subject Pricing
+                        Master Subject List
                       </CardTitle>
-                      <CardDescription>Global fee structure</CardDescription>
+                      <CardDescription>Manage subjects available for classes and teachers (fees come from Session Pricing below)</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-6 space-y-4">
-                  {/* Add New */}
+                  {/* Add New Subject */}
                   <div className="flex gap-3">
                     <Input
-                      placeholder="Subject Name"
+                      placeholder="Subject Name (e.g. Biology, English)"
                       value={newSubjectName}
                       onChange={(e) => setNewSubjectName(e.target.value)}
                       className="flex-1 h-10"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.form?.requestSubmit();
+                      }}
                     />
-                    <div className="relative w-32">
-                      <Input
-                        type="number"
-                        placeholder="Fee"
-                        value={newSubjectFee}
-                        onChange={(e) => setNewSubjectFee(e.target.value)}
-                        className="h-10 pr-8"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                        PKR
-                      </span>
-                    </div>
                     <Button
                       onClick={async () => {
-                        if (!newSubjectName.trim() || !newSubjectFee) {
+                        if (!newSubjectName.trim()) {
                           toast({
                             title: "Missing Information",
-                            description: "Enter both name and fee",
+                            description: "Enter a subject name",
                             variant: "destructive",
                           });
                           return;
@@ -1248,13 +1239,12 @@ const Configuration = () => {
                           ...defaultSubjectFees,
                           {
                             name: newSubjectName.trim(),
-                            fee: Number(newSubjectFee),
+                            fee: 0,
                           },
                         ];
                         setDefaultSubjectFees(newSubjects);
                         const subjectName = newSubjectName.trim();
                         setNewSubjectName("");
-                        setNewSubjectFee("");
                         try {
                           await saveConfigToBackend(newSubjects);
                           toast({
@@ -1264,7 +1254,6 @@ const Configuration = () => {
                         } catch (error) {
                           setDefaultSubjectFees(defaultSubjectFees);
                           setNewSubjectName(subjectName);
-                          setNewSubjectFee(String(Number(newSubjectFee)));
                           toast({
                             title: "Error",
                             description: "Failed to save",
@@ -1290,23 +1279,8 @@ const Configuration = () => {
                           <p className="font-semibold text-sm">
                             {subject.name}
                           </p>
-                          <p className="text-xs text-gray-500">
-                            PKR {subject.fee.toLocaleString()}
-                          </p>
                         </div>
                         <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => {
-                              setEditingSubject({ ...subject, index });
-                              setEditFeeValue(String(subject.fee));
-                              setEditDialogOpen(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"

@@ -978,11 +978,6 @@ const Admissions = () => {
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Checking session price...
                     </span>
-                  ) : selectedSubjects.length > 0 ? (
-                    <span className="text-xs text-sky-600 flex items-center gap-1">
-                      <Calculator className="h-3 w-3" />
-                      Auto-calculated
-                    </span>
                   ) : null}
                 </div>
                 <div className="relative">
@@ -992,14 +987,12 @@ const Admissions = () => {
                     placeholder="0"
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
-                    readOnly={!isCustomFeeMode && (selectedSubjects.length > 0 || isSessionPriceMode)}
+                    readOnly={!isCustomFeeMode && isSessionPriceMode && sessionPrice !== null && sessionPrice > 0}
                     className={`${isCustomFeeMode
                       ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
                       : isSessionPriceMode && sessionPrice && sessionPrice > 0
                         ? "border-emerald-400 bg-emerald-50 cursor-not-allowed font-bold text-emerald-700"
-                        : !isCustomFeeMode && selectedSubjects.length > 0
-                          ? "border-sky-300 bg-sky-50 cursor-not-allowed"
-                          : ""
+                        : ""
                       }`}
                   />
                   {!isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
@@ -1007,11 +1000,7 @@ const Admissions = () => {
                       <Package className="h-4 w-4 text-emerald-500" />
                     </div>
                   )}
-                  {!isCustomFeeMode && !isSessionPriceMode && selectedSubjects.length > 0 && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <Lock className="h-4 w-4 text-sky-500" />
-                    </div>
-                  )}
+
                   {isCustomFeeMode && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
                       <Pencil className="h-4 w-4 text-amber-500" />
