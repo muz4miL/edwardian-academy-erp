@@ -1516,7 +1516,7 @@ exports.getAnalyticsDashboard = async (req, res) => {
 };
 
 // =====================================================================
-// GENERATE FINANCIAL REPORT — Printable report for any period
+// GENERATE FINANCIAL REPORT — Detailed printable report for any period
 // =====================================================================
 exports.generateFinancialReport = async (req, res) => {
   try {
@@ -1540,60 +1540,165 @@ exports.generateFinancialReport = async (req, res) => {
     } else if (period === "custom" && startDate && endDate) {
       dateFilter = { $gte: new Date(startDate), $lte: new Date(endDate) };
     } else if (period === "full") {
-      // All-time: no date filter needed, use a very old start date
       dateFilter = { $gte: new Date("2020-01-01") };
     } else {
       dateFilter = { $gte: today };
     }
 
-    // Revenue from Transaction (INCOME)
+    // ── Revenue from Transaction (INCOME) ──
     const revenueByCategory = await Transaction.aggregate([
       { $match: { type: "INCOME", date: dateFilter } },
-      {
-        $group: {
-          _id: "$category",
-          total: { $sum: "$amount" },
-          count: { $sum: 1 },
-        },
-      },
+      { $group: { _id: "$category", total: { $sum: "$amount" }, count: { $sum: 1 } } },
       { $sort: { total: -1 } },
     ]);
 
-    // Deduct refunds from revenue
     const refundResult = await Transaction.aggregate([
       { $match: { type: "REFUND", date: dateFilter } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
     const totalRefunds = refundResult[0]?.total || 0;
 
-    // Expenses — unified breakdown using helper
+    // ── Expenses ──
     const expenseBreakdown = await getUnifiedExpenseBreakdown(dateFilter);
     const expenseByCategory = expenseBreakdown.map(e => ({
-      _id: e.category,
-      total: e.total,
-      count: e.count,
+      _id: e.category, total: e.total, count: e.count,
     }));
 
     const totalRevenue = revenueByCategory.reduce((s, r) => s + r.total, 0) - totalRefunds;
     const totalExpenses = expenseByCategory.reduce((s, e) => s + e.total, 0);
 
-    const feesSummary = await FeeRecord.aggregate([
-      { $match: { updatedAt: dateFilter, status: "PAID" } },
-      {
-        $group: {
-          _id: null,
-          totalCollected: { $sum: "$amount" },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    // ── Detailed Fee Records (per-student) ──
+    const feeRecords = await FeeRecord.find({
+      createdAt: dateFilter,
+      status: "PAID",
+    }).sort({ createdAt: -1 }).lean();
+
+    const feeDetails = feeRecords.map(fr => ({
+      receiptNumber: fr.receiptNumber,
+      studentName: fr.studentName,
+      className: fr.className,
+      subject: fr.subject || "",
+      amount: fr.amount,
+      teacherName: fr.teacherName || "",
+      isPartnerTeacher: fr.isPartnerTeacher || false,
+      teacherShare: fr.splitBreakdown?.teacherShare || 0,
+      academyShare: fr.splitBreakdown?.academyShare || 0,
+      teacherPercentage: fr.splitBreakdown?.teacherPercentage || 0,
+      academyPercentage: fr.splitBreakdown?.academyPercentage || 0,
+      paymentMethod: fr.paymentMethod || "CASH",
+      collectedByName: fr.collectedByName || "",
+      revenueSource: fr.revenueSource || "",
+      date: fr.createdAt,
+    }));
+
+    const feesSummary = {
+      total: feeRecords.reduce((s, fr) => s + fr.amount, 0),
+      count: feeRecords.length,
+    };
+
+    // ── DailyRevenue: Owner/Partner revenue entries ──
+    const DailyRevenue = require("../models/DailyRevenue");
+    const dailyRevEntries = await DailyRevenue.find({
+      date: dateFilter,
+    }).sort({ date: -1 }).lean();
+
+    // Group by partner
+    const partnerRevenue = {};
+    for (const entry of dailyRevEntries) {
+      const pid = entry.partner?.toString() || "unknown";
+      if (!partnerRevenue[pid]) {
+        partnerRevenue[pid] = {
+          partnerId: pid,
+          tuitionTotal: 0, tuitionCount: 0,
+          academyTotal: 0, academyCount: 0,
+          adjustmentTotal: 0,
+          items: [],
+        };
+      }
+      const pr = partnerRevenue[pid];
+      if (entry.revenueType === "TUITION_SHARE") {
+        pr.tuitionTotal += entry.amount || 0;
+        pr.tuitionCount++;
+      } else if (entry.revenueType === "ACADEMY_SHARE") {
+        pr.academyTotal += entry.amount || 0;
+        pr.academyCount++;
+      } else if (entry.revenueType === "WITHDRAWAL_ADJUSTMENT") {
+        pr.adjustmentTotal += entry.amount || 0;
+      }
+      pr.items.push({
+        type: entry.revenueType,
+        amount: entry.amount,
+        className: entry.className || "",
+        studentName: entry.studentName || "",
+        status: entry.status,
+        date: entry.date,
+        description: entry.splitDetails?.description || "",
+      });
+    }
+
+    // Enrich partner names
+    const partnerIds = Object.keys(partnerRevenue).filter(id => id !== "unknown");
+    if (partnerIds.length > 0) {
+      const users = await User.find({ _id: { $in: partnerIds } }).select("fullName role").lean();
+      for (const u of users) {
+        const pid = u._id.toString();
+        if (partnerRevenue[pid]) {
+          partnerRevenue[pid].partnerName = u.fullName;
+          partnerRevenue[pid].role = u.role;
+        }
+      }
+    }
+
+    // ── Per-teacher revenue breakdown ──
+    const teacherRevMap = {};
+    for (const fr of feeRecords) {
+      const tid = fr.teacher?.toString();
+      if (!tid) continue;
+      if (!teacherRevMap[tid]) {
+        teacherRevMap[tid] = {
+          teacherId: tid,
+          teacherName: fr.teacherName || "",
+          isPartner: fr.isPartnerTeacher || false,
+          totalFeeCollected: 0,
+          totalTeacherShare: 0,
+          totalAcademyShare: 0,
+          feeCount: 0,
+          students: [],
+        };
+      }
+      const tm = teacherRevMap[tid];
+      tm.totalFeeCollected += fr.amount || 0;
+      tm.totalTeacherShare += fr.splitBreakdown?.teacherShare || 0;
+      tm.totalAcademyShare += fr.splitBreakdown?.academyShare || 0;
+      tm.feeCount++;
+      tm.students.push({
+        studentName: fr.studentName,
+        className: fr.className,
+        amount: fr.amount,
+        teacherShare: fr.splitBreakdown?.teacherShare || 0,
+        academyShare: fr.splitBreakdown?.academyShare || 0,
+      });
+    }
+
+    // Enrich teacher compensation type
+    const teacherIds = Object.keys(teacherRevMap);
+    if (teacherIds.length > 0) {
+      const teachers = await Teacher.find({ _id: { $in: teacherIds } })
+        .select("name subject compensation balance").lean();
+      for (const t of teachers) {
+        const tid = t._id.toString();
+        if (teacherRevMap[tid]) {
+          teacherRevMap[tid].subject = t.subject;
+          teacherRevMap[tid].compensationType = t.compensation?.type || "percentage";
+          teacherRevMap[tid].compensationDetails = t.compensation;
+          teacherRevMap[tid].currentBalance = t.balance;
+        }
+      }
+    }
 
     const periodLabels = {
-      today: "Today's",
-      week: "This Week's",
-      month: "This Month's",
-      full: "All-Time",
-      custom: "Custom Period",
+      today: "Today's", week: "This Week's", month: "This Month's",
+      full: "All-Time", custom: "Custom Period",
     };
 
     return res.json({
@@ -1603,25 +1708,91 @@ exports.generateFinancialReport = async (req, res) => {
         totalRevenue,
         totalExpenses,
         netProfit: totalRevenue - totalExpenses,
-        revenueByCategory: revenueByCategory.map((r) => ({
-          category: r._id || "Uncategorized",
-          amount: r.total,
-          transactions: r.count,
+        totalRefunds,
+        revenueByCategory: revenueByCategory.map(r => ({
+          category: r._id || "Uncategorized", amount: r.total, transactions: r.count,
         })),
-        expenseByCategory: expenseByCategory.map((e) => ({
-          category: e._id || "Uncategorized",
-          amount: e.total,
-          transactions: e.count,
+        expenseByCategory: expenseByCategory.map(e => ({
+          category: e._id || "Uncategorized", amount: e.total, transactions: e.count,
         })),
-        feesCollected: {
-          total: feesSummary[0]?.totalCollected || 0,
-          count: feesSummary[0]?.count || 0,
-        },
+        feesCollected: feesSummary,
+        feeDetails,
+        teacherRevenue: Object.values(teacherRevMap),
+        partnerRevenue: Object.values(partnerRevenue),
         generatedAt: new Date().toISOString(),
       },
     });
   } catch (error) {
     console.error("Generate Report Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================================
+// ACADEMY POOL REPORT — per-class, per-teacher, per-student breakdown
+// =====================================================================
+exports.getAcademyPoolReport = async (req, res) => {
+  try {
+    const DailyRevenue = require("../models/DailyRevenue");
+    const config = await Configuration.findOne().lean();
+
+    // Get all ACADEMY_SHARE DailyRevenue entries
+    const entries = await DailyRevenue.find({
+      revenueType: "ACADEMY_SHARE",
+    }).sort({ date: -1 }).lean();
+
+    const totalPool = entries.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    // Group by partner
+    const byPartner = {};
+    for (const e of entries) {
+      const pid = e.partner?.toString() || "unknown";
+      if (!byPartner[pid]) byPartner[pid] = { total: 0, count: 0, items: [] };
+      byPartner[pid].total += e.amount || 0;
+      byPartner[pid].count++;
+      byPartner[pid].items.push({
+        amount: e.amount, className: e.className || "", studentName: e.studentName || "",
+        date: e.date, description: e.splitDetails?.description || "",
+      });
+    }
+
+    // Enrich
+    const partnerIds = Object.keys(byPartner).filter(id => id !== "unknown");
+    if (partnerIds.length > 0) {
+      const users = await User.find({ _id: { $in: partnerIds } }).select("fullName role").lean();
+      for (const u of users) {
+        const pid = u._id.toString();
+        if (byPartner[pid]) {
+          byPartner[pid].name = u.fullName;
+          byPartner[pid].role = u.role;
+        }
+      }
+    }
+
+    // Also get TUITION_SHARE totals for comparison
+    const tuitionEntries = await DailyRevenue.find({ revenueType: "TUITION_SHARE" }).lean();
+    const totalTuition = tuitionEntries.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+    return res.json({
+      success: true,
+      data: {
+        totalPool,
+        totalTuition,
+        grandTotal: totalPool + totalTuition,
+        entryCount: entries.length,
+        byPartner: Object.entries(byPartner).map(([id, info]) => ({
+          partnerId: id,
+          partnerName: info.name || "Unknown",
+          role: info.role || "UNKNOWN",
+          total: info.total,
+          count: info.count,
+          items: info.items,
+        })),
+        academyShareSplit: config?.academyShareSplit || [],
+      },
+    });
+  } catch (error) {
+    console.error("Academy Pool Report Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

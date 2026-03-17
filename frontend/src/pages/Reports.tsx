@@ -1,134 +1,82 @@
 /**
- * Reports Page — Real-time Financial & Academic Reports
- * Generates actual data-driven reports with CSV export + print support
+ * Reports Page — Detailed Financial & Academic Reports
+ * Shows per-student fee collections, per-teacher revenue, owner/partner splits
  */
 
 import { useState, useRef } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  BarChart3,
-  Download,
-  Printer,
-  Loader2,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  FileSpreadsheet,
-  Receipt,
-  Users,
-  GraduationCap,
-  Calendar,
-  ArrowLeft,
-  RefreshCcw,
-  Package,
+  BarChart3, Download, Printer, Loader2, DollarSign, TrendingUp, TrendingDown,
+  FileSpreadsheet, Receipt, Users, GraduationCap, ArrowLeft, RefreshCcw, Package,
+  ChevronDown, ChevronRight, BookOpen, Wallet, PiggyBank,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
-function formatCurrency(n: number) {
-  return `PKR ${n.toLocaleString()}`;
+function fmt(n: number) { return `PKR ${n.toLocaleString()}`; }
+function fmtDate(d: string | Date) {
+  return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function formatDate(d: string | Date) {
-  return new Date(d).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-// CSV Export Helper
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
-  const csv = [
-    headers.join(","),
-    ...rows.map((r) =>
-      r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","),
-    ),
-  ].join("\n");
+  const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
-  URL.revokeObjectURL(url);
 }
 
-// Print Helper
 function printContent(title: string, el: HTMLDivElement | null) {
   if (!el) return;
   const win = window.open("", "_blank");
   if (!win) return;
-  win.document.write(`
-    <html><head><title>${title}</title>
+  win.document.write(`<html><head><title>${title}</title>
     <style>
       body{font-family:Arial,sans-serif;padding:30px;color:#1a1a1a}
-      h1{font-size:22px;margin-bottom:4px}
-      h2{font-size:16px;margin:20px 0 8px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
+      h1{font-size:22px;margin-bottom:4px}h2{font-size:16px;margin:20px 0 8px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
       .meta{color:#6b7280;font-size:12px;margin-bottom:20px}
-      .kpi-row{display:flex;gap:20px;margin:16px 0}
-      .kpi{flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:16px}
-      .kpi .label{font-size:12px;color:#6b7280}.kpi .value{font-size:20px;font-weight:700;margin-top:4px}
-      .green{color:#059669}.red{color:#dc2626}.blue{color:#2563eb}
-      table{width:100%;border-collapse:collapse;margin-top:8px}
-      th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:13px}
-      th{background:#f9fafb;font-weight:600}
-      .right{text-align:right}
+      .kpi-row{display:flex;gap:16px;margin:16px 0;flex-wrap:wrap}
+      .kpi{flex:1;min-width:150px;border:1px solid #e5e7eb;border-radius:8px;padding:14px}
+      .kpi .label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px}.kpi .value{font-size:20px;font-weight:700;margin-top:4px}
+      .green{color:#059669}.red{color:#dc2626}.blue{color:#2563eb}.amber{color:#d97706}
+      table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
+      th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #e5e7eb}
+      th{background:#f9fafb;font-weight:600}.right{text-align:right}
+      .total-row{background:#f0fdf4;font-weight:700}
+      .section{margin-top:24px;page-break-inside:avoid}
+      .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+      .badge-green{background:#d1fae5;color:#065f46}.badge-blue{background:#dbeafe;color:#1e40af}.badge-amber{background:#fef3c7;color:#92400e}
       .footer{margin-top:30px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px}
     </style></head><body>
     ${el.innerHTML}
     <div class="footer">Generated by Edwardian Academy ERP &mdash; ${new Date().toLocaleString()}</div>
-    </body></html>
-  `);
+    </body></html>`);
   win.document.close();
   win.print();
 }
 
 // ═══════════════════════════════════════════════════════
-// FINANCIAL REPORT VIEW
+// FINANCIAL REPORT (DETAILED)
 // ═══════════════════════════════════════════════════════
 function FinancialReport({ period, onBack }: { period: string; onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
+  const [expandedPartner, setExpandedPartner] = useState<string | null>(null);
+  const [showFeeDetails, setShowFeeDetails] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["report", "financial", period],
     queryFn: async () => {
-      const res = await fetch(
-        `${API_BASE}/api/finance/generate-report?period=${period}`,
-        { credentials: "include" },
-      );
+      const res = await fetch(`${API_BASE}/api/finance/generate-report?period=${period}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to generate report");
       return res.json();
     },
@@ -138,37 +86,21 @@ function FinancialReport({ period, onBack }: { period: string; onBack: () => voi
 
   const handleCSV = () => {
     if (!report) return;
-    const headers = ["Category", "Type", "Amount (PKR)", "Transactions"];
-    const rows = [
-      ...(report.revenueByCategory || []).map((r: any) => [r.category, "Revenue", String(r.amount), String(r.transactions)]),
-      ...(report.expenseByCategory || []).map((e: any) => [e.category, "Expense", String(e.amount), String(e.transactions)]),
-      ["", "", "", ""],
-      ["Total Revenue", "", String(report.totalRevenue), ""],
-      ["Total Expenses", "", String(report.totalExpenses), ""],
-      ["Net Profit", "", String(report.netProfit), ""],
-      ["Fees Collected", "", String(report.feesCollected?.total || 0), String(report.feesCollected?.count || 0)],
-    ];
+    const headers = ["Receipt", "Student", "Class", "Amount", "Teacher", "Teacher Share", "Academy Share", "Date"];
+    const rows = (report.feeDetails || []).map((f: any) => [
+      f.receiptNumber, f.studentName, f.className, String(f.amount),
+      f.teacherName, String(f.teacherShare), String(f.academyShare), fmtDate(f.date),
+    ]);
     downloadCSV(`financial-report-${period}`, headers, rows);
     toast.success("CSV downloaded");
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-3 text-muted-foreground">Generating report...</span>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /><span className="ml-3 text-muted-foreground">Generating report...</span></div>;
+  if (!report) return <div className="text-center py-16 text-muted-foreground">Failed to generate report. <Button variant="link" onClick={() => refetch()}>Retry</Button></div>;
 
-  if (!report) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        Failed to generate report.{" "}
-        <Button variant="link" onClick={() => refetch()}>Retry</Button>
-      </div>
-    );
-  }
+  const feeDetails = report.feeDetails || [];
+  const teacherRevenue = report.teacherRevenue || [];
+  const partnerRevenue = report.partnerRevenue || [];
 
   return (
     <div className="space-y-6">
@@ -183,47 +115,184 @@ function FinancialReport({ period, onBack }: { period: string; onBack: () => voi
 
       <div ref={printRef}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — {report.period} Financial Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(report.generatedAt)}</p>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {fmtDate(report.generatedAt)}</p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Revenue</p><p className="text-2xl font-bold text-emerald-700 mt-1">{formatCurrency(report.totalRevenue)}</p></CardContent></Card>
-          <Card className="border-l-4 border-red-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Expenses</p><p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(report.totalExpenses)}</p></CardContent></Card>
-          <Card className="border-l-4 border-blue-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Net Profit</p><p className={`text-2xl font-bold mt-1 ${report.netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(report.netProfit)}</p></CardContent></Card>
-          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Fees Collected</p><p className="text-2xl font-bold text-amber-700 mt-1">{formatCurrency(report.feesCollected?.total || 0)}</p><p className="text-xs text-muted-foreground mt-1">{report.feesCollected?.count || 0} payments</p></CardContent></Card>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase tracking-wide">Total Revenue</p><p className="text-2xl font-bold text-emerald-700 mt-1">{fmt(report.totalRevenue)}</p></CardContent></Card>
+          <Card className="border-l-4 border-red-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase tracking-wide">Total Expenses</p><p className="text-2xl font-bold text-red-600 mt-1">{fmt(report.totalExpenses)}</p></CardContent></Card>
+          <Card className={`border-l-4 ${report.netProfit >= 0 ? "border-blue-500" : "border-red-500"}`}><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase tracking-wide">Net Profit</p><p className={`text-2xl font-bold mt-1 ${report.netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{fmt(report.netProfit)}</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase tracking-wide">Fees Collected</p><p className="text-2xl font-bold text-amber-700 mt-1">{fmt(report.feesCollected?.total || 0)}</p><p className="text-xs text-muted-foreground mt-1">{report.feesCollected?.count || 0} payments</p></CardContent></Card>
         </div>
 
+        {/* Revenue Breakdown */}
         {report.revenueByCategory?.length > 0 && (
           <Card className="mt-6">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingUp className="h-5 w-5 text-emerald-600" />Revenue Breakdown</CardTitle></CardHeader>
-            <CardContent>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-5 w-5 text-emerald-600" />Revenue Breakdown</CardTitle></CardHeader>
+            <CardContent className="pt-0">
               <Table>
                 <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-center">Transactions</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {report.revenueByCategory.map((r: any) => (<TableRow key={r.category}><TableCell className="font-medium">{r.category}</TableCell><TableCell className="text-center"><Badge variant="outline">{r.transactions}</Badge></TableCell><TableCell className="text-right font-bold text-emerald-700">{formatCurrency(r.amount)}</TableCell></TableRow>))}
-                  <TableRow className="bg-emerald-50"><TableCell className="font-bold">Total</TableCell><TableCell /><TableCell className="text-right font-bold text-emerald-800">{formatCurrency(report.totalRevenue)}</TableCell></TableRow>
+                  {report.revenueByCategory.map((r: any) => (<TableRow key={r.category}><TableCell className="font-medium">{r.category}</TableCell><TableCell className="text-center"><Badge variant="outline">{r.transactions}</Badge></TableCell><TableCell className="text-right font-bold text-emerald-700">{fmt(r.amount)}</TableCell></TableRow>))}
+                  <TableRow className="bg-emerald-50"><TableCell className="font-bold">Total</TableCell><TableCell /><TableCell className="text-right font-bold text-emerald-800">{fmt(report.totalRevenue)}</TableCell></TableRow>
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
         )}
 
+        {/* ══ DETAILED FEE COLLECTION LOG ══ */}
+        {feeDetails.length > 0 && (
+          <Card className="mt-6 border-l-4 border-l-amber-400">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base"><Receipt className="h-5 w-5 text-amber-600" />Fee Collection Log — Per Student</CardTitle>
+                <Button variant="ghost" size="sm" onClick={() => setShowFeeDetails(!showFeeDetails)}>
+                  {showFeeDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  {showFeeDetails ? "Collapse" : "Expand"} ({feeDetails.length})
+                </Button>
+              </div>
+            </CardHeader>
+            {showFeeDetails && (
+              <CardContent className="pt-0">
+                <div className="max-h-[400px] overflow-auto">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Receipt</TableHead><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Teacher</TableHead><TableHead className="text-right">Fee Paid</TableHead><TableHead className="text-right">Teacher Share</TableHead><TableHead className="text-right">Academy Share</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {feeDetails.map((f: any, i: number) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-mono text-xs">{f.receiptNumber}</TableCell>
+                          <TableCell className="font-medium">{f.studentName}</TableCell>
+                          <TableCell className="text-sm">{f.className}</TableCell>
+                          <TableCell className="text-sm">{f.teacherName} {f.isPartnerTeacher && <Badge variant="secondary" className="ml-1 text-[10px]">Owner/Partner</Badge>}</TableCell>
+                          <TableCell className="text-right font-bold">{fmt(f.amount)}</TableCell>
+                          <TableCell className="text-right text-emerald-700 font-medium">{fmt(f.teacherShare)} <span className="text-xs text-muted-foreground">({f.teacherPercentage}%)</span></TableCell>
+                          <TableCell className="text-right text-blue-700 font-medium">{fmt(f.academyShare)} <span className="text-xs text-muted-foreground">({f.academyPercentage}%)</span></TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{fmtDate(f.date)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {/* ══ PER-TEACHER REVENUE ══ */}
+        {teacherRevenue.length > 0 && (
+          <Card className="mt-6 border-l-4 border-l-blue-400">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><GraduationCap className="h-5 w-5 text-blue-600" />Revenue by Teacher</CardTitle></CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {teacherRevenue.map((t: any) => (
+                <div key={t.teacherId} className="border rounded-lg overflow-hidden">
+                  <button className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left" onClick={() => setExpandedTeacher(expandedTeacher === t.teacherId ? null : t.teacherId)}>
+                    <div className="flex items-center gap-3">
+                      <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm ${t.isPartner ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-blue-400 to-indigo-500"}`}>{t.teacherName?.charAt(0)}</div>
+                      <div>
+                        <p className="font-semibold text-sm">{t.teacherName} {t.isPartner && <Badge className="ml-1 text-[10px] bg-amber-100 text-amber-700">Owner/Partner</Badge>}</p>
+                        <p className="text-xs text-muted-foreground">{t.subject} · {t.compensationType} · {t.feeCount} fees</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-emerald-700">{fmt(t.totalTeacherShare)}</p>
+                        <p className="text-xs text-muted-foreground">Teacher share</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-blue-700">{fmt(t.totalAcademyShare)}</p>
+                        <p className="text-xs text-muted-foreground">Academy share</p>
+                      </div>
+                      {expandedTeacher === t.teacherId ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </div>
+                  </button>
+                  {expandedTeacher === t.teacherId && t.students?.length > 0 && (
+                    <div className="p-3 border-t bg-white">
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead className="text-right">Fee</TableHead><TableHead className="text-right">Teacher</TableHead><TableHead className="text-right">Academy</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {t.students.map((s: any, i: number) => (
+                            <TableRow key={i}><TableCell className="font-medium text-sm">{s.studentName}</TableCell><TableCell className="text-sm">{s.className}</TableCell><TableCell className="text-right">{fmt(s.amount)}</TableCell><TableCell className="text-right text-emerald-700">{fmt(s.teacherShare)}</TableCell><TableCell className="text-right text-blue-700">{fmt(s.academyShare)}</TableCell></TableRow>
+                          ))}
+                          <TableRow className="bg-gray-50 font-bold"><TableCell colSpan={2}>Total</TableCell><TableCell className="text-right">{fmt(t.totalFeeCollected)}</TableCell><TableCell className="text-right text-emerald-700">{fmt(t.totalTeacherShare)}</TableCell><TableCell className="text-right text-blue-700">{fmt(t.totalAcademyShare)}</TableCell></TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ══ OWNER/PARTNER REVENUE DISTRIBUTION ══ */}
+        {partnerRevenue.length > 0 && (
+          <Card className="mt-6 border-l-4 border-l-violet-400">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Wallet className="h-5 w-5 text-violet-600" />Owner / Partner Revenue Distribution</CardTitle></CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {partnerRevenue.map((p: any) => {
+                const netTotal = (p.tuitionTotal || 0) + (p.academyTotal || 0) + (p.adjustmentTotal || 0);
+                return (
+                  <div key={p.partnerId} className="border rounded-lg overflow-hidden">
+                    <button className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 transition-colors text-left" onClick={() => setExpandedPartner(expandedPartner === p.partnerId ? null : p.partnerId)}>
+                      <div className="flex items-center gap-3">
+                        <div className={`h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm ${p.role === "OWNER" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-violet-400 to-purple-500"}`}>{(p.partnerName || "?").charAt(0)}</div>
+                        <div>
+                          <p className="font-semibold text-sm">{p.partnerName || "Unknown"} <Badge className={`ml-1 text-[10px] ${p.role === "OWNER" ? "bg-amber-100 text-amber-700" : "bg-violet-100 text-violet-700"}`}>{p.role}</Badge></p>
+                          <p className="text-xs text-muted-foreground">{p.tuitionCount} tuition + {p.academyCount} academy entries</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right"><p className="text-sm font-bold text-amber-700">{fmt(p.tuitionTotal || 0)}</p><p className="text-xs text-muted-foreground">Tuition</p></div>
+                        <div className="text-right"><p className="text-sm font-bold text-violet-700">{fmt(p.academyTotal || 0)}</p><p className="text-xs text-muted-foreground">Academy</p></div>
+                        <div className="text-right"><p className="text-sm font-bold text-emerald-700">{fmt(netTotal)}</p><p className="text-xs text-muted-foreground">Net</p></div>
+                        {expandedPartner === p.partnerId ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </div>
+                    </button>
+                    {expandedPartner === p.partnerId && p.items?.length > 0 && (
+                      <div className="p-3 border-t bg-white max-h-[300px] overflow-auto">
+                        <Table>
+                          <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Date</TableHead></TableRow></TableHeader>
+                          <TableBody>
+                            {p.items.map((item: any, i: number) => (
+                              <TableRow key={i}>
+                                <TableCell><Badge variant="outline" className={item.type === "TUITION_SHARE" ? "border-amber-300 text-amber-700" : item.type === "ACADEMY_SHARE" ? "border-violet-300 text-violet-700" : "border-red-300 text-red-700"}>{item.type.replace(/_/g, " ")}</Badge></TableCell>
+                                <TableCell className="font-medium text-sm">{item.studentName || "—"}</TableCell>
+                                <TableCell className="text-sm">{item.className || "—"}</TableCell>
+                                <TableCell><Badge variant={item.status === "COLLECTED" ? "default" : "secondary"}>{item.status}</Badge></TableCell>
+                                <TableCell className={`text-right font-bold ${item.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>{fmt(item.amount)}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{fmtDate(item.date)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Expense Breakdown */}
         {report.expenseByCategory?.length > 0 && (
           <Card className="mt-6">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><TrendingDown className="h-5 w-5 text-red-600" />Expense Breakdown</CardTitle></CardHeader>
-            <CardContent>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><TrendingDown className="h-5 w-5 text-red-600" />Expense Breakdown</CardTitle></CardHeader>
+            <CardContent className="pt-0">
               <Table>
-                <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-center">Transactions</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-center">Count</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {report.expenseByCategory.map((e: any) => (<TableRow key={e.category}><TableCell className="font-medium">{e.category}</TableCell><TableCell className="text-center"><Badge variant="outline">{e.transactions}</Badge></TableCell><TableCell className="text-right font-bold text-red-600">{formatCurrency(e.amount)}</TableCell></TableRow>))}
-                  <TableRow className="bg-red-50"><TableCell className="font-bold">Total</TableCell><TableCell /><TableCell className="text-right font-bold text-red-700">{formatCurrency(report.totalExpenses)}</TableCell></TableRow>
+                  {report.expenseByCategory.map((e: any) => (<TableRow key={e.category}><TableCell className="font-medium">{e.category}</TableCell><TableCell className="text-center"><Badge variant="outline">{e.transactions}</Badge></TableCell><TableCell className="text-right font-bold text-red-600">{fmt(e.amount)}</TableCell></TableRow>))}
+                  <TableRow className="bg-red-50"><TableCell className="font-bold">Total</TableCell><TableCell /><TableCell className="text-right font-bold text-red-700">{fmt(report.totalExpenses)}</TableCell></TableRow>
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
         )}
 
-        {report.revenueByCategory?.length === 0 && report.expenseByCategory?.length === 0 && (
-          <Card className="mt-6"><CardContent className="py-12 text-center text-muted-foreground"><Receipt className="h-10 w-10 mx-auto mb-3 opacity-30" /><p className="font-medium">No transactions found for this period</p><p className="text-sm mt-1">Try selecting a wider date range.</p></CardContent></Card>
+        {feeDetails.length === 0 && report.revenueByCategory?.length === 0 && (
+          <Card className="mt-6"><CardContent className="py-12 text-center text-muted-foreground"><Receipt className="h-10 w-10 mx-auto mb-3 opacity-30" /><p className="font-medium">No transactions found for this period</p></CardContent></Card>
         )}
       </div>
     </div>
@@ -231,35 +300,32 @@ function FinancialReport({ period, onBack }: { period: string; onBack: () => voi
 }
 
 // ═══════════════════════════════════════════════════════
-// TEACHER PAYMENT REPORT
+// TEACHER PAYMENT REPORT (with compensation details)
 // ═══════════════════════════════════════════════════════
 function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data: teacherData, isLoading: tLoading } = useQuery({
     queryKey: ["report", "teachers"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/teachers`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load teachers");
-      return res.json();
-    },
+    queryFn: async () => { const res = await fetch(`${API_BASE}/api/teachers`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); },
   });
 
-  const teachers = data?.data || [];
-  // walletBalance, totalCredited, totalDebited are computed by the backend
-  // Fallbacks: balance.pending / totalPaid for backward-compat
+  const { data: payrollData, isLoading: pLoading } = useQuery({
+    queryKey: ["report", "teacher-payroll-report"],
+    queryFn: async () => { const res = await fetch(`${API_BASE}/api/finance/teacher-payroll-report`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); },
+  });
+
+  const teachers = teacherData?.data || [];
+  const payroll = payrollData?.data || [];
+  const isLoading = tLoading || pLoading;
+
   const totalBalance = teachers.reduce((s: number, t: any) => s + (t.walletBalance ?? t.balance?.pending ?? 0), 0);
-  const totalCredited = teachers.reduce((s: number, t: any) => s + (t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0))), 0);
+  const totalCredited = teachers.reduce((s: number, t: any) => s + (t.totalCredited ?? 0), 0);
   const totalDebited = teachers.reduce((s: number, t: any) => s + (t.totalDebited ?? t.totalPaid ?? 0), 0);
 
   const handleCSV = () => {
-    const headers = ["Teacher ID", "Name", "Subject", "Status", "Total Credited (PKR)", "Total Paid Out (PKR)", "Outstanding Balance (PKR)"];
-    const rows = teachers.map((t: any) => {
-      const walletBal = t.walletBalance ?? t.balance?.pending ?? 0;
-      const credited = t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0));
-      const debited = t.totalDebited ?? t.totalPaid ?? 0;
-      return [t.teacherId || "", t.name || "", t.subject || "", t.status || "", String(credited), String(debited), String(walletBal)];
-    });
+    const headers = ["Name", "Subject", "Comp. Type", "Status", "Gross Owed", "Paid", "Net Owed", "Balance"];
+    const rows = payroll.map((t: any) => [t.teacherName, t.subject, t.compensationType, "active", String(t.grossOwed), String(t.alreadyPaid), String(t.netOwed), String(t.currentBalance?.pending || 0)]);
     downloadCSV("teacher-payment-report", headers, rows);
     toast.success("CSV downloaded");
   };
@@ -277,59 +343,74 @@ function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
       </div>
       <div ref={printRef}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Teacher Payment Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())}</p>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {fmtDate(new Date())} · {teachers.length} teachers</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Credited</p><p className="text-xl font-bold text-emerald-700 mt-1">{formatCurrency(totalCredited)}</p></CardContent></Card>
-          <Card className="border-l-4 border-red-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Paid Out</p><p className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalDebited)}</p></CardContent></Card>
-          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Outstanding Balance</p><p className="text-xl font-bold text-amber-700 mt-1">{formatCurrency(totalBalance)}</p></CardContent></Card>
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase">Total Credited</p><p className="text-xl font-bold text-emerald-700 mt-1">{fmt(totalCredited)}</p></CardContent></Card>
+          <Card className="border-l-4 border-red-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase">Total Paid Out</p><p className="text-xl font-bold text-red-600 mt-1">{fmt(totalDebited)}</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase">Outstanding Balance</p><p className="text-xl font-bold text-amber-700 mt-1">{fmt(totalBalance)}</p></CardContent></Card>
         </div>
 
-        <Card><CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Credited</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {teachers.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No teachers found</TableCell></TableRow>
-              ) : teachers.map((t: any) => {
-                const walletBal = t.walletBalance ?? t.balance?.pending ?? 0;
-                const credited = t.totalCredited ?? ((t.balance?.pending ?? 0) + (t.totalPaid ?? 0));
-                const debited = t.totalDebited ?? t.totalPaid ?? 0;
-                return (
-                <TableRow key={t._id}>
-                  <TableCell className="font-mono text-xs">{t.teacherId}</TableCell>
-                  <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell>{t.subject || "—"}</TableCell>
-                  <TableCell><Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge></TableCell>
-                  <TableCell className="text-right text-emerald-700 font-medium">{formatCurrency(credited)}</TableCell>
-                  <TableCell className="text-right text-red-600 font-medium">{formatCurrency(debited)}</TableCell>
-                  <TableCell className="text-right font-bold">{formatCurrency(walletBal)}</TableCell>
-                </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent></Card>
+        {/* Payroll Detail Table */}
+        {payroll.length > 0 ? (
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-5 w-5 text-blue-600" />Payroll Detail — This Month</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader><TableRow><TableHead>Teacher</TableHead><TableHead>Subject</TableHead><TableHead>Type</TableHead><TableHead>Classes</TableHead><TableHead className="text-right">Gross Owed</TableHead><TableHead className="text-right">Already Paid</TableHead><TableHead className="text-right">Net Owed</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {payroll.map((t: any) => (
+                    <TableRow key={t.teacherId}>
+                      <TableCell className="font-semibold">{t.teacherName}</TableCell>
+                      <TableCell>{t.subject || "—"}</TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize">{t.compensationType}</Badge></TableCell>
+                      <TableCell className="text-sm">{t.classes?.map((c: any) => c.title).join(", ") || "—"}</TableCell>
+                      <TableCell className="text-right font-medium">{fmt(t.grossOwed)}</TableCell>
+                      <TableCell className="text-right text-red-600">{fmt(t.alreadyPaid)}</TableCell>
+                      <TableCell className="text-right font-bold text-emerald-700">{fmt(t.netOwed)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-emerald-50 font-bold"><TableCell colSpan={4}>Total</TableCell><TableCell className="text-right">{fmt(payroll.reduce((s: number, t: any) => s + t.grossOwed, 0))}</TableCell><TableCell className="text-right text-red-600">{fmt(payroll.reduce((s: number, t: any) => s + t.alreadyPaid, 0))}</TableCell><TableCell className="text-right text-emerald-700">{fmt(payroll.reduce((s: number, t: any) => s + t.netOwed, 0))}</TableCell></TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card><CardContent className="py-8 text-center text-muted-foreground">No payroll data for regular teachers this month.</CardContent></Card>
+        )}
+
+        {/* All Teachers Balance Table */}
+        <Card className="mt-6">
+          <CardHeader className="pb-3"><CardTitle className="text-base">All Teachers — Wallet Balances</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Subject</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Credited</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {teachers.map((t: any) => (
+                  <TableRow key={t._id}>
+                    <TableCell className="font-medium">{t.name}</TableCell>
+                    <TableCell>{t.subject || "—"}</TableCell>
+                    <TableCell><Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge></TableCell>
+                    <TableCell className="text-right text-emerald-700 font-medium">{fmt(t.totalCredited ?? 0)}</TableCell>
+                    <TableCell className="text-right text-red-600">{fmt(t.totalDebited ?? t.totalPaid ?? 0)}</TableCell>
+                    <TableCell className="text-right font-bold">{fmt(t.walletBalance ?? t.balance?.pending ?? 0)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════
-// STUDENT REPORT
+// STUDENT REPORT (unchanged but cleaner)
 // ═══════════════════════════════════════════════════════
 function StudentReport({ onBack }: { onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["report", "students"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/students`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
-
+  const { data, isLoading } = useQuery({ queryKey: ["report", "students"], queryFn: async () => { const res = await fetch(`${API_BASE}/api/students`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); } });
   const students = data?.data || [];
   const totalStudents = students.length;
   const activeStudents = students.filter((s: any) => s.status === "active" || s.status === "Active").length;
@@ -337,18 +418,13 @@ function StudentReport({ onBack }: { onBack: () => void }) {
   const totalPaidAmount = students.reduce((s: number, st: any) => s + (Number(st.paidAmount) || 0), 0);
   const totalRemaining = totalExpectedFee - totalPaidAmount;
   const collectionRate = totalExpectedFee > 0 ? Math.round((totalPaidAmount / totalExpectedFee) * 100) : 0;
-
   const paidCount = students.filter((s: any) => s.feeStatus === "paid").length;
   const partialCount = students.filter((s: any) => s.feeStatus === "partial").length;
   const pendingCount = students.filter((s: any) => s.feeStatus === "pending").length;
 
   const handleCSV = () => {
-    const headers = ["Student ID", "Name", "Father", "Class", "Status", "Fee Status", "Total Fee (PKR)", "Paid (PKR)", "Remaining (PKR)", "Contact"];
-    const rows = students.map((s: any) => {
-      const totalFee = Number(s.totalFee) || 0;
-      const paid = Number(s.paidAmount) || 0;
-      return [s.studentId || "", s.studentName || s.name || "", s.fatherName || "", s.class || s.className || "", s.status || "", s.feeStatus || "pending", String(totalFee), String(paid), String(Math.max(0, totalFee - paid)), s.parentCell || s.studentCell || ""];
-    });
+    const headers = ["ID", "Name", "Father", "Class", "Fee Status", "Total Fee", "Paid", "Remaining"];
+    const rows = students.map((s: any) => { const tf = Number(s.totalFee)||0; const p = Number(s.paidAmount)||0; return [s.studentId||"", s.studentName||s.name||"", s.fatherName||"", s.class||s.className||"", s.feeStatus||"pending", String(tf), String(p), String(Math.max(0,tf-p))]; });
     downloadCSV("student-report", headers, rows);
     toast.success("CSV downloaded");
   };
@@ -359,55 +435,31 @@ function StudentReport({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleCSV}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> CSV</Button>
-          <Button size="sm" onClick={() => printContent("Student Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print</Button>
-        </div>
+        <div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleCSV}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> CSV</Button><Button size="sm" onClick={() => printContent("Student Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print</Button></div>
       </div>
       <div ref={printRef}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Student Fee Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())} &bull; {totalStudents} students ({activeStudents} active)</p>
-
-        {/* KPI Cards */}
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {fmtDate(new Date())} · {totalStudents} students ({activeStudents} active)</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-          <Card className="border-l-4 border-violet-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Students</p><p className="text-xl font-bold text-violet-700">{totalStudents}</p></CardContent></Card>
+          <Card className="border-l-4 border-violet-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total</p><p className="text-xl font-bold text-violet-700">{totalStudents}</p></CardContent></Card>
           <Card className="border-l-4 border-emerald-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Active</p><p className="text-xl font-bold text-emerald-700">{activeStudents}</p></CardContent></Card>
-          <Card className="border-l-4 border-blue-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Fee Expected</p><p className="text-xl font-bold text-blue-700">{formatCurrency(totalExpectedFee)}</p></CardContent></Card>
-          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Collected</p><p className="text-xl font-bold text-emerald-700">{formatCurrency(totalPaidAmount)}</p></CardContent></Card>
-          <Card className="border-l-4 border-red-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Total Remaining</p><p className="text-xl font-bold text-red-600">{formatCurrency(totalRemaining)}</p></CardContent></Card>
-          <Card className="border-l-4 border-amber-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Collection Rate</p><p className="text-xl font-bold text-amber-700">{collectionRate}%</p></CardContent></Card>
+          <Card className="border-l-4 border-blue-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Expected</p><p className="text-xl font-bold text-blue-700">{fmt(totalExpectedFee)}</p></CardContent></Card>
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Collected</p><p className="text-xl font-bold text-emerald-700">{fmt(totalPaidAmount)}</p></CardContent></Card>
+          <Card className="border-l-4 border-red-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Remaining</p><p className="text-xl font-bold text-red-600">{fmt(totalRemaining)}</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-4 pb-3"><p className="text-xs text-muted-foreground">Rate</p><p className="text-xl font-bold text-amber-700">{collectionRate}%</p></CardContent></Card>
         </div>
-
-        {/* Fee Status Summary */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Paid</p><p className="text-lg font-bold text-emerald-600">{paidCount}</p></CardContent></Card>
           <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Partial</p><p className="text-lg font-bold text-amber-600">{partialCount}</p></CardContent></Card>
           <Card><CardContent className="pt-4 pb-3 text-center"><p className="text-xs text-muted-foreground">Pending</p><p className="text-lg font-bold text-red-600">{pendingCount}</p></CardContent></Card>
         </div>
-
-        {/* Student Table */}
         <Card><CardContent className="p-0"><div className="max-h-[500px] overflow-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Father</TableHead><TableHead>Class</TableHead><TableHead>Status</TableHead><TableHead>Fee Status</TableHead><TableHead className="text-right">Total Fee</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Remaining</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Father</TableHead><TableHead>Class</TableHead><TableHead>Fee Status</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Remaining</TableHead></TableRow></TableHeader>
             <TableBody>
-              {students.map((s: any) => {
-                const totalFee = Number(s.totalFee) || 0;
-                const paid = Number(s.paidAmount) || 0;
-                const remaining = Math.max(0, totalFee - paid);
-                return (
-                  <TableRow key={s._id}>
-                    <TableCell className="font-mono text-xs">{s.studentId}</TableCell>
-                    <TableCell className="font-medium">{s.studentName || s.name}</TableCell>
-                    <TableCell>{s.fatherName || "—"}</TableCell>
-                    <TableCell>{s.class || s.className || "—"}</TableCell>
-                    <TableCell><Badge variant={s.status === "active" || s.status === "Active" ? "default" : "secondary"}>{s.status}</Badge></TableCell>
-                    <TableCell><Badge variant={s.feeStatus === "paid" ? "default" : s.feeStatus === "partial" ? "secondary" : "destructive"}>{s.feeStatus || "pending"}</Badge></TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(totalFee)}</TableCell>
-                    <TableCell className="text-right font-medium text-emerald-700">{formatCurrency(paid)}</TableCell>
-                    <TableCell className="text-right font-bold text-red-600">{formatCurrency(remaining)}</TableCell>
-                  </TableRow>
-                );
-              })}
+              {students.map((s: any) => { const tf=Number(s.totalFee)||0; const p=Number(s.paidAmount)||0; return (
+                <TableRow key={s._id}><TableCell className="font-mono text-xs">{s.studentId}</TableCell><TableCell className="font-medium">{s.studentName||s.name}</TableCell><TableCell>{s.fatherName||"—"}</TableCell><TableCell>{s.class||s.className||"—"}</TableCell><TableCell><Badge variant={s.feeStatus === "paid" ? "default" : s.feeStatus === "partial" ? "secondary" : "destructive"}>{s.feeStatus||"pending"}</Badge></TableCell><TableCell className="text-right">{fmt(tf)}</TableCell><TableCell className="text-right text-emerald-700">{fmt(p)}</TableCell><TableCell className="text-right font-bold text-red-600">{fmt(Math.max(0,tf-p))}</TableCell></TableRow>
+              ); })}
             </TableBody>
           </Table>
         </div></CardContent></Card>
@@ -417,206 +469,56 @@ function StudentReport({ onBack }: { onBack: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════
-// EXPENSE REPORT
+// EXPENSE + PARTNER SETTLEMENT REPORTS (kept compact)
 // ═══════════════════════════════════════════════════════
 function ExpenseReport({ onBack }: { onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["report", "expenses"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/expenses`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-  });
-
+  const { data, isLoading } = useQuery({ queryKey: ["report", "expenses"], queryFn: async () => { const res = await fetch(`${API_BASE}/api/expenses`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); } });
   const expenses = data?.data || [];
   const totalExpenses = expenses.reduce((s: number, e: any) => s + (e.amount || 0), 0);
   const byCategory: Record<string, { total: number; count: number }> = {};
-  expenses.forEach((e: any) => {
-    const cat = e.category || "Uncategorized";
-    if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 };
-    byCategory[cat].total += e.amount || 0;
-    byCategory[cat].count++;
-  });
-
-  const handleCSV = () => {
-    const headers = ["Date", "Category", "Title", "Vendor", "Amount (PKR)", "Recorded By"];
-    const rows = expenses.map((e: any) => [formatDate(e.expenseDate || e.createdAt), e.category || "", e.title || "", e.vendorName || "", String(e.amount || 0), e.paidBy?.fullName || "System"]);
-    downloadCSV("expense-report", headers, rows);
-    toast.success("CSV downloaded");
-  };
+  expenses.forEach((e: any) => { const cat = e.category || "Uncategorized"; if (!byCategory[cat]) byCategory[cat] = { total: 0, count: 0 }; byCategory[cat].total += e.amount || 0; byCategory[cat].count++; });
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleCSV}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> CSV</Button>
-          <Button size="sm" onClick={() => printContent("Expense Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print</Button>
-        </div>
+        <div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => { downloadCSV("expense-report", ["Date","Category","Title","Amount"], expenses.map((e:any)=>[fmtDate(e.expenseDate||e.createdAt),e.category||"",e.title||"",String(e.amount||0)])); toast.success("CSV downloaded"); }}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> CSV</Button><Button size="sm" onClick={() => printContent("Expense Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print</Button></div>
       </div>
       <div ref={printRef}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Expense Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>{expenses.length} expenses totaling {formatCurrency(totalExpenses)}</p>
-
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Category Summary</h2>
-        <Card className="mb-6"><CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-center">Count</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {Object.entries(byCategory).sort((a, b) => b[1].total - a[1].total).map(([cat, info]) => (
-                <TableRow key={cat}><TableCell className="font-medium">{cat}</TableCell><TableCell className="text-center"><Badge variant="outline">{info.count}</Badge></TableCell><TableCell className="text-right font-bold text-red-600">{formatCurrency(info.total)}</TableCell></TableRow>
-              ))}
-              <TableRow className="bg-red-50"><TableCell className="font-bold">Grand Total</TableCell><TableCell className="text-center font-bold">{expenses.length}</TableCell><TableCell className="text-right font-bold text-red-700">{formatCurrency(totalExpenses)}</TableCell></TableRow>
-            </TableBody>
-          </Table>
-        </CardContent></Card>
-
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>All Expenses</h2>
-        <Card><CardContent className="p-0"><div className="max-h-[400px] overflow-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Category</TableHead><TableHead>Title</TableHead><TableHead>Vendor</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {expenses.map((e: any) => (
-                <TableRow key={e._id}>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(e.expenseDate || e.createdAt)}</TableCell>
-                  <TableCell><Badge variant="outline">{e.category}</Badge></TableCell>
-                  <TableCell className="font-medium">{e.title || "—"}</TableCell>
-                  <TableCell>{e.vendorName || "—"}</TableCell>
-                  <TableCell className="text-right font-bold text-red-600">{formatCurrency(e.amount)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div></CardContent></Card>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>{expenses.length} expenses totaling {fmt(totalExpenses)}</p>
+        <Card className="mb-6"><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-center">Count</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader><TableBody>{Object.entries(byCategory).sort((a,b)=>b[1].total-a[1].total).map(([cat,info])=>(<TableRow key={cat}><TableCell className="font-medium">{cat}</TableCell><TableCell className="text-center"><Badge variant="outline">{info.count}</Badge></TableCell><TableCell className="text-right font-bold text-red-600">{fmt(info.total)}</TableCell></TableRow>))}<TableRow className="bg-red-50"><TableCell className="font-bold">Grand Total</TableCell><TableCell className="text-center font-bold">{expenses.length}</TableCell><TableCell className="text-right font-bold text-red-700">{fmt(totalExpenses)}</TableCell></TableRow></TableBody></Table></CardContent></Card>
+        <Card><CardContent className="p-0"><div className="max-h-[400px] overflow-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Category</TableHead><TableHead>Title</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{expenses.map((e:any)=>(<TableRow key={e._id}><TableCell className="text-sm text-muted-foreground">{fmtDate(e.expenseDate||e.createdAt)}</TableCell><TableCell><Badge variant="outline">{e.category}</Badge></TableCell><TableCell className="font-medium">{e.title||"—"}</TableCell><TableCell className="text-right font-bold text-red-600">{fmt(e.amount)}</TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// PARTNER SETTLEMENT REPORT
-// ═══════════════════════════════════════════════════════
 function PartnerSettlementReport({ onBack }: { onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
-
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["report", "partner-settlements"],
-    queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/finance/partner/settlements`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load settlements");
-      return res.json();
-    },
-  });
-
+  const { data, isLoading } = useQuery({ queryKey: ["report", "partner-settlements"], queryFn: async () => { const res = await fetch(`${API_BASE}/api/finance/partner/settlements`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); } });
   const settlements = data?.data || [];
   const summary = data?.summary || [];
-
   const completedTotal = summary.find((s: any) => s._id === "COMPLETED")?.total || 0;
-  const completedCount = summary.find((s: any) => s._id === "COMPLETED")?.count || 0;
   const pendingTotal = summary.find((s: any) => s._id === "PENDING")?.total || 0;
-  const pendingCount = summary.find((s: any) => s._id === "PENDING")?.count || 0;
-  const grandTotal = settlements.reduce((s: number, st: any) => s + (st.amount || 0), 0);
-
-  // Group by partner
-  const byPartner: Record<string, { name: string; total: number; completed: number; pending: number; count: number }> = {};
-  settlements.forEach((s: any) => {
-    const pid = s.partnerId?._id || "unknown";
-    const name = s.partnerId?.fullName || s.partnerName || "Unknown";
-    if (!byPartner[pid]) byPartner[pid] = { name, total: 0, completed: 0, pending: 0, count: 0 };
-    byPartner[pid].total += s.amount || 0;
-    byPartner[pid].count++;
-    if (s.status === "COMPLETED") byPartner[pid].completed += s.amount || 0;
-    if (s.status === "PENDING") byPartner[pid].pending += s.amount || 0;
-  });
-
-  const handleCSV = () => {
-    const headers = ["Date", "Partner", "Amount (PKR)", "Method", "Status", "Notes", "Confirmed By"];
-    const rows = settlements.map((s: any) => [
-      formatDate(s.date || s.createdAt),
-      s.partnerId?.fullName || s.partnerName || "",
-      String(s.amount || 0),
-      s.method || "",
-      s.status || "",
-      s.notes || "",
-      s.recordedBy?.fullName || "",
-    ]);
-    downloadCSV("partner-settlement-report", headers, rows);
-    toast.success("CSV downloaded");
-  };
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back to Reports</Button>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCcw className="mr-1.5 h-4 w-4" /> Refresh</Button>
-          <Button variant="outline" size="sm" onClick={handleCSV}><FileSpreadsheet className="mr-1.5 h-4 w-4" /> Export CSV</Button>
-          <Button size="sm" onClick={() => printContent("Partner Settlement Report", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print / Save PDF</Button>
-        </div>
+        <Button variant="ghost" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
+        <Button size="sm" onClick={() => printContent("Partner Settlements", printRef.current)}><Printer className="mr-1.5 h-4 w-4" /> Print</Button>
       </div>
-
       <div ref={printRef}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy - Partner Settlement Report</h1>
-        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>Generated on {formatDate(new Date())} - {settlements.length} settlements</p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Total Settled</p><p className="text-2xl font-bold text-emerald-700 mt-1">{formatCurrency(completedTotal)}</p><p className="text-xs text-muted-foreground mt-1">{completedCount} confirmed</p></CardContent></Card>
-          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Pending</p><p className="text-2xl font-bold text-amber-700 mt-1">{formatCurrency(pendingTotal)}</p><p className="text-xs text-muted-foreground mt-1">{pendingCount} awaiting confirmation</p></CardContent></Card>
-          <Card className="border-l-4 border-blue-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Grand Total</p><p className="text-2xl font-bold text-blue-700 mt-1">{formatCurrency(grandTotal)}</p></CardContent></Card>
-          <Card className="border-l-4 border-violet-500"><CardContent className="pt-5 pb-4"><p className="text-sm text-muted-foreground">Partners</p><p className="text-2xl font-bold text-violet-700 mt-1">{Object.keys(byPartner).length}</p></CardContent></Card>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 2 }}>Edwardian Academy — Partner Settlements</h1>
+        <p className="meta" style={{ color: "#6b7280", fontSize: 13, marginBottom: 20 }}>{settlements.length} settlements</p>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <Card className="border-l-4 border-emerald-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase">Completed</p><p className="text-2xl font-bold text-emerald-700">{fmt(completedTotal)}</p></CardContent></Card>
+          <Card className="border-l-4 border-amber-500"><CardContent className="pt-5 pb-4"><p className="text-xs text-muted-foreground uppercase">Pending</p><p className="text-2xl font-bold text-amber-700">{fmt(pendingTotal)}</p></CardContent></Card>
         </div>
-
-        {Object.keys(byPartner).length > 0 && (
-          <Card className="mt-6">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5 text-violet-600" />Partner Breakdown</CardTitle></CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader><TableRow><TableHead>Partner</TableHead><TableHead className="text-center">Settlements</TableHead><TableHead className="text-right">Confirmed</TableHead><TableHead className="text-right">Pending</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(byPartner).sort((a, b) => b[1].total - a[1].total).map(([id, info]) => (
-                    <TableRow key={id}>
-                      <TableCell className="font-medium">{info.name}</TableCell>
-                      <TableCell className="text-center"><Badge variant="outline">{info.count}</Badge></TableCell>
-                      <TableCell className="text-right font-medium text-emerald-700">{formatCurrency(info.completed)}</TableCell>
-                      <TableCell className="text-right font-medium text-amber-600">{formatCurrency(info.pending)}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(info.total)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className="mt-6">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Receipt className="h-5 w-5 text-emerald-600" />All Settlements</CardTitle></CardHeader>
-          <CardContent className="p-0"><div className="max-h-[500px] overflow-auto">
-            <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Partner</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead>Notes</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {settlements.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No settlements recorded yet</TableCell></TableRow>
-                ) : settlements.map((s: any) => (
-                  <TableRow key={s._id}>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(s.date || s.createdAt)}</TableCell>
-                    <TableCell className="font-medium">{s.partnerId?.fullName || s.partnerName || "Unknown"}</TableCell>
-                    <TableCell><Badge variant="outline">{s.method || "CASH"}</Badge></TableCell>
-                    <TableCell><Badge variant={s.status === "COMPLETED" ? "default" : s.status === "PENDING" ? "secondary" : "destructive"}>{s.status}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{s.notes || "-"}</TableCell>
-                    <TableCell className="text-right font-bold text-emerald-700">{formatCurrency(s.amount)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div></CardContent>
-        </Card>
+        <Card><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Partner</TableHead><TableHead>Method</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{settlements.length===0?(<TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No settlements yet</TableCell></TableRow>):settlements.map((s:any)=>(<TableRow key={s._id}><TableCell className="text-sm">{fmtDate(s.date||s.createdAt)}</TableCell><TableCell className="font-medium">{s.partnerId?.fullName||s.partnerName||"Unknown"}</TableCell><TableCell><Badge variant="outline">{s.method||"CASH"}</Badge></TableCell><TableCell><Badge variant={s.status==="COMPLETED"?"default":"secondary"}>{s.status}</Badge></TableCell><TableCell className="text-right font-bold text-emerald-700">{fmt(s.amount)}</TableCell></TableRow>))}</TableBody></Table></CardContent></Card>
       </div>
     </div>
   );
@@ -636,35 +538,29 @@ export default function Reports() {
   if (activeReport === "teachers") return <DashboardLayout title="Teacher Payment Report"><TeacherPaymentReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
   if (activeReport === "students") return <DashboardLayout title="Student Report"><StudentReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
   if (activeReport === "expenses") return <DashboardLayout title="Expense Report"><ExpenseReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
-  if (activeReport === "settlements") return <DashboardLayout title="Partner Settlement Report"><PartnerSettlementReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
+  if (activeReport === "settlements") return <DashboardLayout title="Partner Settlements"><PartnerSettlementReport onBack={() => setActiveReport(null)} /></DashboardLayout>;
 
   const reportCards = [
-    { title: "Financial Report", description: "Revenue vs expenses breakdown by category with net profit, CSV export, and printable format", icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", action: () => setShowPeriodPicker(true) },
-    { title: "Teacher Payment Report", description: "All teacher salaries, wallet credits, payouts, and outstanding balances", icon: GraduationCap, color: "text-blue-600", bgColor: "bg-blue-100", action: () => setActiveReport("teachers") },
+    { title: "Financial Report", description: "Detailed revenue distribution with per-student fee logs, per-teacher splits, and owner/partner earnings breakdown", icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-100", action: () => setShowPeriodPicker(true) },
+    { title: "Teacher Payment Report", description: "Teacher payroll with compensation type, per-student proof, gross/net owed, and wallet balances", icon: GraduationCap, color: "text-blue-600", bgColor: "bg-blue-100", action: () => setActiveReport("teachers") },
     { title: "Expense Report", description: "Complete expense log with category breakdown and vendor details", icon: Receipt, color: "text-red-600", bgColor: "bg-red-100", action: () => setActiveReport("expenses") },
-    { title: "Student Report", description: "Full student roster with class details, status, and expected monthly fees", icon: Users, color: "text-violet-600", bgColor: "bg-violet-100", action: () => setActiveReport("students") },
-    { title: "Partner Settlements", description: "Partner settlement history with confirmed, pending, and per-partner breakdown", icon: Package, color: "text-amber-600", bgColor: "bg-amber-100", action: () => setActiveReport("settlements") },
+    { title: "Student Report", description: "Full student roster with fee status, collection rate, and outstanding balances", icon: Users, color: "text-violet-600", bgColor: "bg-violet-100", action: () => setActiveReport("students") },
+    { title: "Partner Settlements", description: "Settlement history with payment status and per-partner breakdown", icon: Package, color: "text-amber-600", bgColor: "bg-amber-100", action: () => setActiveReport("settlements") },
   ];
 
   return (
     <DashboardLayout title="Reports">
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-primary" />
-            Reports & Analytics
-          </h1>
-          <p className="text-muted-foreground">Generate real data-driven reports with CSV export and print support</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" />Reports & Analytics</h1>
+          <p className="text-muted-foreground">Generate detailed, data-driven reports with CSV export and print support</p>
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {reportCards.map((card) => (
+          {reportCards.map(card => (
             <Card key={card.title} className="hover:shadow-lg transition-shadow cursor-pointer group" onClick={card.action}>
               <CardHeader>
                 <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-lg ${card.bgColor} group-hover:scale-110 transition-transform`}>
-                    <card.icon className={`h-6 w-6 ${card.color}`} />
-                  </div>
+                  <div className={`p-3 rounded-lg ${card.bgColor} group-hover:scale-110 transition-transform`}><card.icon className={`h-6 w-6 ${card.color}`} /></div>
                   <CardTitle className="text-lg">{card.title}</CardTitle>
                 </div>
               </CardHeader>
@@ -676,7 +572,6 @@ export default function Reports() {
           ))}
         </div>
       </div>
-
       <Dialog open={showPeriodPicker} onOpenChange={setShowPeriodPicker}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Select Report Period</DialogTitle></DialogHeader>
