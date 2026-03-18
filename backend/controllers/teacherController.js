@@ -518,6 +518,59 @@ exports.deleteTeacher = async (req, res) => {
     await Teacher.findByIdAndDelete(req.params.id);
     console.log("✅ Deleted teacher:", teacher.name);
 
+    // ═══════════════════════════════════════════════════════════════
+    // CRITICAL: Purge deleted Users from Configuration splits
+    // This ensures 100% accounting accuracy by removing stale entries
+    // ═══════════════════════════════════════════════════════════════
+    const Configuration = require("../models/Configuration");
+    const config = await Configuration.findOne();
+    if (config) {
+      let configNeedsUpdate = false;
+
+      // Get all deleted user IDs (including the linked user if deleted)
+      const deletedUserIds = new Set();
+      if (teacher.userId) {
+        const linkedUser = await User.findById(teacher.userId);
+        if (!linkedUser) {
+          deletedUserIds.add(teacher.userId.toString());
+        }
+      }
+      for (const orphan of orphanedPartners) {
+        deletedUserIds.add(orphan._id.toString());
+      }
+
+      // Purge from expenseShares
+      if (config.expenseShares && config.expenseShares.length > 0) {
+        const cleanedExpenseShares = config.expenseShares.filter(s => {
+          const shouldKeep = !deletedUserIds.has(s.userId?.toString());
+          if (!shouldKeep) {
+            console.log(`🧹 Purging ${s.fullName} from expenseShares`);
+            configNeedsUpdate = true;
+          }
+          return shouldKeep;
+        });
+        config.expenseShares = cleanedExpenseShares;
+      }
+
+      // Purge from academyShareSplit
+      if (config.academyShareSplit && config.academyShareSplit.length > 0) {
+        const cleanedAcademyShares = config.academyShareSplit.filter(s => {
+          const shouldKeep = !deletedUserIds.has(s.userId?.toString());
+          if (!shouldKeep) {
+            console.log(`🧹 Purging ${s.fullName} from academyShareSplit`);
+            configNeedsUpdate = true;
+          }
+          return shouldKeep;
+        });
+        config.academyShareSplit = cleanedAcademyShares;
+      }
+
+      if (configNeedsUpdate) {
+        await config.save();
+        console.log("✅ Configuration splits auto-cleaned after teacher deletion");
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "Teacher deleted successfully",

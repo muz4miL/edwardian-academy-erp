@@ -247,46 +247,82 @@ const Configuration = () => {
           // Store full partner data for display cards
           setSystemPartners(partners);
 
+          // ═══════════════════════════════════════════════════════════════
+          // SPECIAL CASE: Single OWNER → Default to 100%, hide ghost entries
+          // ═══════════════════════════════════════════════════════════════
+          const owners = partners.filter(p => p.role === "OWNER");
+          const isSingleOwner = owners.length === 1 && partners.length === 1;
+
           // Use the backend's pre-synced expense shares (already cleaned of stale entries)
           if (result.currentShares && result.currentShares.length > 0) {
-            setExpenseShares(result.currentShares.map((s: any) => ({
+            // Filter out any ghost entries (users not in the live partners list)
+            const liveUserIds = new Set(partners.map(p => p.userId));
+            const cleanedShares = result.currentShares.filter((s: any) => liveUserIds.has(s.userId));
+
+            setExpenseShares(cleanedShares.map((s: any) => ({
               userId: s.userId,
               fullName: s.fullName,
               subject: partners.find(p => p.userId === s.userId)?.subject || null,
-              percentage: s.percentage,
+              percentage: isSingleOwner ? 100 : s.percentage, // Single OWNER gets 100%
             })));
           } else if (partners.length > 0) {
-            // No saved shares - create new ones with equal distribution
-            const equalShare = Math.floor(100 / partners.length);
-            const remainder = 100 - equalShare * partners.length;
-            setExpenseShares(partners.map((p, i) => ({
-              userId: p.userId,
-              fullName: p.fullName,
-              subject: p.subject,
-              percentage: equalShare + (i === 0 ? remainder : 0),
-            })));
+            // No saved shares - create new ones with smart distribution
+            if (isSingleOwner) {
+              // Single OWNER gets 100%
+              setExpenseShares([{
+                userId: partners[0].userId,
+                fullName: partners[0].fullName,
+                subject: partners[0].subject,
+                percentage: 100,
+              }]);
+            } else {
+              // Multiple partners - equal distribution
+              const equalShare = Math.floor(100 / partners.length);
+              const remainder = 100 - equalShare * partners.length;
+              setExpenseShares(partners.map((p, i) => ({
+                userId: p.userId,
+                fullName: p.fullName,
+                subject: p.subject,
+                percentage: equalShare + (i === 0 ? remainder : 0),
+              })));
+            }
           } else {
             setExpenseShares([]);
           }
 
           // Use the backend's pre-synced academy shares (already cleaned of stale entries)
           if (result.currentAcademyShares && result.currentAcademyShares.length > 0) {
-            setAcademyShareSplit(result.currentAcademyShares.map((s: any) => ({
+            // Filter out any ghost entries (users not in the live partners list)
+            const liveUserIds = new Set(partners.map(p => p.userId));
+            const cleanedAcademyShares = result.currentAcademyShares.filter((s: any) => liveUserIds.has(s.userId));
+
+            setAcademyShareSplit(cleanedAcademyShares.map((s: any) => ({
               userId: s.userId,
               fullName: s.fullName,
               role: s.role || partners.find(p => p.userId === s.userId)?.role || "PARTNER",
-              percentage: s.percentage,
+              percentage: isSingleOwner ? 100 : s.percentage, // Single OWNER gets 100%
             })));
           } else if (partners.length > 0) {
-            // No saved shares - create new ones with equal distribution
-            const equalShare = Math.floor(100 / partners.length);
-            const remainder = 100 - equalShare * partners.length;
-            setAcademyShareSplit(partners.map((p, i) => ({
-              userId: p.userId,
-              fullName: p.fullName,
-              role: p.role || "PARTNER",
-              percentage: equalShare + (i === 0 ? remainder : 0),
-            })));
+            // No saved shares - create new ones with smart distribution
+            if (isSingleOwner) {
+              // Single OWNER gets 100%
+              setAcademyShareSplit([{
+                userId: partners[0].userId,
+                fullName: partners[0].fullName,
+                role: partners[0].role || "OWNER",
+                percentage: 100,
+              }]);
+            } else {
+              // Multiple partners - equal distribution
+              const equalShare = Math.floor(100 / partners.length);
+              const remainder = 100 - equalShare * partners.length;
+              setAcademyShareSplit(partners.map((p, i) => ({
+                userId: p.userId,
+                fullName: p.fullName,
+                role: p.role || "PARTNER",
+                percentage: equalShare + (i === 0 ? remainder : 0),
+              })));
+            }
           } else {
             setAcademyShareSplit([]);
           }
@@ -635,7 +671,10 @@ const Configuration = () => {
                     <Label className="text-sm font-semibold">Academy Name</Label>
                     <Input
                       value={academyName}
-                      onChange={(e) => setAcademyName(e.target.value)}
+                      onChange={(e) => {
+                        setAcademyName(e.target.value);
+                        setHasChanges(true);
+                      }}
                       className="h-10"
                     />
                   </div>
@@ -643,7 +682,10 @@ const Configuration = () => {
                     <Label className="text-sm font-semibold">Academy Owner</Label>
                     <Input
                       value={academyOwner}
-                      onChange={(e) => setAcademyOwner(e.target.value)}
+                      onChange={(e) => {
+                        setAcademyOwner(e.target.value);
+                        setHasChanges(true);
+                      }}
                       placeholder="e.g. Sir Waqar Baig"
                       className="h-10"
                     />
@@ -652,7 +694,10 @@ const Configuration = () => {
                     <Label className="text-sm font-semibold">Address</Label>
                     <Input
                       value={academyAddress}
-                      onChange={(e) => setAcademyAddress(e.target.value)}
+                      onChange={(e) => {
+                        setAcademyAddress(e.target.value);
+                        setHasChanges(true);
+                      }}
                       className="h-10"
                     />
                   </div>
@@ -660,7 +705,10 @@ const Configuration = () => {
                     <Label className="text-sm font-semibold">Phone</Label>
                     <Input
                       value={academyPhone}
-                      onChange={(e) => setAcademyPhone(e.target.value)}
+                      onChange={(e) => {
+                        setAcademyPhone(e.target.value);
+                        setHasChanges(true);
+                      }}
                       placeholder="+92 XXX XXXXXXX"
                       className="h-10"
                     />
