@@ -543,6 +543,14 @@ exports.collectFee = async (req, res) => {
           collectedBy: req.user?._id,
           status: "FLOATING",
           date: new Date(),
+          splitDetails: {
+            teacherId: split.teacherId,
+            teacherName: split.teacherName,
+            studentId: student._id,
+            studentName: student.studentName,
+            month: month,
+            percentage: split.percentage,
+          },
         });
       }
     }
@@ -694,6 +702,15 @@ exports.collectFee = async (req, res) => {
                   collectedBy: req.user?._id,
                   status: "FLOATING",
                   date: new Date(),
+                  splitDetails: {
+                    teacherId: ut.teacherId,
+                    teacherName: ut.teacherName,
+                    studentId: student._id,
+                    studentName: student.studentName,
+                    subject: subjName,
+                    subjectFee: subjShare,
+                    month: month,
+                  },
                 });
               }
             }
@@ -725,10 +742,20 @@ exports.collectFee = async (req, res) => {
                     category: "Tuition",
                     stream: "STAFF_TUITION",
                     amount: payout.amount,
-                    description: `Teacher share (${subjName}): ${student.studentName} (${month}) - ${payout.compensationType}`,
+                    description: `${subjName} teacher share: ${student.studentName} (${month})`,
                     collectedBy: req.user?._id,
                     status: "FLOATING",
                     date: new Date(),
+                    splitDetails: {
+                      teacherId: payout.teacherId,
+                      teacherName: payout.teacherName || teacher.name,
+                      studentId: student._id,
+                      studentName: student.studentName,
+                      subject: subjName,
+                      subjectFee: subjShare,
+                      month: month,
+                      compensationType: payout.compensationType,
+                    },
                   });
                 }
                 totalTeacherShare += payout.amount;
