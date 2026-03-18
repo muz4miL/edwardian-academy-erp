@@ -7,10 +7,14 @@ const Transaction = require("../models/Transaction");
 const Expense = require("../models/Expense");
 const DailyClosing = require("../models/DailyClosing");
 const DailyRevenue = require("../models/DailyRevenue");
+const FeeRecord = require("../models/FeeRecord");
+const Attendance = require("../models/Attendance");
+const ExamResult = require("../models/ExamResult");
 const TeacherPayment = require("../models/TeacherPayment");
 const Settlement = require("../models/Settlement");
 const Teacher = require("../models/Teacher");
 const Student = require("../models/Student");
+const Class = require("../models/Class");
 const User = require("../models/User");
 
 /**
@@ -50,6 +54,9 @@ const resetAcademy = async () => {
 
         const revenueResult = await DailyRevenue.deleteMany({});
         console.log(`   ✅ Deleted ${revenueResult.deletedCount} DailyRevenue documents`);
+
+        const feeRecordResult = await FeeRecord.deleteMany({});
+        console.log(`   ✅ Deleted ${feeRecordResult.deletedCount} FeeRecord documents`);
 
         const paymentResult = await TeacherPayment.deleteMany({});
         console.log(`   ✅ Deleted ${paymentResult.deletedCount} TeacherPayment documents`);
@@ -99,8 +106,18 @@ const resetAcademy = async () => {
         // ========================================
         if (!keepStudents) {
             console.log("👨‍🎓 Step 4: Deleting Student Records...");
+            const attendanceResult = await Attendance.deleteMany({});
+            console.log(`   ✅ Deleted ${attendanceResult.deletedCount} Attendance documents`);
+
+            const examResultDeleteResult = await ExamResult.deleteMany({});
+            console.log(`   ✅ Deleted ${examResultDeleteResult.deletedCount} ExamResult documents`);
+
             studentResult = await Student.deleteMany({});
             console.log(`   ✅ Deleted ${studentResult.deletedCount} Student documents`);
+
+            const classResetResult = await Class.updateMany({}, { $set: { enrolledCount: 0 } });
+            console.log(`   ✅ Reset enrolledCount for ${classResetResult.modifiedCount} classes`);
+
             console.log(`   ⚠️  Note: Use --keep-students flag to preserve student data\n`);
         } else {
             console.log("👨‍🎓 Step 4: Keeping Student Records");
@@ -128,6 +145,7 @@ const resetAcademy = async () => {
         console.log(`✅ Expenses Deleted: ${expenseResult.deletedCount}`);
         console.log(`✅ Daily Closings Deleted: ${closingResult.deletedCount}`);
         console.log(`✅ Daily Revenues Deleted: ${revenueResult.deletedCount}`);
+        console.log(`✅ Fee Records Deleted: ${feeRecordResult.deletedCount}`);
         console.log(`✅ Teacher Payments Deleted: ${paymentResult.deletedCount}`);
         console.log(`✅ Settlements Deleted: ${settlementResult.deletedCount}`);
         console.log(`✅ Teachers Reset: ${teacherUpdateCount}`);

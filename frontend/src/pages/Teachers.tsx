@@ -45,6 +45,7 @@ const formatCompensation = (compensation: any) => {
     fixedSalary,
     baseSalary,
     profitShare,
+    perStudentAmount,
   } = compensation;
 
   if (type === "percentage") {
@@ -70,6 +71,11 @@ const formatCompensation = (compensation: any) => {
       return `PKR ${formatCurrency(baseSalary)} + ${profitShare}%`;
     }
     return "Hybrid Package";
+  } else if (type === "perStudent") {
+    if (perStudentAmount) {
+      return `PKR ${formatCurrency(perStudentAmount)}/student`;
+    }
+    return "Per Student";
   }
 
   return "Not Set";

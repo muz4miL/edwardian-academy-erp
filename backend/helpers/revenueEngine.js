@@ -106,14 +106,17 @@ function resolveRoleFromName(name) {
 
 /**
  * Calculate tuition revenue split for a fee payment.
- * 100% split equally among unique Owner/Partner teachers in the class.
- * 
+ * Uses configured tuitionPoolSplit percentages (e.g., Waqar 50%, Zahid 30%, Saud 20%).
+ * Falls back to equal split only if no config percentages found.
+ *
  * @param {number} feeAmount - Total fee paid
- * @param {Array} ownerPartnerTeachers - Array of {teacherId, role, userId, ...}
- * @returns {Array<{userId, teacherId, teacherName, role, amount, description}>}
+ * @param {Array} ownerPartnerTeachers - Array of {teacherId, role, userId, userFullName, ...}
+ * @param {Object} config - Configuration document with tuitionPoolSplit
+ * @returns {Array<{userId, teacherId, teacherName, role, amount, percentage, description}>}
  */
-function calculateTuitionSplit(feeAmount, ownerPartnerTeachers) {
+async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
   if (!ownerPartnerTeachers || ownerPartnerTeachers.length === 0) return [];
+  if (!config) config = await Configuration.findOne();
 
   // Get unique persons (by teacherId) to avoid double-counting if same person teaches multiple subjects
   const uniquePersons = [];
@@ -126,22 +129,121 @@ function calculateTuitionSplit(feeAmount, ownerPartnerTeachers) {
     }
   }
 
-  const count = uniquePersons.length;
-  const baseShare = Math.floor(feeAmount / count);
-  let remainder = feeAmount - (baseShare * count);
+  // ── Use configured tuitionPoolSplit OR academyShareSplit to find each person's percentage ──
+  const tuitionSplit = config?.tuitionPoolSplit || { waqar: 50, zahid: 30, saud: 20 };
+  const academyShareSplit = config?.academyShareSplit || [];
 
-  return uniquePersons.map((person, index) => {
-    // Give remainder to first person (owner gets priority)
-    const extra = index === 0 ? remainder : 0;
-    return {
+  // Build a mapping: userId/teacherId → percentage
+  const percentageMap = new Map();
+
+  // First, try academyShareSplit (dynamic config with userId)
+  for (const entry of academyShareSplit) {
+    if (entry.userId) percentageMap.set(entry.userId.toString(), entry.percentage);
+    if (entry.teacherId) percentageMap.set(entry.teacherId.toString(), entry.percentage);
+  }
+
+  // Second, fallback to legacy tuitionPoolSplit by name matching
+  const nameToPercentage = {
+    waqar: tuitionSplit.waqar || 50,
+    zahid: tuitionSplit.zahid || 30,
+    saud: tuitionSplit.saud || 20,
+  };
+
+  const result = [];
+  let totalAssignedPercentage = 0;
+  let distributed = 0;
+
+  for (let i = 0; i < uniquePersons.length; i++) {
+    const person = uniquePersons[i];
+    const isLast = i === uniquePersons.length - 1;
+
+    // Try to find configured percentage for this person
+    let percentage = null;
+
+    // Check by userId
+    if (person.userId && percentageMap.has(person.userId.toString())) {
+      percentage = percentageMap.get(person.userId.toString());
+    }
+    // Check by teacherId
+    else if (person.teacherId && percentageMap.has(person.teacherId.toString())) {
+      percentage = percentageMap.get(person.teacherId.toString());
+    }
+    // Fallback: match by name (legacy)
+    else {
+      const personName = (person.teacherName || person.userFullName || "").toLowerCase();
+      for (const [key, pct] of Object.entries(nameToPercentage)) {
+        if (personName.includes(key)) {
+          percentage = pct;
+          break;
+        }
+      }
+    }
+
+    // If no percentage found, will fall back to equal split after loop
+    if (percentage !== null) {
+      totalAssignedPercentage += percentage;
+    }
+  }
+
+  // If we found valid percentages, use them; otherwise fall back to equal split
+  const useConfiguredSplit = totalAssignedPercentage > 0;
+
+  for (let i = 0; i < uniquePersons.length; i++) {
+    const person = uniquePersons[i];
+    const isLast = i === uniquePersons.length - 1;
+    let amount;
+    let percentage;
+
+    if (useConfiguredSplit) {
+      // Find this person's percentage
+      percentage = null;
+      if (person.userId && percentageMap.has(person.userId.toString())) {
+        percentage = percentageMap.get(person.userId.toString());
+      } else if (person.teacherId && percentageMap.has(person.teacherId.toString())) {
+        percentage = percentageMap.get(person.teacherId.toString());
+      } else {
+        const personName = (person.teacherName || person.userFullName || "").toLowerCase();
+        for (const [key, pct] of Object.entries(nameToPercentage)) {
+          if (personName.includes(key)) {
+            percentage = pct;
+            break;
+          }
+        }
+      }
+
+      if (percentage === null) percentage = 0;
+
+      // Last person gets remainder to avoid rounding errors
+      if (isLast) {
+        amount = feeAmount - distributed;
+      } else {
+        amount = Math.round((feeAmount * percentage) / 100);
+      }
+    } else {
+      // Fallback: equal split
+      const count = uniquePersons.length;
+      const baseShare = Math.floor(feeAmount / count);
+      const remainder = feeAmount - (baseShare * count);
+      amount = baseShare + (i === 0 ? remainder : 0);
+      percentage = Math.round(100 / count);
+    }
+
+    distributed += amount;
+
+    result.push({
       userId: person.userId,
       teacherId: person.teacherId,
       teacherName: person.teacherName || person.userFullName,
       role: person.role,
-      amount: baseShare + extra,
-      description: `Tuition share: ${feeAmount} ÷ ${count} persons = ${baseShare + extra}`,
-    };
-  });
+      amount,
+      percentage: percentage || 0,
+      description: useConfiguredSplit
+        ? `Tuition share: ${feeAmount} × ${percentage}% = ${amount}`
+        : `Tuition share: ${feeAmount} ÷ ${uniquePersons.length} persons = ${amount}`,
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -433,11 +535,103 @@ async function executeDailyClose(userId, userName, userRole) {
   };
 }
 
+/**
+ * ================================================================
+ * MULTI-TEACHER SUBJECT SPLIT FUNCTION (NEW)
+ * ================================================================
+ * Handles complex scenarios with multiple teachers per subject
+ * Respects each teacher's compensation type
+ * 
+ * @param {number} feeAmount - Total fee for this subject
+ * @param {Array} teachersData - Array of {teacherId, teacher doc, compensationType, ...}
+ * @param {Object} config - Configuration doc for academy split ratios
+ * @returns {Promise<{teacherPayouts: Array, academyAmount: number, academyDistribution: Array}>}
+ */
+async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
+  if (!config) config = await Configuration.findOne();
+  if (!teachersData || teachersData.length === 0) {
+    // No teachers → all goes to academy
+    const academyDist = await distributeAcademyShare(feeAmount, config);
+    return {
+      teacherPayouts: [],
+      academyAmount: feeAmount,
+      academyDistribution: academyDist,
+    };
+  }
+
+  const teacherPayouts = [];
+  let totalTeacherAmount = 0;
+
+  for (const tData of teachersData) {
+    const teacher = tData.teacher || (tData.teacherId ? await Teacher.findById(tData.teacherId) : null);
+    if (!teacher) {
+      continue; // Skip if teacher not found
+    }
+
+    const compType = teacher.compensation?.type || "percentage";
+    let teacherShare = 0;
+    let reason = "";
+
+    if (compType === "percentage") {
+      // Percentage split: gets X% of fee
+      const percentage = teacher.compensation?.teacherShare || 70;
+      teacherShare = Math.round((feeAmount * percentage) / 100);
+      reason = `${percentage}% percentage split`;
+    } else if (compType === "fixed") {
+      // Fixed salary: gets 0 from fees (paid monthly)
+      teacherShare = 0;
+      reason = "Fixed salary (paid monthly, not from fees)";
+    } else if (compType === "perStudent") {
+      // Per-student: gets 0 from fees (calculated in payroll per active students)
+      teacherShare = 0;
+      reason = "Per-student compensation (calculated in payroll)";
+    } else if (compType === "hybrid") {
+      // Hybrid: gets profitShare % of fee
+      const profitShare = teacher.compensation?.profitShare || 10;
+      teacherShare = Math.round((feeAmount * profitShare) / 100);
+      reason = `${profitShare}% profit share (hybrid)`;
+    } else {
+      // Default: 70/30
+      teacherShare = Math.round((feeAmount * 70) / 100);
+      reason = "70% default percentage split";
+    }
+
+    totalTeacherAmount += teacherShare;
+
+    teacherPayouts.push({
+      teacherId: teacher._id,
+      teacherName: teacher.name,
+      compensationType: compType,
+      amount: teacherShare,
+      percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : undefined,
+      reason,
+      isPartner: tData.isPartner || false,
+    });
+  }
+
+  // Academy gets remainder
+  const academyAmount = feeAmount - totalTeacherAmount;
+
+  // Distribute academy's share among Owner/Partners
+  const academyDistribution = academyAmount > 0 
+    ? await distributeAcademyShare(academyAmount, config)
+    : [];
+
+  return {
+    teacherPayouts,
+    academyAmount,
+    academyDistribution,
+    totalTeacherAmount,
+    totalFee: feeAmount,
+  };
+}
+
 module.exports = {
   detectClassRevenueMode,
   calculateTuitionSplit,
   calculateAcademySplit,
   distributeAcademyShare,
+  splitFeeAmongTeachers,
   createDailyRevenueEntries,
   createWithdrawalAdjustments,
   getClosePreview,

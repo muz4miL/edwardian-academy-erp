@@ -68,7 +68,7 @@ const feeRecordSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // Teacher who gets the share (if applicable)
+    // Primary teacher who gets the share (if applicable) - for backward compatibility
     teacher: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Teacher",
@@ -82,12 +82,55 @@ const feeRecordSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Split breakdown
+    // NEW: Array of teachers involved in this fee (for multi-teacher subjects)
+    teachers: {
+      type: [
+        {
+          teacherId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Teacher",
+          },
+          teacherName: String,
+          subject: String,
+          compensationType: {
+            type: String,
+            enum: ["percentage", "fixed", "hybrid", "perStudent"],
+            default: "percentage",
+          },
+          teacherShare: { type: Number, default: 0 }, // Amount this teacher gets
+          teacherPercentage: { type: Number, default: 70 }, // Percentage if percentage type
+          role: {
+            type: String,
+            enum: ["OWNER", "PARTNER", "TEACHER", "STAFF"],
+          },
+          isPartner: { type: Boolean, default: false }, // Quick lookup for Owner/Partner
+        },
+      ],
+      default: [],
+    },
+    // Split breakdown (aggregated across all teachers)
     splitBreakdown: {
       teacherShare: { type: Number, default: 0 },
       academyShare: { type: Number, default: 0 },
       teacherPercentage: { type: Number, default: 70 },
       academyPercentage: { type: Number, default: 30 },
+      totalTeachers: { type: Number, default: 1 },
+    },
+    // Academy pool distribution (who gets the 30% academy share)
+    academyDistribution: {
+      type: [
+        {
+          userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+          },
+          fullName: String,
+          role: { type: String, enum: ["OWNER", "PARTNER"] },
+          percentage: Number,
+          amount: Number,
+        },
+      ],
+      default: [],
     },
     // Payment method
     paymentMethod: {

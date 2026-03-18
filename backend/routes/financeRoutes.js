@@ -3,6 +3,8 @@ const router = express.Router();
 const {
   closeDay,
   getDashboardStats,
+  getFloatingAmountsDetail,
+  getTeacherPayrollSummary,
   recordTransaction,
   getPartnerPortalStats,
   processRefund,
@@ -31,6 +33,16 @@ router.post("/close-day", authorize("OWNER", "PARTNER"), closeDay);
 // @desc    Get financial stats for dashboard widgets
 // @access  All authenticated users
 router.get("/dashboard-stats", getDashboardStats);
+
+// @route   GET /api/finance/floating-detail
+// @desc    Get real-time floating amounts breakdown by partner and source
+// @access  Owner/Partners only
+router.get("/floating-detail", authorize("OWNER", "PARTNER"), getFloatingAmountsDetail);
+
+// @route   GET /api/finance/teacher-payroll-summary
+// @desc    Get teacher payroll summary with real-time floating balances
+// @access  Owner/Partners only
+router.get("/teacher-payroll-summary", authorize("OWNER", "PARTNER"), getTeacherPayrollSummary);
 
 // @route   POST /api/finance/record-transaction
 // @desc    Record a new income or expense transaction

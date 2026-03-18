@@ -554,6 +554,187 @@ exports.getDashboardStats = async (req, res) => {
 };
 
 // =====================================================================
+// FLOATING AMOUNTS DETAIL API — Real-time breakdown for Owner/Partners
+// =====================================================================
+exports.getFloatingAmountsDetail = async (req, res) => {
+  try {
+    const { userId } = req.query; // Optional: filter by specific owner/partner
+
+    // Get all DailyRevenue entries (uncollected floating amounts)
+    const query = userId ? { partner: userId, status: "UNCOLLECTED" } : { status: "UNCOLLECTED" };
+
+    const floatingBreakdown = await DailyRevenue.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: {
+            partner: "$partner",
+            revenueType: "$revenueType",
+          },
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.partner": 1, "_id.revenueType": 1 } },
+    ]);
+
+    // Enrich with owner/partner names
+    const result = [];
+    const partnerMap = new Map();
+
+    for (const entry of floatingBreakdown) {
+      const partnerId = entry._id.partner;
+      if (!partnerMap.has(partnerId.toString())) {
+        const user = await User.findById(partnerId).select("_id fullName role").lean();
+        partnerMap.set(partnerId.toString(), user);
+      }
+
+      const partnerInfo = partnerMap.get(partnerId.toString());
+      result.push({
+        userId: partnerId,
+        fullName: partnerInfo?.fullName || "Unknown",
+        role: partnerInfo?.role || "UNKNOWN",
+        revenueType: entry._id.revenueType,
+        amount: entry.total,
+        entryCount: entry.count,
+      });
+    }
+
+    // Summary by partner
+    const summary = await DailyRevenue.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: "$partner",
+          totalFloating: { $sum: "$amount" },
+          tuitionShare: {
+            $sum: {
+              $cond: [{ $eq: ["$revenueType", "TUITION_SHARE"] }, "$amount", 0],
+            },
+          },
+          academyShare: {
+            $sum: {
+              $cond: [{ $eq: ["$revenueType", "ACADEMY_SHARE"] }, "$amount", 0],
+            },
+          },
+          withdrawalAdjustments: {
+            $sum: {
+              $cond: [{ $eq: ["$revenueType", "WITHDRAWAL_ADJUSTMENT"] }, "$amount", 0],
+            },
+          },
+          entryCount: { $sum: 1 },
+        },
+      },
+      { $sort: { totalFloating: -1 } },
+    ]);
+
+    // Enrich summary with partner names
+    const enrichedSummary = [];
+    for (const s of summary) {
+      const partnerId = s._id;
+      if (!partnerMap.has(partnerId.toString())) {
+        const user = await User.findById(partnerId).select("_id fullName role").lean();
+        partnerMap.set(partnerId.toString(), user);
+      }
+
+      const partnerInfo = partnerMap.get(partnerId.toString());
+      enrichedSummary.push({
+        userId: partnerId,
+        fullName: partnerInfo?.fullName || "Unknown",
+        role: partnerInfo?.role || "UNKNOWN",
+        totalFloating: s.totalFloating,
+        tuitionShare: s.tuitionShare || 0,
+        academyShare: s.academyShare || 0,
+        withdrawalAdjustments: s.withdrawalAdjustments || 0,
+        entryCount: s.entryCount,
+      });
+    }
+
+    // Grand totals
+    const grandTotals = enrichedSummary.reduce(
+      (agg, s) => ({
+        totalFloating: agg.totalFloating + s.totalFloating,
+        tuitionShare: agg.tuitionShare + s.tuitionShare,
+        academyShare: agg.academyShare + s.academyShare,
+        partnerCount: enrichedSummary.length,
+      }),
+      { totalFloating: 0, tuitionShare: 0, academyShare: 0, partnerCount: 0 }
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        details: result,
+        summary: enrichedSummary,
+        grand: grandTotals,
+      },
+    });
+  } catch (error) {
+    console.error("getFloatingAmountsDetail Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================================
+// TEACHER PAYROLL SUMMARY — Real-time floating amounts for teachers
+// =====================================================================
+exports.getTeacherPayrollSummary = async (req, res) => {
+  try {
+    const teachers = await Teacher.aggregate([
+      { $match: { status: "active" } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          subject: 1,
+          status: 1,
+          compensation: 1,
+          balance: 1,
+          totalPaid: 1,
+        },
+      },
+      { $sort: { name: 1 } },
+    ]);
+
+    const enriched = teachers.map((t) => ({
+      _id: t._id,
+      name: t.name,
+      subject: t.subject || "Multiple",
+      compensationType: t.compensation?.type || "percentage",
+      floatingBalance: t.balance?.floating || 0,
+      verifiedBalance: t.balance?.verified || 0,
+      pendingBalance: t.balance?.pending || 0,
+      totalBalance: (t.balance?.floating || 0) + (t.balance?.verified || 0) + (t.balance?.pending || 0),
+      totalPaid: t.totalPaid || 0,
+      lifetimeEarnings: ((t.balance?.floating || 0) + (t.balance?.verified || 0) + (t.balance?.pending || 0)) + (t.totalPaid || 0),
+    }));
+
+    // Summary totals
+    const totals = enriched.reduce(
+      (agg, t) => ({
+        totalFloating: agg.totalFloating + t.floatingBalance,
+        totalVerified: agg.totalVerified + t.verifiedBalance,
+        totalPending: agg.totalPending + t.pendingBalance,
+        totalOwed: agg.totalOwed + t.totalBalance,
+        teacherCount: enriched.length,
+      }),
+      { totalFloating: 0, totalVerified: 0, totalPending: 0, totalOwed: 0, teacherCount: 0 }
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        teachers: enriched,
+        summary: totals,
+      },
+    });
+  } catch (error) {
+    console.error("getTeacherPayrollSummary Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================================
 // RECORD STUDENT MISC PAYMENT — Trip, Test, Lab, Event fees etc.
 // =====================================================================
 exports.recordStudentMiscPayment = async (req, res) => {
@@ -2096,10 +2277,13 @@ exports.getTeacherPayrollReport = async (req, res) => {
         ...(classId ? { _id: classId } : {}),
       }).lean();
 
-      // Get fee records for this teacher in the period
+      // Get fee records for this teacher in the period (supports legacy + multi-teacher array)
       const feeRecords = await FeeRecord.find({
-        teacher: teacher._id,
         status: "PAID",
+        $or: [
+          { teacher: teacher._id },
+          { "teachers.teacherId": teacher._id },
+        ],
         ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
       }).lean();
 
@@ -2133,17 +2317,142 @@ exports.getTeacherPayrollReport = async (req, res) => {
           };
         });
 
-        // Fallback: if no transactions found, use FeeRecord method (legacy data)
+        // Fallback: if no transactions found, use FeeRecord method (legacy + multi-teacher data)
         if (teacherTransactions.length === 0 && feeRecords.length > 0) {
-          owedAmount = feeRecords.reduce((sum, fr) => sum + (fr.splitBreakdown?.teacherShare || 0), 0);
-          proof = feeRecords.map(fr => ({
-            studentName: fr.studentName,
-            className: fr.className,
-            amount: fr.amount,
-            teacherShare: fr.splitBreakdown?.teacherShare || 0,
-            date: fr.createdAt,
-            receipt: fr.receiptNumber,
-          }));
+          let fallbackTotal = 0;
+          const fallbackProof = [];
+
+          for (const fr of feeRecords) {
+            const teacherEntries = Array.isArray(fr.teachers)
+              ? fr.teachers.filter((t) => t?.teacherId?.toString?.() === teacher._id.toString())
+              : [];
+
+            if (teacherEntries.length > 0) {
+              const teacherShare = teacherEntries.reduce((s, t) => s + (t.teacherShare || 0), 0);
+              fallbackTotal += teacherShare;
+              fallbackProof.push({
+                studentName: fr.studentName,
+                className: fr.className,
+                amount: fr.amount,
+                teacherShare,
+                date: fr.createdAt,
+                receipt: fr.receiptNumber,
+                subject: teacherEntries.map((t) => t.subject).filter(Boolean).join(", "),
+              });
+            } else if (fr.teacher?.toString?.() === teacher._id.toString()) {
+              const teacherShare = fr.splitBreakdown?.teacherShare || 0;
+              fallbackTotal += teacherShare;
+              fallbackProof.push({
+                studentName: fr.studentName,
+                className: fr.className,
+                amount: fr.amount,
+                teacherShare,
+                date: fr.createdAt,
+                receipt: fr.receiptNumber,
+              });
+            }
+          }
+
+          owedAmount = fallbackTotal;
+          proof = fallbackProof;
+        }
+
+        // Legacy compatibility fallback:
+        // Some older admission payments were stored as FeeRecords without teacher tags.
+        // Estimate this teacher's share from class/subject assignment so payroll remains accurate.
+        if (teacherTransactions.length === 0 && proof.length === 0 && assignedClasses.length > 0) {
+          const classIds = assignedClasses.map((c) => c._id);
+          const classFeeRecords = await FeeRecord.find({
+            class: { $in: classIds },
+            status: "PAID",
+            ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+          }).lean();
+
+          const classMap = new Map(assignedClasses.map((c) => [c._id.toString(), c]));
+          const teacherSharePct = teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70;
+
+          const normalize = (val) => (val || "").toString().toLowerCase().trim();
+          let estimatedTotal = 0;
+          const estimatedProof = [];
+
+          for (const fr of classFeeRecords) {
+            const cls = classMap.get(fr.class?.toString?.());
+            if (!cls) continue;
+
+            // Build subjects this teacher teaches in this class (primary + co-teachers)
+            const taughtSubjects = new Set();
+            for (const st of cls.subjectTeachers || []) {
+              const primaryId = st.teacherId?.toString?.();
+              if (primaryId === teacher._id.toString()) {
+                taughtSubjects.add(normalize(st.subject));
+              }
+              for (const co of st.coTeachers || []) {
+                const coId = co.teacherId?.toString?.();
+                if (coId === teacher._id.toString()) {
+                  taughtSubjects.add(normalize(st.subject));
+                }
+              }
+            }
+
+            const isClassTeacher = cls.assignedTeacher?.toString?.() === teacher._id.toString();
+
+            const studentDoc = await Student.findById(fr.student)
+              .select("studentName subjects")
+              .lean();
+
+            const studentSubjects = Array.isArray(studentDoc?.subjects)
+              ? studentDoc.subjects
+              : [];
+
+            let estimatedShare = 0;
+
+            // If mapped as whole-class assigned teacher and no subject map, apply class-wide percentage
+            if (isClassTeacher && taughtSubjects.size === 0) {
+              estimatedShare = Math.round((fr.amount * teacherSharePct) / 100);
+            } else if (taughtSubjects.size > 0 && studentSubjects.length > 0) {
+              const subjectWeights = studentSubjects.map((s) => {
+                if (typeof s === "string") {
+                  return { name: normalize(s), fee: 0 };
+                }
+                return { name: normalize(s.name), fee: Number(s.fee) || 0 };
+              });
+
+              const totalWeight = subjectWeights.reduce((sum, s) => sum + (s.fee || 0), 0);
+
+              for (let i = 0; i < subjectWeights.length; i++) {
+                const subj = subjectWeights[i];
+                if (!taughtSubjects.has(subj.name)) continue;
+
+                let subjectAmount = 0;
+                if (totalWeight > 0) {
+                  subjectAmount = Math.round((subj.fee / totalWeight) * fr.amount);
+                } else {
+                  // If no per-subject fee weights exist, split equally by enrolled subjects
+                  subjectAmount = Math.round(fr.amount / subjectWeights.length);
+                }
+
+                estimatedShare += Math.round((subjectAmount * teacherSharePct) / 100);
+              }
+            }
+
+            if (estimatedShare > 0) {
+              estimatedTotal += estimatedShare;
+              estimatedProof.push({
+                studentName: fr.studentName || studentDoc?.studentName || "Student",
+                className: fr.className || cls.classTitle || "",
+                amount: fr.amount,
+                teacherShare: estimatedShare,
+                date: fr.createdAt,
+                receipt: fr.receiptNumber,
+                source: "legacy-estimation",
+              });
+            }
+          }
+
+          if (estimatedTotal > 0) {
+            owedAmount = estimatedTotal;
+            proof = estimatedProof;
+          }
         }
       } else if (compType === "perStudent") {
         // Count active enrolled students per class × perStudentAmount

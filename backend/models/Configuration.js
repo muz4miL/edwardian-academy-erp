@@ -214,14 +214,14 @@ configurationSchema.pre("save", function () {
     (!this.defaultSubjectFees || this.defaultSubjectFees.length === 0)
   ) {
     this.defaultSubjectFees = [
-      { name: "Biology", fee: 0 },
-      { name: "Physics", fee: 0 },
-      { name: "Chemistry", fee: 0 },
-      { name: "Mathematics", fee: 0 },
-      { name: "English", fee: 0 },
+      { name: "Biology", fee: 3000 },
+      { name: "Physics", fee: 3000 },
+      { name: "Chemistry", fee: 2500 },
+      { name: "Mathematics", fee: 2500 },
+      { name: "English", fee: 2000 },
     ];
     console.log(
-      "✅ Initialized configuration with default subjects (fees set via Session Pricing)",
+      "✅ Initialized configuration with Peshawar standard subject rates",
     );
   }
 });
