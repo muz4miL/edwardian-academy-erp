@@ -175,8 +175,8 @@ const classSchema = new mongoose.Schema({
   // Subjects offered in this class with individual fees
   subjects: [subjectSchema],
 
-  // Subject-wise Teacher Mapping (NEW: For multi-teacher classes)
-  // Maps each subject to its specific teacher
+  // Subject-wise Teacher Mapping (For multi-teacher classes)
+  // Maps each subject to one or more teachers (can have multiple teachers per subject)
   subjectTeachers: [
     {
       subject: {
@@ -184,6 +184,7 @@ const classSchema = new mongoose.Schema({
         required: true,
         trim: true,
       },
+      // Primary teacher for this subject
       teacherId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Teacher",
@@ -192,6 +193,20 @@ const classSchema = new mongoose.Schema({
         type: String,
         trim: true,
       },
+      // NEW: Array of co-teachers for this subject (for shared teaching scenarios)
+      coTeachers: [
+        {
+          teacherId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Teacher",
+          },
+          teacherName: String,
+          compensationType: {
+            type: String,
+            enum: ["percentage", "fixed", "hybrid", "perStudent"],
+          },
+        },
+      ],
     },
   ],
 

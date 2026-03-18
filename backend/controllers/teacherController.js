@@ -241,21 +241,85 @@ exports.createTeacher = async (req, res) => {
       userPermissions = ["dashboard", "admissions", "students", "teachers", "finance", "classes", "timetable", "sessions", "configuration", "users", "website", "payroll", "settlement", "gatekeeper", "frontdesk", "inquiries", "reports", "lectures"];
     }
 
-    // Create User account for Teacher login
-    const user = new User({
-      userId,
-      username,
-      password: plainPassword, // Will be hashed by pre-save hook
-      fullName: name,
-      role: userRole,
-      permissions: userPermissions,
-      phone,
-      profileImage: profileImage || null,
-      isActive: true,
-    });
+    // ========================================
+    // SMART USER LINKING - Prevent Duplicates!
+    // For OWNER/PARTNER roles, try to find existing user first
+    // ========================================
+    let user = null;
+    let existingUserLinked = false;
 
-    await user.save();
-    console.log("✅ Created User account for teacher:", username);
+    if (userRole === "OWNER" || userRole === "PARTNER") {
+      // Try to find an existing user with the same role that doesn't have a teacherId yet
+      // or matches by name (case-insensitive)
+      const nameParts = name.toLowerCase().split(/\s+/);
+
+      // First, try exact role match with similar name
+      const existingUsers = await User.find({
+        role: userRole,
+        $or: [
+          { teacherId: { $exists: false } },
+          { teacherId: null }
+        ]
+      }).lean();
+
+      // Find best match by name similarity
+      for (const existingUser of existingUsers) {
+        const existingNameParts = (existingUser.fullName || "").toLowerCase().split(/\s+/);
+        const hasCommonPart = nameParts.some(part =>
+          existingNameParts.some(ePart => ePart.includes(part) || part.includes(ePart))
+        );
+
+        if (hasCommonPart) {
+          user = await User.findById(existingUser._id);
+          existingUserLinked = true;
+          console.log("🔗 Found existing user to link:", existingUser.fullName, existingUser.role);
+          break;
+        }
+      }
+
+      // If no match by name, try to find ANY unlinked user with same role
+      if (!user) {
+        user = await User.findOne({
+          role: userRole,
+          $or: [
+            { teacherId: { $exists: false } },
+            { teacherId: null }
+          ]
+        });
+        if (user) {
+          existingUserLinked = true;
+          console.log("🔗 Linking to existing unlinked user:", user.fullName, user.role);
+        }
+      }
+    }
+
+    // Only create new user if no existing user was found to link
+    if (!user) {
+      // Create User account for Teacher login
+      user = new User({
+        userId,
+        username,
+        password: plainPassword, // Will be hashed by pre-save hook
+        fullName: name,
+        role: userRole,
+        permissions: userPermissions,
+        phone,
+        profileImage: profileImage || null,
+        isActive: true,
+      });
+
+      await user.save();
+      console.log("✅ Created NEW User account for teacher:", username);
+    } else {
+      // Update existing user with profile image if provided
+      if (profileImage && !user.profileImage) {
+        user.profileImage = profileImage;
+        await user.save();
+      }
+      // Use existing user's credentials
+      username = user.username;
+      plainPassword = "(existing account - password unchanged)";
+    }
 
     // Create new teacher document with link to User
     const teacher = new Teacher({
@@ -276,17 +340,23 @@ exports.createTeacher = async (req, res) => {
     user.teacherId = teacher._id;
     await user.save();
 
-    console.log("✅ Created new teacher:", teacher.name);
+    console.log("✅ Created new teacher:", teacher.name, existingUserLinked ? "(linked to existing user)" : "(new user account)");
 
     res.status(201).json({
       success: true,
-      message: "Teacher created successfully with login credentials",
+      message: existingUserLinked
+        ? `Teacher created and linked to existing ${userRole} account (${user.fullName})`
+        : "Teacher created successfully with login credentials",
       data: teacher,
+      linkedToExisting: existingUserLinked,
+      linkedUser: existingUserLinked ? { id: user._id, fullName: user.fullName, role: user.role } : null,
       // Return credentials for display (THIS IS THE ONLY TIME THEY ARE SHOWN)
       credentials: {
         username: username,
-        password: plainPassword,
-        note: "Save these credentials! The password cannot be retrieved later.",
+        password: existingUserLinked ? "(use existing account password)" : plainPassword,
+        note: existingUserLinked
+          ? `This teacher is linked to existing ${userRole} account: ${user.fullName}. Use existing login credentials.`
+          : "Save these credentials! The password cannot be retrieved later.",
       },
     });
   } catch (error) {
