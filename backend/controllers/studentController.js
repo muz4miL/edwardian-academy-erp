@@ -250,9 +250,29 @@ exports.createStudent = async (req, res) => {
                   primaryTeacherName = subjectTeacher.name;
                 }
 
-                // Update Owner/Partner wallets for academy share
+                // Update Owner/Partner wallets for academy share with FULL PROOF METADATA
                 for (const dist of split.academyDistribution) {
                   if (dist.amount > 0 && dist.userId) {
+                    // ═══════════════════════════════════════════════════════════════
+                    // CALCULATION PROOF METADATA - For Admission Academy Share
+                    // ═══════════════════════════════════════════════════════════════
+                    const admissionProofMetadata = {
+                      studentId: student._id,
+                      studentName: student.studentName,
+                      totalFee: initialPayment,
+                      subjectFee: subjShare,
+                      subject: subjName,
+                      teacherDeductions: split.teacherAmount,
+                      teacherName: subjectTeacher.name,
+                      compensationType: split.compensationType,
+                      netPoolBeforeSplit: split.academyAmount,
+                      stakeholderPercentage: `${dist.percentage}% of Academy Pool`,
+                      finalAmount: dist.amount,
+                      calculationProof: `PKR ${subjShare} (${subjName}) - PKR ${split.teacherAmount} (teacher) = PKR ${split.academyAmount} × ${dist.percentage}% = PKR ${dist.amount}`,
+                      eventType: "ADMISSION",
+                      collectedAt: new Date(),
+                    };
+
                     dailyRevenueEntries.push({
                       userId: dist.userId,
                       amount: dist.amount,
@@ -261,9 +281,20 @@ exports.createStudent = async (req, res) => {
                       className: classDoc?.classTitle || student.class,
                       studentRef: student._id,
                       studentName: student.studentName,
-                      splitDetails: {
-                        description: `Academy share (${dist.percentage}%): Admission - ${student.studentName}`,
-                      },
+                      splitDetails: admissionProofMetadata,
+                    });
+
+                    // Create FLOATING transaction for stakeholder
+                    creditTransactions.push({
+                      type: "INCOME",
+                      category: "Academy Share",
+                      stream: "ACADEMY_POOL",
+                      amount: dist.amount,
+                      description: `Admission academy share (${subjName}, ${dist.percentage}%): ${student.studentName} → ${dist.fullName}`,
+                      collectedBy: req.user?._id,
+                      status: "FLOATING",
+                      date: new Date(),
+                      splitDetails: admissionProofMetadata,
                     });
 
                     const user = await User.findById(dist.userId);
@@ -305,6 +336,24 @@ exports.createStudent = async (req, res) => {
             }
             totalTeacherShare += split.amount;
 
+            // ═══════════════════════════════════════════════════════════════
+            // CALCULATION PROOF METADATA - For Admission TUITION mode
+            // ═══════════════════════════════════════════════════════════════
+            const admissionTuitionProof = {
+              studentId: student._id,
+              studentName: student.studentName,
+              totalFee: initialPayment,
+              teacherDeductions: 0,
+              netPoolBeforeSplit: initialPayment,
+              stakeholderPercentage: `${split.percentage}% of Tuition Pool`,
+              finalAmount: split.amount,
+              role: split.role,
+              revenueMode: "TUITION",
+              calculationProof: `PKR ${initialPayment} (admission fee) × ${split.percentage}% (${split.role} share) = PKR ${split.amount}`,
+              eventType: "ADMISSION",
+              collectedAt: new Date(),
+            };
+
             creditTransactions.push({
               type: "INCOME",
               category: "Tuition",
@@ -314,6 +363,7 @@ exports.createStudent = async (req, res) => {
               collectedBy: req.user?._id,
               status: "FLOATING",
               date: new Date(),
+              splitDetails: admissionTuitionProof,
             });
 
             dailyRevenueEntries.push({
@@ -324,9 +374,7 @@ exports.createStudent = async (req, res) => {
               className: classDoc?.classTitle || student.class,
               studentRef: student._id,
               studentName: student.studentName,
-              splitDetails: {
-                description: `Admission tuition: ${student.studentName} — ${split.teacherName}`,
-              },
+              splitDetails: admissionTuitionProof,
             });
           }
         }
@@ -521,6 +569,32 @@ exports.collectFee = async (req, res) => {
         }
 
         totalTeacherShare += split.amount;
+
+        // ═══════════════════════════════════════════════════════════════
+        // CALCULATION PROOF METADATA - Full audit trail for TUITION mode
+        // ═══════════════════════════════════════════════════════════════
+        const tuitionProofMetadata = {
+          // Who paid?
+          studentId: student._id,
+          studentName: student.studentName,
+          // What was the gross amount?
+          totalFee: amountNum,
+          // TUITION mode = 100% to Owner/Partners (no external teacher deductions)
+          teacherDeductions: 0,
+          // Net pool = full amount (split among owners/partners)
+          netPoolBeforeSplit: amountNum,
+          // Stakeholder calculation
+          stakeholderPercentage: `${split.percentage}% of Tuition Pool`,
+          finalAmount: split.amount,
+          // Additional context
+          role: split.role,
+          revenueMode: "TUITION",
+          // Audit trail
+          calculationProof: `PKR ${amountNum} (total fee) × ${split.percentage}% (${split.role} share) = PKR ${split.amount}`,
+          month: month,
+          collectedAt: new Date(),
+        };
+
         dailyRevenueEntries.push({
           userId: split.userId,
           amount: split.amount,
@@ -529,9 +603,7 @@ exports.collectFee = async (req, res) => {
           className: classDoc?.classTitle || student.class,
           studentRef: student._id,
           studentName: student.studentName,
-          splitDetails: {
-            description: `100% TUITION: ${student.studentName} (${month}) → ${split.teacherName}`,
-          },
+          splitDetails: tuitionProofMetadata,
         });
 
         creditTransactions.push({
@@ -543,14 +615,7 @@ exports.collectFee = async (req, res) => {
           collectedBy: req.user?._id,
           status: "FLOATING",
           date: new Date(),
-          splitDetails: {
-            teacherId: split.teacherId,
-            teacherName: split.teacherName,
-            studentId: student._id,
-            studentName: student.studentName,
-            month: month,
-            percentage: split.percentage,
-          },
+          splitDetails: tuitionProofMetadata,
         });
       }
     }
@@ -764,6 +829,10 @@ exports.collectFee = async (req, res) => {
 
             // Academy share distribution
             totalAcademyShare += split.academyAmount;
+
+            // Calculate teacher deductions for this subject for audit/proof
+            const subjectTeacherDeductions = split.teacherPayouts.reduce((sum, p) => sum + p.amount, 0);
+
             for (const dist of split.academyDistribution) {
               academyDistributions.push({
                 userId: dist.userId,
@@ -782,6 +851,36 @@ exports.collectFee = async (req, res) => {
                   await user.save();
                 }
 
+                // ═══════════════════════════════════════════════════════════════
+                // CALCULATION PROOF METADATA - Full audit trail for stakeholders
+                // ═══════════════════════════════════════════════════════════════
+                const proofMetadata = {
+                  // Who paid?
+                  studentId: student._id,
+                  studentName: student.studentName,
+                  // What was the gross amount?
+                  totalFee: amountNum,
+                  subjectFee: subjShare,
+                  subject: subjName,
+                  // Teacher deductions (before academy split)
+                  teacherDeductions: subjectTeacherDeductions,
+                  teacherPayouts: split.teacherPayouts.map(p => ({
+                    teacherName: p.teacherName,
+                    amount: p.amount,
+                    compensationType: p.compensationType,
+                    reason: p.reason,
+                  })),
+                  // Net pool before stakeholder split
+                  netPoolBeforeSplit: split.academyAmount,
+                  // Stakeholder calculation
+                  stakeholderPercentage: `${dist.percentage}% of Academy Pool`,
+                  finalAmount: dist.amount,
+                  // Audit trail
+                  calculationProof: `PKR ${subjShare} (${subjName}) - PKR ${subjectTeacherDeductions} (teacher cuts) = PKR ${split.academyAmount} (pool) × ${dist.percentage}% = PKR ${dist.amount}`,
+                  month: month,
+                  collectedAt: new Date(),
+                };
+
                 dailyRevenueEntries.push({
                   userId: dist.userId,
                   amount: dist.amount,
@@ -790,9 +889,7 @@ exports.collectFee = async (req, res) => {
                   className: classDoc?.classTitle || student.class,
                   studentRef: student._id,
                   studentName: student.studentName,
-                  splitDetails: {
-                    description: `Academy share (${dist.percentage}%, ${subjName}): ${student.studentName} → ${dist.fullName}`,
-                  },
+                  splitDetails: proofMetadata,
                 });
 
                 creditTransactions.push({
@@ -804,6 +901,7 @@ exports.collectFee = async (req, res) => {
                   collectedBy: req.user?._id,
                   status: "FLOATING",
                   date: new Date(),
+                  splitDetails: proofMetadata,
                 });
               }
             }

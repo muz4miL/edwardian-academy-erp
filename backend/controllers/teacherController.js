@@ -233,7 +233,22 @@ exports.createTeacher = async (req, res) => {
     });
 
     // Determine role and permissions based on requested role
-    const userRole = ["OWNER", "PARTNER", "STAFF", "TEACHER"].includes(requestedRole) ? requestedRole : "TEACHER";
+    let userRole = ["OWNER", "PARTNER", "STAFF", "TEACHER"].includes(requestedRole) ? requestedRole : "TEACHER";
+
+    // ========================================
+    // PREVENT DUPLICATE OWNER CREATION
+    // Only ONE OWNER can exist in the system
+    // ========================================
+    if (userRole === "OWNER") {
+      const existingOwner = await User.findOne({ role: "OWNER", isActive: true });
+      if (existingOwner) {
+        console.log("⚠️ OWNER already exists:", existingOwner.fullName);
+        console.log("🔗 Will link this teacher to existing OWNER instead of creating new one");
+        // Don't allow creating a new OWNER - force linking to existing
+        userRole = "TEACHER"; // Downgrade to TEACHER role, but we'll link to existing OWNER below
+      }
+    }
+
     let userPermissions = ["dashboard", "lectures"];
     if (userRole === "PARTNER") {
       userPermissions = ["dashboard", "admissions", "students", "lectures", "finance"];
@@ -244,11 +259,30 @@ exports.createTeacher = async (req, res) => {
     // ========================================
     // SMART USER LINKING - Prevent Duplicates!
     // For OWNER/PARTNER roles, try to find existing user first
+    // Also link to OWNER if requested role was OWNER but we downgraded
     // ========================================
     let user = null;
     let existingUserLinked = false;
+    const originalRequestedRole = requestedRole;
 
-    if (userRole === "OWNER" || userRole === "PARTNER") {
+    // Special handling: If someone requested OWNER role, always try to link to existing OWNER
+    if (originalRequestedRole === "OWNER") {
+      const existingOwner = await User.findOne({
+        role: "OWNER",
+        isActive: true,
+        $or: [
+          { teacherId: { $exists: false } },
+          { teacherId: null }
+        ]
+      });
+      if (existingOwner) {
+        user = existingOwner;
+        existingUserLinked = true;
+        console.log("🔗 Linking teacher to existing OWNER:", existingOwner.fullName);
+      }
+    }
+
+    if (!user && (userRole === "OWNER" || userRole === "PARTNER")) {
       // Try to find an existing user with the same role that doesn't have a teacherId yet
       // or matches by name (case-insensitive)
       const nameParts = name.toLowerCase().split(/\s+/);
@@ -422,12 +456,14 @@ exports.updateTeacher = async (req, res) => {
 
 /**
  * @route   DELETE /api/teachers/:id
- * @desc    Delete teacher
+ * @desc    Delete teacher and clean up User associations
+ *          PARTNER users: DELETE their User record entirely (no orphaned partners!)
+ *          OWNER users: Just unlink teacherId (they stay as Super Admin)
  * @access  Public
  */
 exports.deleteTeacher = async (req, res) => {
   try {
-    const teacher = await Teacher.findByIdAndDelete(req.params.id);
+    const teacher = await Teacher.findById(req.params.id);
 
     if (!teacher) {
       return res.status(404).json({
@@ -436,6 +472,50 @@ exports.deleteTeacher = async (req, res) => {
       });
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // CLEANUP: Handle associated User based on their role
+    // PARTNER → DELETE their User account (prevents ghost partners)
+    // OWNER → Just unlink teacherId (they stay as Super Admin)
+    // ═══════════════════════════════════════════════════════════════
+    if (teacher.userId) {
+      const linkedUser = await User.findById(teacher.userId);
+      if (linkedUser) {
+        if (linkedUser.role === "PARTNER") {
+          // PARTNER: Delete their User account entirely
+          await User.findByIdAndDelete(linkedUser._id);
+          console.log(`🗑️ DELETED PARTNER User account: ${linkedUser.fullName}`);
+        } else if (linkedUser.role === "OWNER") {
+          // OWNER: Just unlink teacherId (they stay as Super Admin)
+          linkedUser.teacherId = null;
+          await linkedUser.save();
+          console.log(`🔗 Unlinked OWNER User ${linkedUser.fullName} from deleted Teacher ${teacher.name}`);
+        } else {
+          // Other roles: Just unlink
+          linkedUser.teacherId = null;
+          await linkedUser.save();
+          console.log(`🔗 Unlinked User ${linkedUser.fullName} from deleted Teacher ${teacher.name}`);
+        }
+      }
+    }
+
+    // Also clean up any orphaned User references to this teacher
+    // For PARTNER users without a teacher, DELETE them
+    const orphanedPartners = await User.find({
+      teacherId: teacher._id,
+      role: "PARTNER"
+    });
+    for (const orphan of orphanedPartners) {
+      await User.findByIdAndDelete(orphan._id);
+      console.log(`🗑️ DELETED orphaned PARTNER: ${orphan.fullName}`);
+    }
+
+    // For non-PARTNER users, just unlink
+    await User.updateMany(
+      { teacherId: teacher._id, role: { $ne: "PARTNER" } },
+      { $unset: { teacherId: "" } }
+    );
+
+    await Teacher.findByIdAndDelete(req.params.id);
     console.log("✅ Deleted teacher:", teacher.name);
 
     res.status(200).json({

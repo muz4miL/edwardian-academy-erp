@@ -64,6 +64,7 @@ const Configuration = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   // --- Dynamic Partners/Owner List (for display cards) ---
   const [systemPartners, setSystemPartners] = useState<
@@ -211,10 +212,8 @@ const Configuration = () => {
             setSessionPrices(data.sessionPrices);
           }
 
-          // Academy Share Split (NEW: for academy class revenue)
-          if (data.academyShareSplit && data.academyShareSplit.length > 0) {
-            setAcademyShareSplit(data.academyShareSplit);
-          }
+          // NOTE: expenseShares and academyShareSplit are now synced from backend's /partners endpoint
+          // No need to load from config here - the backend handles all the syncing
         }
       } catch (error) {
         console.error("Failed to fetch settings:", error);
@@ -228,7 +227,7 @@ const Configuration = () => {
       }
     };
 
-    // Fetch partners + their current shares from backend
+    // Fetch partners + their current shares from backend - ALWAYS sync with live DB
     const fetchPartners = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/config/partners`, { credentials: "include" });
@@ -239,43 +238,63 @@ const Configuration = () => {
             phone: string | null; profileImage: string | null; isActive: boolean;
             joiningDate: string | null; compensation: any; status: string;
           }>;
-          const currentShares = result.currentShares || [];
+
+          // ═══════════════════════════════════════════════════════════════
+          // LIVE DATA SYNC: Backend already cleaned and synced the data
+          // Use the backend's synced arrays directly - no local merging
+          // ═══════════════════════════════════════════════════════════════
 
           // Store full partner data for display cards
           setSystemPartners(partners);
 
-          // Build expenseShares: merge partners list with saved percentages
-          const shares = partners.map((p: any) => {
-            const saved = currentShares.find((s: any) => s.userId?.toString() === p.userId);
-            return {
+          // Use the backend's pre-synced expense shares (already cleaned of stale entries)
+          if (result.currentShares && result.currentShares.length > 0) {
+            setExpenseShares(result.currentShares.map((s: any) => ({
+              userId: s.userId,
+              fullName: s.fullName,
+              subject: partners.find(p => p.userId === s.userId)?.subject || null,
+              percentage: s.percentage,
+            })));
+          } else if (partners.length > 0) {
+            // No saved shares - create new ones with equal distribution
+            const equalShare = Math.floor(100 / partners.length);
+            const remainder = 100 - equalShare * partners.length;
+            setExpenseShares(partners.map((p, i) => ({
               userId: p.userId,
               fullName: p.fullName,
               subject: p.subject,
-              percentage: saved ? saved.percentage : 0,
-            };
-          });
-
-          // If no saved shares, distribute equally
-          if (currentShares.length === 0 && shares.length > 0) {
-            const equalShare = Math.floor(100 / shares.length);
-            const remainder = 100 - equalShare * shares.length;
-            shares.forEach((s: any, i: number) => {
-              s.percentage = equalShare + (i === 0 ? remainder : 0);
-            });
+              percentage: equalShare + (i === 0 ? remainder : 0),
+            })));
+          } else {
+            setExpenseShares([]);
           }
 
-          setExpenseShares(shares);
-
-          // Auto-populate academyShareSplit from partners if not already loaded from config
-          setAcademyShareSplit(prev => {
-            if (prev.length > 0) return prev;
-            return partners.map((p: any) => ({
+          // Use the backend's pre-synced academy shares (already cleaned of stale entries)
+          if (result.currentAcademyShares && result.currentAcademyShares.length > 0) {
+            setAcademyShareSplit(result.currentAcademyShares.map((s: any) => ({
+              userId: s.userId,
+              fullName: s.fullName,
+              role: s.role || partners.find(p => p.userId === s.userId)?.role || "PARTNER",
+              percentage: s.percentage,
+            })));
+          } else if (partners.length > 0) {
+            // No saved shares - create new ones with equal distribution
+            const equalShare = Math.floor(100 / partners.length);
+            const remainder = 100 - equalShare * partners.length;
+            setAcademyShareSplit(partners.map((p, i) => ({
               userId: p.userId,
               fullName: p.fullName,
               role: p.role || "PARTNER",
-              percentage: Math.floor(100 / partners.length) + (partners.indexOf(p) === 0 ? 100 - Math.floor(100 / partners.length) * partners.length : 0),
-            }));
-          });
+              percentage: equalShare + (i === 0 ? remainder : 0),
+            })));
+          } else {
+            setAcademyShareSplit([]);
+          }
+
+          // Log if backend auto-cleaned stale data
+          if (result.wasAutoClean) {
+            console.log(`🧹 Backend auto-cleaned stale partner entries. Live count: ${result.liveCount}`);
+          }
         }
       } catch {
         /* use empty */
@@ -456,6 +475,7 @@ const Configuration = () => {
         return [...prev, { sessionId, sessionName, price }];
       }
     });
+    setHasChanges(true);
   };
 
   // --- Save Settings Handler ---
@@ -514,6 +534,7 @@ const Configuration = () => {
       const result = await response.json();
 
       if (result.success) {
+        setHasChanges(false);
         toast({
           title: "Settings Saved",
           description:
@@ -910,6 +931,7 @@ const Configuration = () => {
                                     setExpenseShares(prev => prev.map((s, i) =>
                                       i === index ? { ...s, percentage: val } : s
                                     ));
+                                    setHasChanges(true);
                                   }}
                                   className="h-10 pr-8 text-right font-bold text-emerald-700"
                                 />
@@ -1041,6 +1063,7 @@ const Configuration = () => {
                                     setAcademyShareSplit(prev => prev.map((s, i) =>
                                       i === index ? { ...s, percentage: val } : s
                                     ));
+                                    setHasChanges(true);
                                   }}
                                   className="h-10 pr-8 text-right font-bold text-violet-700"
                                 />
@@ -1426,12 +1449,14 @@ const Configuration = () => {
                 size="lg"
                 onClick={handleSaveSettings}
                 disabled={
-                  isSaving || !!splitError || !!poolSplitError
+                  isSaving || !!splitError || !!poolSplitError || !!academyShareError
                 }
                 className={cn(
-                  "h-12 px-8 text-white font-semibold shadow-md",
-                  splitError || poolSplitError
+                  "h-12 px-8 text-white font-semibold shadow-md transition-all",
+                  splitError || poolSplitError || academyShareError
                     ? "bg-gray-400 cursor-not-allowed"
+                    : hasChanges
+                    ? "bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-300 ring-offset-2"
                     : "bg-indigo-600 hover:bg-indigo-700",
                 )}
               >
@@ -1439,6 +1464,11 @@ const Configuration = () => {
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving...
+                  </>
+                ) : hasChanges ? (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Unsaved Changes
                   </>
                 ) : (
                   <>

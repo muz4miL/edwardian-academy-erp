@@ -35,9 +35,30 @@ exports.updateConfig = async (req, res) => {
   if (req.user.role !== "OWNER")
     return res.status(403).json({ success: false });
 
-  const { expenseSplit, defaultSubjectFees, tuitionPoolSplit, eteaPoolSplit, sessionPrices } =
+  const { expenseSplit, expenseShares, academyShareSplit, defaultSubjectFees, tuitionPoolSplit, eteaPoolSplit, sessionPrices } =
     req.body;
 
+  // Validate dynamic expenseShares (new system) - must total 100%
+  if (expenseShares && expenseShares.length > 0) {
+    const total = expenseShares.reduce((sum, s) => sum + (Number(s.percentage) || 0), 0);
+    if (total !== 100) {
+      return res
+        .status(400)
+        .json({ success: false, message: `Expense shares must total 100%. Current: ${total}%` });
+    }
+  }
+
+  // Validate dynamic academyShareSplit - must total 100%
+  if (academyShareSplit && academyShareSplit.length > 0) {
+    const total = academyShareSplit.reduce((sum, s) => sum + (Number(s.percentage) || 0), 0);
+    if (total !== 100) {
+      return res
+        .status(400)
+        .json({ success: false, message: `Academy share split must total 100%. Current: ${total}%` });
+    }
+  }
+
+  // Legacy: Validate hardcoded expenseSplit (backwards compatibility)
   if (
     expenseSplit &&
     expenseSplit.waqar + expenseSplit.zahid + expenseSplit.saud !== 100
