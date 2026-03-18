@@ -107,7 +107,7 @@ function resolveRoleFromName(name) {
 /**
  * Calculate tuition revenue split for a fee payment.
  * Uses configured tuitionPoolSplit percentages (e.g., Waqar 50%, Zahid 30%, Saud 20%).
- * Falls back to equal split only if no config percentages found.
+ * ALWAYS uses configured percentages - no equal split fallback.
  *
  * @param {number} feeAmount - Total fee paid
  * @param {Array} ownerPartnerTeachers - Array of {teacherId, role, userId, userFullName, ...}
@@ -130,6 +130,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
   }
 
   // ── Use configured tuitionPoolSplit OR academyShareSplit to find each person's percentage ──
+  // Default to 50/30/20 split if no config (Waqar 50%, Zahid 30%, Saud 20%)
   const tuitionSplit = config?.tuitionPoolSplit || { waqar: 50, zahid: 30, saud: 20 };
   const academyShareSplit = config?.academyShareSplit || [];
 
@@ -150,14 +151,13 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
   };
 
   const result = [];
-  let totalAssignedPercentage = 0;
   let distributed = 0;
 
   for (let i = 0; i < uniquePersons.length; i++) {
     const person = uniquePersons[i];
     const isLast = i === uniquePersons.length - 1;
 
-    // Try to find configured percentage for this person
+    // Find this person's configured percentage
     let percentage = null;
 
     // Check by userId
@@ -168,7 +168,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
     else if (person.teacherId && percentageMap.has(person.teacherId.toString())) {
       percentage = percentageMap.get(person.teacherId.toString());
     }
-    // Fallback: match by name (legacy)
+    // Fallback: match by name (legacy - uses default 50/30/20 split)
     else {
       const personName = (person.teacherName || person.userFullName || "").toLowerCase();
       for (const [key, pct] of Object.entries(nameToPercentage)) {
@@ -179,53 +179,15 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
       }
     }
 
-    // If no percentage found, will fall back to equal split after loop
-    if (percentage !== null) {
-      totalAssignedPercentage += percentage;
-    }
-  }
+    // If still no percentage found, default to 0 (should not happen with proper config)
+    if (percentage === null) percentage = 0;
 
-  // If we found valid percentages, use them; otherwise fall back to equal split
-  const useConfiguredSplit = totalAssignedPercentage > 0;
-
-  for (let i = 0; i < uniquePersons.length; i++) {
-    const person = uniquePersons[i];
-    const isLast = i === uniquePersons.length - 1;
+    // Last person gets remainder to avoid rounding errors
     let amount;
-    let percentage;
-
-    if (useConfiguredSplit) {
-      // Find this person's percentage
-      percentage = null;
-      if (person.userId && percentageMap.has(person.userId.toString())) {
-        percentage = percentageMap.get(person.userId.toString());
-      } else if (person.teacherId && percentageMap.has(person.teacherId.toString())) {
-        percentage = percentageMap.get(person.teacherId.toString());
-      } else {
-        const personName = (person.teacherName || person.userFullName || "").toLowerCase();
-        for (const [key, pct] of Object.entries(nameToPercentage)) {
-          if (personName.includes(key)) {
-            percentage = pct;
-            break;
-          }
-        }
-      }
-
-      if (percentage === null) percentage = 0;
-
-      // Last person gets remainder to avoid rounding errors
-      if (isLast) {
-        amount = feeAmount - distributed;
-      } else {
-        amount = Math.round((feeAmount * percentage) / 100);
-      }
+    if (isLast) {
+      amount = feeAmount - distributed;
     } else {
-      // Fallback: equal split
-      const count = uniquePersons.length;
-      const baseShare = Math.floor(feeAmount / count);
-      const remainder = feeAmount - (baseShare * count);
-      amount = baseShare + (i === 0 ? remainder : 0);
-      percentage = Math.round(100 / count);
+      amount = Math.round((feeAmount * percentage) / 100);
     }
 
     distributed += amount;
@@ -237,9 +199,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
       role: person.role,
       amount,
       percentage: percentage || 0,
-      description: useConfiguredSplit
-        ? `Tuition share: ${feeAmount} × ${percentage}% = ${amount}`
-        : `Tuition share: ${feeAmount} ÷ ${uniquePersons.length} persons = ${amount}`,
+      description: `Tuition share: ${feeAmount} × ${percentage}% = ${amount}`,
     });
   }
 

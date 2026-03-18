@@ -459,12 +459,14 @@ exports.getDashboardStats = async (req, res) => {
     ]);
     const floatingCash = floatingResult[0]?.total || 0;
 
-    // Fee collection stats
+    // Fee collection stats (exclude Withdrawn students to prevent ghost revenue)
     const [totalExpectedFees, totalCollectedFees] = await Promise.all([
       Student.aggregate([
+        { $match: { studentStatus: { $ne: "Withdrawn" } } },
         { $group: { _id: null, total: { $sum: "$totalFee" } } },
       ]),
       Student.aggregate([
+        { $match: { studentStatus: { $ne: "Withdrawn" } } },
         { $group: { _id: null, total: { $sum: "$paidAmount" } } },
       ]),
     ]);
