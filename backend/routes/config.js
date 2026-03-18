@@ -104,12 +104,37 @@ router.get("/partners", async (req, res) => {
       let joiningDate = null;
       let compensation = null;
       let status = "active";
+
+      // ═══════════════════════════════════════════════════════════════
+      // CRITICAL: Query Teachers collection as SINGLE SOURCE OF TRUTH
+      // Only show users whose Teacher record has status: 'Active'
+      // ═══════════════════════════════════════════════════════════════
       if (user.teacherId) {
         const teacher = await Teacher.findById(user.teacherId).select("subject joiningDate compensation status");
-        subject = teacher?.subject || null;
-        joiningDate = teacher?.joiningDate || null;
-        compensation = teacher?.compensation || null;
-        status = teacher?.status || "active";
+
+        // Skip if teacher doesn't exist or is not Active
+        if (!teacher) {
+          console.log(`👻 GHOST DETECTED: User "${user.fullName}" has teacherId but Teacher not found`);
+          continue;
+        }
+
+        const teacherStatus = (teacher.status || "active").toLowerCase();
+        if (teacherStatus !== "active") {
+          console.log(`🚫 FILTERED: Skipping "${user.fullName}" - Teacher status is "${teacherStatus}" (not Active)`);
+          continue;
+        }
+
+        subject = teacher.subject || null;
+        joiningDate = teacher.joiningDate || null;
+        compensation = teacher.compensation || null;
+        status = teacher.status || "active";
+      } else if (user.role === "OWNER") {
+        // OWNER without teacherId is allowed (Super Admin)
+        console.log(`✅ Including OWNER without Teacher record: ${user.fullName}`);
+      } else {
+        // Non-OWNER without teacherId should have been filtered earlier
+        console.log(`👻 GHOST DETECTED: Non-OWNER user "${user.fullName}" without teacherId`);
+        continue;
       }
 
       liveUserIds.add(user._id.toString());

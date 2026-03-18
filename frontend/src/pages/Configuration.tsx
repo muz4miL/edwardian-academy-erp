@@ -516,12 +516,26 @@ const Configuration = () => {
 
   // --- Save Settings Handler ---
   const handleSaveSettings = async () => {
+    // Validate expense splits
     if (expenseShares.length > 0) {
       const total = expenseShares.reduce((sum, s) => sum + (s.percentage || 0), 0);
       if (total !== 100) {
         toast({
           title: "Validation Error",
           description: `Expense splits must total 100%. Current: ${total}%`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // Validate academy share split (CRITICAL for revenue distribution)
+    if (academyShareSplit.length > 0) {
+      const total = academyShareSplit.reduce((sum, s) => sum + (s.percentage || 0), 0);
+      if (total !== 100) {
+        toast({
+          title: "Validation Error",
+          description: `Academy Revenue Share splits must total 100%. Current: ${total}%`,
           variant: "destructive",
         });
         return;
