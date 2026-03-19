@@ -305,11 +305,6 @@ exports.createTeacher = async (req, res) => {
     if (normalizedEmail) {
       ownerMatchFilters.push({ email: normalizedEmail });
     }
-    // Fallback to generated username when no username/email is provided
-    if (!normalizedUsername && baseUsername) {
-      ownerMatchFilters.push({ username: baseUsername });
-    }
-
     // Special handling: If someone requested OWNER role, try username/email match first
     if (userRole === "OWNER" && ownerMatchFilters.length > 0) {
       const matchedOwner = await User.findOne({
@@ -413,15 +408,15 @@ exports.createTeacher = async (req, res) => {
         shouldSaveUser = true;
       }
       if (user.role !== userRole) {
-        user.role = userRole;
+        return res.status(409).json({
+          success: false,
+          message: `Existing user role mismatch (${user.fullName} is ${user.role}).`,
+        });
+      }
+      // Normalize permissions for existing roles to ensure expected access stays aligned
+      if (!haveSamePermissions(user.permissions || [], userPermissions)) {
         user.permissions = userPermissions;
         shouldSaveUser = true;
-      } else {
-        // Normalize permissions for existing roles to ensure expected access stays aligned
-        if (!haveSamePermissions(user.permissions || [], userPermissions)) {
-          user.permissions = userPermissions;
-          shouldSaveUser = true;
-        }
       }
       if (shouldSaveUser) {
         await user.save();
