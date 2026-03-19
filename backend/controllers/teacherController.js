@@ -327,6 +327,10 @@ exports.createTeacher = async (req, res) => {
       console.log("🔗 Linking teacher to existing OWNER:", existingOwner.fullName);
     } else if (!user && userRole === "OWNER" && existingOwner && existingOwner.teacherId) {
       console.log(`⚠️ OWNER already linked to Teacher: ${existingOwner.fullName}`);
+      return res.status(409).json({
+        success: false,
+        message: `OWNER account already linked to a teacher (${existingOwner.fullName}).`,
+      });
     }
 
     if (!user && (userRole === "OWNER" || userRole === "PARTNER")) {
