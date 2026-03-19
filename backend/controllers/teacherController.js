@@ -278,7 +278,7 @@ exports.createTeacher = async (req, res) => {
       }
       return ["dashboard", "lectures"];
     };
-    const permissionsMatch = (current = [], next = []) => {
+    const arePermissionsEqual = (current = [], next = []) => {
       if (current.length !== next.length) return false;
       const set = new Set(current);
       return next.every((perm) => set.has(perm));
@@ -385,7 +385,7 @@ exports.createTeacher = async (req, res) => {
         role: userRole,
         permissions: userPermissions,
         phone,
-        email: normalizedEmail || undefined,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
         profileImage: profileImage || null,
         isActive: true,
       });
@@ -408,7 +408,7 @@ exports.createTeacher = async (req, res) => {
         user.permissions = userPermissions;
         shouldSaveUser = true;
       } else {
-        if (!permissionsMatch(user.permissions || [], userPermissions)) {
+        if (!arePermissionsEqual(user.permissions || [], userPermissions)) {
           user.permissions = userPermissions;
           shouldSaveUser = true;
         }
