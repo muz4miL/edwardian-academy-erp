@@ -284,7 +284,7 @@ exports.createTeacher = async (req, res) => {
       }
       return ["dashboard", "lectures"];
     };
-    const arePermissionsEqual = (current = [], next = []) => {
+    const haveSamePermissions = (current = [], next = []) => {
       if (current.length !== next.length) return false;
       const set = new Set(current);
       return next.every((perm) => set.has(perm));
@@ -305,6 +305,7 @@ exports.createTeacher = async (req, res) => {
     if (normalizedEmail) {
       ownerMatchFilters.push({ email: normalizedEmail });
     }
+    // Fallback to generated username when no username/email is provided
     if (!normalizedUsername && baseUsername) {
       ownerMatchFilters.push({ username: baseUsername });
     }
@@ -416,7 +417,8 @@ exports.createTeacher = async (req, res) => {
         user.permissions = userPermissions;
         shouldSaveUser = true;
       } else {
-        if (!arePermissionsEqual(user.permissions || [], userPermissions)) {
+        // Normalize permissions for existing roles to ensure expected access stays aligned
+        if (!haveSamePermissions(user.permissions || [], userPermissions)) {
           user.permissions = userPermissions;
           shouldSaveUser = true;
         }
