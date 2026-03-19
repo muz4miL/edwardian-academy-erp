@@ -98,21 +98,6 @@ exports.getTeacherById = async (req, res) => {
  */
 exports.createTeacher = async (req, res) => {
   try {
-    // 🔍 EXTREME DEBUGGING - Log incoming data
-    console.log("=== CREATE TEACHER REQUEST ===");
-    console.log("Request Headers:", req.headers["content-type"]);
-    console.log(
-      "Payload Size:",
-      Buffer.byteLength(JSON.stringify(req.body)),
-      "bytes",
-    );
-    console.log("Teacher Name:", req.body.name);
-    console.log(
-      "Profile Image Size:",
-      req.body.profileImage ? Buffer.byteLength(req.body.profileImage) : "None",
-      "bytes",
-    );
-
     const {
       name,
       phone,
@@ -125,7 +110,6 @@ exports.createTeacher = async (req, res) => {
       username: requestedUsername,
     } = req.body;
 
-    // Validate required fields
     if (!name || !phone || !subject) {
       return res.status(400).json({
         success: false,
@@ -133,26 +117,30 @@ exports.createTeacher = async (req, res) => {
       });
     }
 
-    // Fetch global settings for smart defaults
+    const teacherRole = (requestedRole || "TEACHER").toUpperCase();
+    const allowedTeacherRoles = ["OWNER", "PARTNER", "TEACHER"];
+    if (!allowedTeacherRoles.includes(teacherRole)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role must be one of: OWNER, PARTNER, TEACHER",
+      });
+    }
+
     let settings = await Settings.findOne();
     if (!settings) {
-      // Create default settings if none exist
       settings = new Settings();
       await settings.save();
     }
 
-    // Prepare compensation object with smart defaults
     let compensationData = {
       type: compensation?.type || settings.defaultCompensationMode,
     };
 
-    // Apply smart defaults based on compensation type
     if (compensationData.type === "percentage") {
       compensationData.teacherShare =
         compensation?.teacherShare ?? settings.defaultTeacherShare;
       compensationData.academyShare =
         compensation?.academyShare ?? settings.defaultAcademyShare;
-      // Explicitly set unused fields to null
       compensationData.fixedSalary = null;
       compensationData.baseSalary = null;
       compensationData.profitShare = null;
@@ -160,24 +148,20 @@ exports.createTeacher = async (req, res) => {
     } else if (compensationData.type === "fixed") {
       compensationData.fixedSalary =
         compensation?.fixedSalary ?? settings.defaultBaseSalary;
-      // Explicitly set unused fields to null
       compensationData.teacherShare = null;
       compensationData.academyShare = null;
       compensationData.baseSalary = null;
       compensationData.profitShare = null;
       compensationData.perStudentAmount = null;
     } else if (compensationData.type === "hybrid") {
-      // Hybrid mode doesn't have defaults in settings, must be provided
       compensationData.baseSalary = compensation?.baseSalary;
       compensationData.profitShare = compensation?.profitShare;
-      // Explicitly set unused fields to null
       compensationData.teacherShare = null;
       compensationData.academyShare = null;
       compensationData.fixedSalary = null;
       compensationData.perStudentAmount = null;
     } else if (compensationData.type === "perStudent") {
       compensationData.perStudentAmount = compensation?.perStudentAmount;
-      // Explicitly set unused fields to null
       compensationData.teacherShare = null;
       compensationData.academyShare = null;
       compensationData.fixedSalary = null;
@@ -185,32 +169,23 @@ exports.createTeacher = async (req, res) => {
       compensationData.profitShare = null;
     }
 
-    console.log(
-      "Processed Compensation Data:",
-      JSON.stringify(compensationData, null, 2),
-    );
-
-    // ========================================
-    // AUTO-GENERATE LOGIN CREDENTIALS
-    // ========================================
-
     const normalizedEmail =
       typeof email === "string" && email.trim()
         ? email.trim().toLowerCase()
         : null;
-    const normalizedUsername =
+    const normalizedRequestedUsername =
       typeof requestedUsername === "string" && requestedUsername.trim()
         ? requestedUsername.trim().toLowerCase()
         : null;
 
-    // Generate username from name (e.g., "Ahmed Khan" → "ahmed_khan")
-    const baseUsername = name
+    const generatedBaseUsername = name
       .toLowerCase()
-      .replace(/[^a-z\s]/g, "") // Remove non-letters
+      .replace(/[^a-z\s]/g, "")
       .trim()
-      .replace(/\s+/g, "_"); // Replace spaces with underscores
+      .replace(/\s+/g, "_");
+    const baseUsername =
+      normalizedRequestedUsername || generatedBaseUsername || "teacher";
 
-    // Ensure unique username by checking for existing users
     let username = baseUsername;
     let usernameExists = await User.findOne({ username });
     let counter = 1;
@@ -220,7 +195,6 @@ exports.createTeacher = async (req, res) => {
       counter++;
     }
 
-    // Generate random 8-character password
     const chars =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let plainPassword = "";
@@ -228,8 +202,6 @@ exports.createTeacher = async (req, res) => {
       plainPassword += chars.charAt(Math.floor(Math.random() * chars.length));
     }
 
-    // Generate unique userId for the User model
-    // Find the highest existing TCH number to avoid collisions when users have been deleted
     const lastTchUser = await User.findOne(
       { userId: /^TCH\d+$/ },
       { userId: 1 },
@@ -239,39 +211,11 @@ exports.createTeacher = async (req, res) => {
       const lastNum = parseInt(lastTchUser.userId.replace("TCH", ""), 10);
       nextTchNum = lastNum + 1;
     }
-    // Also check total count as a safety floor
     const userCount = await User.countDocuments();
     nextTchNum = Math.max(nextTchNum, userCount + 1);
     const userId = `TCH${String(nextTchNum).padStart(4, "0")}`;
 
-    console.log("🔑 Generated credentials:", {
-      username,
-      userId,
-      passwordLength: plainPassword.length,
-    });
-
-    // Determine role and permissions based on requested role
-    const teacherRole = ["OWNER", "PARTNER", "STAFF", "TEACHER"].includes(requestedRole)
-      ? requestedRole
-      : "TEACHER";
-    let userRole = teacherRole;
-
-    // ========================================
-    // PREVENT DUPLICATE OWNER CREATION
-    // Only ONE OWNER can exist in the system
-    // ========================================
-    let existingOwner = null;
-    if (userRole === "OWNER") {
-      existingOwner = await User.findOne({ role: "OWNER", isActive: true });
-      if (existingOwner) {
-        console.log("⚠️ OWNER already exists:", existingOwner.fullName);
-        console.log("🔗 Will attempt to link this teacher to existing OWNER instead of creating new one");
-        if (existingOwner.teacherId) {
-          return ownerAlreadyLinkedResponse(existingOwner);
-        }
-      }
-    }
-
+    const userRole = teacherRole;
     const buildPermissions = (role) => {
       if (role === "PARTNER") {
         return ["dashboard", "admissions", "students", "lectures", "finance"];
@@ -286,104 +230,134 @@ exports.createTeacher = async (req, res) => {
       const set = new Set(current);
       return next.every((perm) => set.has(perm));
     };
-    const ownerAlreadyLinkedResponse = (owner) =>
-      res.status(409).json({
+
+    const ensureValidOwnerTeacherLink = async (ownerUser) => {
+      if (!ownerUser?.teacherId) {
+        return { isLinked: false, linkedTeacher: null };
+      }
+
+      const linkedTeacher = ownerUser?.teacherId?.name
+        ? ownerUser.teacherId
+        : await Teacher.findById(ownerUser.teacherId).select("name");
+
+      // Auto-heal stale references when teacher was deleted but owner.teacherId remained.
+      if (!linkedTeacher) {
+        ownerUser.teacherId = null;
+        await ownerUser.save();
+        return { isLinked: false, linkedTeacher: null };
+      }
+
+      return { isLinked: true, linkedTeacher };
+    };
+
+    const ownerAlreadyLinkedResponse = async (ownerUser) => {
+      const { linkedTeacher } = await ensureValidOwnerTeacherLink(ownerUser);
+      const linkedTeacherName = linkedTeacher?.name || "Unknown";
+      return res.status(409).json({
         success: false,
-        message: `OWNER account already linked to a teacher (${owner.fullName}).`,
+        message: `An Owner is already linked to teacher ${linkedTeacherName}. Only one Owner allowed.`,
       });
+    };
 
-    let userPermissions = buildPermissions(userRole);
+    const userPermissions = buildPermissions(userRole);
 
-    // ========================================
-    // SMART USER LINKING - Prevent Duplicates!
-    // For OWNER/PARTNER roles, try to find existing user first
-    // ========================================
     let user = null;
     let existingUserLinked = false;
-    const ownerMatchFilters = [];
-    if (normalizedUsername) {
-      ownerMatchFilters.push({ username: normalizedUsername });
-    }
-    if (normalizedEmail) {
-      ownerMatchFilters.push({ email: normalizedEmail });
-    }
-    // Special handling: If someone requested OWNER role, try username/email match first
-    if (userRole === "OWNER" && ownerMatchFilters.length > 0) {
-      const matchedOwner = await User.findOne({
-        role: "OWNER",
-        $or: ownerMatchFilters,
-      });
-      if (matchedOwner) {
-        if (matchedOwner.teacherId) {
-          console.log(`⚠️ Matched OWNER already linked: ${matchedOwner.fullName}`);
-          return ownerAlreadyLinkedResponse(matchedOwner);
-        } else {
+
+    if (userRole === "OWNER") {
+      const ownerMatchFilters = [];
+      if (normalizedRequestedUsername) {
+        ownerMatchFilters.push({ username: normalizedRequestedUsername });
+      }
+      if (normalizedEmail) {
+        ownerMatchFilters.push({ email: normalizedEmail });
+      }
+
+      if (ownerMatchFilters.length > 0) {
+        const matchedOwner = await User.findOne({
+          role: "OWNER",
+          $or: ownerMatchFilters,
+        });
+        if (matchedOwner) {
+          const linkState = await ensureValidOwnerTeacherLink(matchedOwner);
+          if (linkState.isLinked) {
+            return ownerAlreadyLinkedResponse(matchedOwner);
+          }
           user = matchedOwner;
           existingUserLinked = true;
-          console.log("🔗 Linking teacher to OWNER (username/email match):", matchedOwner.fullName);
-        }
-      }
-    }
-
-    // Fallback: Link to existing OWNER without a teacherId
-    if (!user && userRole === "OWNER" && existingOwner && !existingOwner.teacherId) {
-      user = existingOwner;
-      existingUserLinked = true;
-      console.log("🔗 Linking teacher to existing OWNER:", existingOwner.fullName);
-    }
-
-    if (!user && (userRole === "OWNER" || userRole === "PARTNER")) {
-      // Try to find an existing user with the same role that doesn't have a teacherId yet
-      // or matches by name (case-insensitive)
-      const nameParts = name.toLowerCase().split(/\s+/);
-
-      // First, try exact role match with similar name
-      const existingUsers = await User.find({
-        role: userRole,
-        $or: [
-          { teacherId: { $exists: false } },
-          { teacherId: null }
-        ]
-      }).lean();
-
-      // Find best match by name similarity
-      for (const existingUser of existingUsers) {
-        const existingNameParts = (existingUser.fullName || "").toLowerCase().split(/\s+/);
-        const hasCommonPart = nameParts.some(part =>
-          existingNameParts.some(ePart => ePart.includes(part) || part.includes(ePart))
-        );
-
-        if (hasCommonPart) {
-          user = await User.findById(existingUser._id);
-          existingUserLinked = true;
-          console.log("🔗 Found existing user to link:", existingUser.fullName, existingUser.role);
-          break;
         }
       }
 
-      // If no match by name, try to find ANY unlinked user with same role
       if (!user) {
-        user = await User.findOne({
-          role: userRole,
-          $or: [
-            { teacherId: { $exists: false } },
-            { teacherId: null }
-          ]
+        const unlinkedOwner = await User.findOne({
+          role: "OWNER",
+          $or: [{ teacherId: { $exists: false } }, { teacherId: null }],
         });
-        if (user) {
+        if (unlinkedOwner) {
+          user = unlinkedOwner;
           existingUserLinked = true;
-          console.log("🔗 Linking to existing unlinked user:", user.fullName, user.role);
+        }
+      }
+
+      if (!user) {
+        const linkedOwner = await User.findOne({
+          role: "OWNER",
+          teacherId: { $exists: true, $ne: null },
+        }).populate("teacherId", "name");
+        if (linkedOwner) {
+          const linkState = await ensureValidOwnerTeacherLink(linkedOwner);
+          if (linkState.isLinked) {
+            return ownerAlreadyLinkedResponse(linkedOwner);
+          }
+          user = linkedOwner;
+          existingUserLinked = true;
         }
       }
     }
 
-    // Only create new user if no existing user was found to link
+    if (!user && userRole === "PARTNER") {
+      const partnerMatchFilters = [];
+      if (normalizedRequestedUsername) {
+        partnerMatchFilters.push({ username: normalizedRequestedUsername });
+      }
+      if (normalizedEmail) {
+        partnerMatchFilters.push({ email: normalizedEmail });
+      }
+
+      if (partnerMatchFilters.length > 0) {
+        const matchedPartner = await User.findOne({
+          role: "PARTNER",
+          $or: partnerMatchFilters,
+        });
+        if (matchedPartner) {
+          if (matchedPartner.teacherId) {
+            return res.status(409).json({
+              success: false,
+              message: `Existing PARTNER account (${matchedPartner.fullName}) is already linked to a different teacher.`,
+            });
+          }
+          user = matchedPartner;
+          existingUserLinked = true;
+        }
+      }
+
+      if (!user) {
+        const unlinkedPartner = await User.findOne({
+          role: "PARTNER",
+          $or: [{ teacherId: { $exists: false } }, { teacherId: null }],
+        });
+        if (unlinkedPartner) {
+          user = unlinkedPartner;
+          existingUserLinked = true;
+        }
+      }
+    }
+
     if (!user) {
-      // Create User account for Teacher login
       user = new User({
         userId,
         username,
-        password: plainPassword, // Will be hashed by pre-save hook
+        password: plainPassword,
         fullName: name,
         role: userRole,
         permissions: userPermissions,
@@ -394,15 +368,26 @@ exports.createTeacher = async (req, res) => {
       });
 
       await user.save();
-      console.log("✅ Created NEW User account for teacher:", username);
     } else {
-      // Update existing user with missing fields or role corrections
       let shouldSaveUser = false;
       if (user.role !== userRole) {
         return res.status(409).json({
           success: false,
           message: `Existing user role mismatch (${user.fullName} is ${user.role}).`,
         });
+      }
+      if (user.teacherId) {
+        if (userRole === "OWNER") {
+          const linkState = await ensureValidOwnerTeacherLink(user);
+          if (linkState.isLinked) {
+            return ownerAlreadyLinkedResponse(user);
+          }
+        } else {
+          return res.status(409).json({
+            success: false,
+            message: `Existing ${userRole} account (${user.fullName}) is already linked to a different teacher.`,
+          });
+        }
       }
       if (profileImage && !user.profileImage) {
         user.profileImage = profileImage;
@@ -412,7 +397,6 @@ exports.createTeacher = async (req, res) => {
         user.email = normalizedEmail;
         shouldSaveUser = true;
       }
-      // Normalize permissions for existing roles to ensure expected access stays aligned
       if (!permissionsMatch(user.permissions || [], userPermissions)) {
         user.permissions = userPermissions;
         shouldSaveUser = true;
@@ -420,12 +404,11 @@ exports.createTeacher = async (req, res) => {
       if (shouldSaveUser) {
         await user.save();
       }
-      // Use existing user's credentials
+
       username = user.username;
       plainPassword = "(existing account - password unchanged)";
     }
 
-    // Create new teacher document with link to User
     const teacher = new Teacher({
       name,
       phone,
@@ -435,17 +418,14 @@ exports.createTeacher = async (req, res) => {
       profileImage: profileImage || null,
       role: teacherRole,
       userId: user._id,
-      username: username,
-      plainPassword: plainPassword,
+      username,
+      plainPassword,
     });
 
     await teacher.save();
 
-    // Update User with teacherId reference
     user.teacherId = teacher._id;
     await user.save();
-
-    console.log("✅ Created new teacher:", teacher.name, existingUserLinked ? "(linked to existing user)" : "(new user account)");
 
     res.status(201).json({
       success: true,
@@ -454,11 +434,14 @@ exports.createTeacher = async (req, res) => {
         : "Teacher created successfully with login credentials",
       data: teacher,
       linkedToExisting: existingUserLinked,
-      linkedUser: existingUserLinked ? { id: user._id, fullName: user.fullName, role: user.role } : null,
-      // Return credentials for display (THIS IS THE ONLY TIME THEY ARE SHOWN)
+      linkedUser: existingUserLinked
+        ? { id: user._id, fullName: user.fullName, role: user.role }
+        : null,
       credentials: {
-        username: username,
-        password: existingUserLinked ? "(use existing account password)" : plainPassword,
+        username,
+        password: existingUserLinked
+          ? "(use existing account password)"
+          : plainPassword,
         note: existingUserLinked
           ? `This teacher is linked to existing ${userRole} account: ${user.fullName}. Use existing login credentials.`
           : "Save these credentials! The password cannot be retrieved later.",

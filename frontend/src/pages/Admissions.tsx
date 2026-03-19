@@ -33,7 +33,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { studentApi, classApi, sessionApi } from "@/lib/api";
+import { studentApi, classApi, sessionApi, settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate, useLocation } from "react-router-dom";
 import confetti from "canvas-confetti";
@@ -72,6 +72,12 @@ const Admissions = () => {
 
   const classes = classesData?.data || [];
   const sessions = sessionsData?.data || [];
+
+  const { data: configData } = useQuery({
+    queryKey: ["config-subjects"],
+    queryFn: settingsApi.get,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Form state
   const [studentName, setStudentName] = useState("");
@@ -280,6 +286,15 @@ const Admissions = () => {
   };
 
   const filteredClasses = getFilteredClasses();
+
+  const selectedClass = getSelectedClass();
+  const classSubjectNames = (selectedClass?.subjects || [])
+    .map((s: any) => (typeof s === "string" ? s : s?.name))
+    .filter(Boolean);
+  const configSubjectNames = (configData?.data?.defaultSubjectFees || [])
+    .map((s: any) => s?.name)
+    .filter(Boolean);
+  const availableSubjects = configSubjectNames.length > 0 ? configSubjectNames : classSubjectNames;
 
   // Session rate is the default source of Total Fee unless custom override is enabled.
   useEffect(() => {
@@ -729,6 +744,35 @@ const Admissions = () => {
                     )}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-3 sm:col-span-2">
+                <Label>Subjects *</Label>
+                {!selectedClassId ? (
+                  <p className="text-xs text-muted-foreground">Select a class first to load subjects.</p>
+                ) : availableSubjects.length === 0 ? (
+                  <p className="text-xs text-amber-600">No subjects found. Add subjects in Class setup or Configuration.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-border p-3 bg-secondary/10">
+                    {availableSubjects.map((subjectName: string) => {
+                      const checked = selectedSubjects.includes(subjectName);
+                      const inClass = classSubjectNames.includes(subjectName);
+                      return (
+                        <label
+                          key={subjectName}
+                          className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm cursor-pointer ${checked ? "border-primary bg-primary/5" : "border-border bg-background"}`}
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => handleSubjectToggle(subjectName)}
+                          />
+                          <span>{subjectName}</span>
+                          {inClass && <span className="ml-auto text-[10px] text-emerald-600 font-medium">Class</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
 

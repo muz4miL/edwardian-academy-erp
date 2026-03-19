@@ -20,6 +20,38 @@ const {
 } = require("../controllers/studentController");
 const { createWithdrawalAdjustments } = require("../helpers/revenueEngine");
 
+// Internal helper to reuse collectFee split engine for admission initial payment.
+const runCollectFeeInternal = ({ studentId, amount, month, user }) =>
+  new Promise((resolve, reject) => {
+    const mockReq = {
+      params: { id: studentId },
+      body: {
+        amount,
+        month,
+        paymentMethod: "CASH",
+        notes: "Admission payment",
+      },
+      user,
+    };
+
+    const mockRes = {
+      statusCode: 200,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        if (this.statusCode >= 400) {
+          reject(new Error(payload?.message || "collectFee failed"));
+          return;
+        }
+        resolve(payload);
+      },
+    };
+
+    collectFee(mockReq, mockRes);
+  });
+
 // ========================================
 // FEE COLLECTION ROUTES (Module 2)
 // ========================================
@@ -410,6 +442,10 @@ router.post("/", async (req, res) => {
 
     console.log("\n✅ Sanitized Data:", JSON.stringify(sanitizedData, null, 2));
 
+    // Route through collectFee for initial payment so DailyRevenue/FLOATING splits stay consistent.
+    const initialPaidAmount = Number(sanitizedData.paidAmount) || 0;
+    sanitizedData.paidAmount = 0;
+
     const newStudent = new Student(sanitizedData);
     console.log("✅ Student instance created, attempting to save...");
 
@@ -421,85 +457,25 @@ router.post("/", async (req, res) => {
     console.log("✅ Fee Status:", savedStudent.feeStatus);
 
     // =====================================================================
-    // FINANCE SYNC: Record admission payment into finance ledger
+    // FINANCE SYNC: Process admission payment through collectFee split engine
     // =====================================================================
-    const paidAmount = Number(savedStudent.paidAmount) || 0;
-    if (paidAmount > 0) {
+    if (initialPaidAmount > 0) {
       const monthLabel = new Date().toLocaleString("en-US", {
         month: "long",
         year: "numeric",
       });
 
-      // Create FeeRecord for the admission payment
-      let feeRecord = null;
-      try {
-        feeRecord = await FeeRecord.create({
-          student: savedStudent._id,
-          studentName: savedStudent.studentName,
-          class: savedStudent.classRef || undefined,
-          className: savedStudent.class || "N/A",
-          subject: "Session Admission",
-          amount: paidAmount,
-          discountAmount: savedStudent.discountAmount || 0,
-          sessionRate: savedStudent.sessionRate || 0,
-          month: monthLabel,
-          status: "PAID",
-          collectedBy: req.user?._id || undefined,
-          collectedByName: req.user?.fullName || "Staff",
-          paymentMethod: "CASH",
-          notes: "Admission payment",
-        });
-        console.log("💰 FeeRecord created:", feeRecord.receiptNumber);
-      } catch (feeErr) {
-        console.log("FeeRecord creation skipped:", feeErr.message);
-      }
+      await runCollectFeeInternal({
+        studentId: savedStudent._id.toString(),
+        amount: initialPaidAmount,
+        month: monthLabel,
+        user: req.user,
+      });
 
-      // Create Transaction for the admission income
-      try {
-        await Transaction.create({
-          type: "INCOME",
-          category: "Tuition",
-          amount: paidAmount,
-          description: `Admission fee: ${savedStudent.studentName} (${savedStudent.studentId}) — ${savedStudent.class || "N/A"}`,
-          date: new Date(),
-          collectedBy: req.user?._id || undefined,
-          status: "FLOATING",
-          studentId: savedStudent._id,
-        });
-        console.log("📊 Transaction recorded: INCOME PKR", paidAmount);
-      } catch (txErr) {
-        console.log("Transaction creation skipped:", txErr.message);
-      }
-
-      // Notify owner about admission payment
-      try {
-        const owner = await User.findOne({ role: "OWNER" });
-        if (owner) {
-          await Notification.create({
-            recipient: owner._id,
-            recipientRole: "OWNER",
-            message: `💰 NEW ADMISSION: ${savedStudent.studentName} (${savedStudent.studentId}) enrolled in ${savedStudent.class || "N/A"}. Fee: PKR ${paidAmount.toLocaleString()} received.`,
-            type: "FINANCE",
-            relatedId: feeRecord?._id?.toString() || savedStudent._id.toString(),
-          });
-          console.log("🔔 Owner notification sent for admission payment");
-        }
-      } catch (notifErr) {
-        console.log("Admission notification skipped:", notifErr.message);
-      }
-
-      // Update collector's totalCash if applicable
-      if (req.user?._id) {
-        try {
-          const collector = await User.findById(req.user._id);
-          if (collector) {
-            collector.totalCash = (collector.totalCash || 0) + paidAmount;
-            await collector.save();
-          }
-        } catch (e) {
-          console.log("TotalCash update skipped:", e.message);
-        }
-      }
+      console.log("💰 Admission payment processed via collectFee split engine", {
+        studentId: savedStudent.studentId,
+        amount: initialPaidAmount,
+      });
     } else {
       // No payment — still notify owner about the new admission
       try {
@@ -518,8 +494,13 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Include credentials in response for admin display
-    const responseData = savedStudent.toObject();
+    // Include credentials in response for admin display.
+    // Re-fetch when initial payment was processed so paidAmount/feeStatus are current.
+    const latestStudent =
+      initialPaidAmount > 0
+        ? await Student.findById(savedStudent._id)
+        : savedStudent;
+    const responseData = (latestStudent || savedStudent).toObject();
     if (sanitizedData.plainPassword) {
       responseData.credentials = {
         username: savedStudent.studentId,

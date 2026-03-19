@@ -21,6 +21,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   User,
+  AtSign,
   DollarSign,
   Loader2,
   Copy,
@@ -29,6 +30,7 @@ import {
   Camera,
   UserCircle,
   Calendar,
+  Mail,
   PhoneCall,
   BookOpen,
 } from "lucide-react";
@@ -71,6 +73,8 @@ export const AddTeacherModal = ({
   // Form State - Personal Details
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [subject, setSubject] = useState("");
   const [joiningDate, setJoiningDate] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
@@ -129,6 +133,8 @@ export const AddTeacherModal = ({
   const resetForm = () => {
     setName("");
     setPhone("");
+    setEmail("");
+    setUsername("");
     setSubject("");
     setJoiningDate("");
     setStatus("active");
@@ -276,10 +282,12 @@ export const AddTeacherModal = ({
     const teacherData = {
       name,
       phone,
+      email: email.trim() || undefined,
+      username: username.trim().toLowerCase() || undefined,
       subject,
       joiningDate: joiningDate || new Date().toISOString(),
       status,
-      role,
+      role: role === "OWNER" ? "OWNER" : role === "PARTNER" ? "PARTNER" : "TEACHER",
       compensation,
       profileImage: profileImage || null,
     };
@@ -399,6 +407,43 @@ export const AddTeacherModal = ({
                           placeholder="+92 300 1234567"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
+                          className="pl-9 h-10 focus-visible:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="email"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Email (Optional)
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="e.g. owner@academy.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="pl-9 h-10 focus-visible:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="username"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Username (Optional)
+                      </Label>
+                      <div className="relative">
+                        <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="username"
+                          placeholder="e.g. waqar"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
                           className="pl-9 h-10 focus-visible:ring-primary/20"
                         />
                       </div>

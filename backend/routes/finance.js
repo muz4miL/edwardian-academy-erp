@@ -65,7 +65,7 @@ router.post(
 router.get(
   "/analytics-dashboard",
   protect,
-  restrictTo("OWNER"),
+  restrictTo("OWNER", "PARTNER", "TEACHER"),
   getAnalyticsDashboard,
 );
 
@@ -137,7 +137,12 @@ router.post("/withdrawal-reversal", protect, restrictTo("OWNER"), processWithdra
 // @route   GET /api/finance/teacher-payroll-report
 // @desc    Teacher payroll report (what each teacher is owed)
 // @access  Protected (OWNER)
-router.get("/teacher-payroll-report", protect, restrictTo("OWNER"), getTeacherPayrollReport);
+router.get(
+  "/teacher-payroll-report",
+  protect,
+  restrictTo("OWNER", "PARTNER", "TEACHER"),
+  getTeacherPayrollReport,
+);
 
 // @route   GET/PUT /api/finance/academy-share-split
 // @desc    Get/Update academy share split configuration

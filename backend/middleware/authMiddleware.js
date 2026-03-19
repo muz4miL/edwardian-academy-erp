@@ -42,7 +42,11 @@ const protect = async (req, res, next) => {
     }
 
     req.user = user;
-    console.log(`✅ Auth Success: ${user.username}`);
+    console.log("✅ Auth Success:", {
+      username: user.username,
+      role: user.role,
+      permissions: user.permissions || [],
+    });
     next();
   } catch (error) {
     console.error("❌ Auth Middleware Error:", error.message);
@@ -59,6 +63,11 @@ const protect = async (req, res, next) => {
 const restrictTo = (...allowedRoles) => {
   return (req, res, next) => {
     if (!allowedRoles.includes(req.user.role)) {
+      console.warn("🚫 Authorization blocked", {
+        username: req.user?.username,
+        role: req.user?.role,
+        allowedRoles,
+      });
       return res.status(403).json({
         success: false,
         message: `🚫 Access denied. This action requires ${allowedRoles.join(" or ")} privileges.`,

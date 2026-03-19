@@ -17,6 +17,20 @@ const Class = require("../models/Class");
 const Configuration = require("../models/Configuration");
 const DailyRevenue = require("../models/DailyRevenue");
 
+const normalizeObjectId = (value) => {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  if (value._id) {
+    if (typeof value._id === "string") return value._id;
+    if (typeof value._id.toString === "function") return value._id.toString();
+  }
+  if (typeof value.toString === "function") {
+    const str = value.toString();
+    return str === "[object Object]" ? null : str;
+  }
+  return null;
+};
+
 /**
  * Detect class revenue mode based on assigned teacher roles.
  * If ANY subject teacher is OWNER or PARTNER → TUITION mode.
@@ -34,11 +48,13 @@ async function detectClassRevenueMode(classDoc) {
   const regularTeachers = [];
 
   // Collect unique teacher IDs
-  const teacherIds = [...new Set(
-    classDoc.subjectTeachers
-      .filter(st => st.teacherId)
-      .map(st => st.teacherId.toString())
-  )];
+  const teacherIds = [
+    ...new Set(
+      classDoc.subjectTeachers
+        .map((st) => normalizeObjectId(st.teacherId))
+        .filter(Boolean)
+    ),
+  ];
 
   // Batch-load all teachers
   const teachers = await Teacher.find({ _id: { $in: teacherIds } }).lean();
@@ -65,8 +81,8 @@ async function detectClassRevenueMode(classDoc) {
   }
 
   for (const st of classDoc.subjectTeachers) {
-    if (!st.teacherId) continue;
-    const tid = st.teacherId.toString();
+    const tid = normalizeObjectId(st.teacherId);
+    if (!tid) continue;
     const teacher = teacherMap.get(tid);
     if (!teacher) continue;
 
@@ -122,7 +138,8 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
   const uniquePersons = [];
   const seen = new Set();
   for (const t of ownerPartnerTeachers) {
-    const key = t.teacherId.toString();
+    const key = normalizeObjectId(t.teacherId);
+    if (!key) continue;
     if (!seen.has(key)) {
       seen.add(key);
       uniquePersons.push(t);

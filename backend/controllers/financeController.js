@@ -2262,11 +2262,12 @@ exports.getTeacherPayrollReport = async (req, res) => {
       ownerPartnerUsers.filter(u => u.teacherId).map(u => u.teacherId.toString())
     );
 
-    const regularTeachers = teachers.filter(t => !ownerPartnerTeacherIds.has(t._id.toString()));
+    // Owner/Partner should close from their own dashboards, not appear in teacher payroll.
+    const payrollTeachers = teachers.filter(t => !ownerPartnerTeacherIds.has(t._id.toString()));
 
     const report = [];
 
-    for (const teacher of regularTeachers) {
+    for (const teacher of payrollTeachers) {
       const compType = teacher.compensation?.type || "percentage";
 
       // Find all classes this teacher is assigned to

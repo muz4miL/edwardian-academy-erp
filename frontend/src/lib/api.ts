@@ -244,7 +244,8 @@ export const studentApi = {
         });
         const data = await response.json();
         if (!data.success) {
-            throw new Error(data.message || 'Failed to create student');
+            const detail = data.error ? `${data.message}: ${data.error}` : data.message;
+            throw new Error(detail || 'Failed to create student');
         }
         return data;
     },

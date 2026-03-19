@@ -17,6 +17,14 @@ const {
   createDailyRevenueEntries,
 } = require("../helpers/revenueEngine");
 
+const normalizeTeacherId = (teacherRef) => {
+  if (!teacherRef) return null;
+  if (typeof teacherRef === "string") return teacherRef;
+  if (teacherRef._id) return teacherRef._id.toString();
+  if (typeof teacherRef.toString === "function") return teacherRef.toString();
+  return null;
+};
+
 // Minimal revenue helper inline to avoid import errors
 const calculateRevenueSplit = async ({ fee, teacherRole, config }) => {
   const isPartner = teacherRole === "OWNER" || teacherRole === "PARTNER";
@@ -311,7 +319,7 @@ exports.createStudent = async (req, res) => {
         } else if (mode === "TUITION" && ownerPartnerTeachers.length > 0) {
           // Tuition mode: split among Owner/Partners
           console.log('✅ TUITION MODE - Processing splits for', ownerPartnerTeachers.length, 'owners/partners');
-          const splits = calculateTuitionSplit(initialPayment, ownerPartnerTeachers);
+          const splits = await calculateTuitionSplit(initialPayment, ownerPartnerTeachers);
           console.log('📊 Splits:', JSON.stringify(splits));
 
           for (const split of splits) {
@@ -598,9 +606,18 @@ exports.deleteStudent = async (req, res) => {
 
 // COLLECT FEE — Revenue Engine v2 (Auto-detect Tuition vs Academy mode)
 exports.collectFee = async (req, res) => {
+  let debugStage = "init";
   try {
     const { id } = req.params;
     const { amount, month, paymentMethod, notes } = req.body;
+
+    console.log("[collectFee] start", {
+      studentId: id,
+      amount,
+      month,
+      collector: req.user?.username,
+      collectorRole: req.user?.role,
+    });
 
     // --- VALIDATION ---
     if (!amount || !month) {
@@ -631,6 +648,7 @@ exports.collectFee = async (req, res) => {
       });
     }
 
+    debugStage = "load-config";
     const config = await Configuration.findOne();
 
     // ── Look up class for revenue mode detection ──
@@ -645,7 +663,15 @@ exports.collectFee = async (req, res) => {
     }
 
     // ── Auto-detect revenue mode ──
+    debugStage = "detect-revenue-mode";
     const { mode, ownerPartnerTeachers, regularTeachers } = await detectClassRevenueMode(classDoc);
+    console.log("[collectFee] mode", {
+      mode,
+      ownerPartnerTeachers: ownerPartnerTeachers.length,
+      regularTeachers: regularTeachers.length,
+      classId: classDoc?._id,
+      className: classDoc?.classTitle || student.class,
+    });
 
     let totalTeacherShare = 0;
     let totalAcademyShare = 0;
@@ -665,7 +691,7 @@ exports.collectFee = async (req, res) => {
     // CASE 1: PURE TUITION MODE (ALL TEACHERS ARE OWNER/PARTNER)
     // ═════════════════════════════════════════════════════════════════
     if (mode === "TUITION" && regularTeachers.length === 0) {
-      const splits = calculateTuitionSplit(amountNum, ownerPartnerTeachers);
+      const splits = await calculateTuitionSplit(amountNum, ownerPartnerTeachers);
 
       for (const split of splits) {
         // Update Teacher balance
@@ -793,13 +819,15 @@ exports.collectFee = async (req, res) => {
           // Prepare teacher data for splitFeeAmongTeachers
           const teachersForSubject = [];
           for (const stEntry of subjectTeacherEntries) {
-            if (stEntry.teacherId) {
-              const teacher = typeof stEntry.teacherId === 'object' 
-                ? stEntry.teacherId 
-                : await Teacher.findById(stEntry.teacherId);
+            const normalizedTeacherId = normalizeTeacherId(stEntry.teacherId);
+            if (normalizedTeacherId) {
+              const teacher =
+                typeof stEntry.teacherId === "object" && stEntry.teacherId?._id
+                  ? stEntry.teacherId
+                  : await Teacher.findById(normalizedTeacherId);
               if (teacher) {
                 teachersForSubject.push({
-                  teacherId: teacher._id,
+                  teacherId: normalizedTeacherId,
                   teacher,
                   isPartner: false,
                 });
@@ -810,7 +838,9 @@ exports.collectFee = async (req, res) => {
           // Check if any teacher for this subject is Owner/Partner
           let hasPartnerTeacher = false;
           for (const tfs of teachersForSubject) {
-            const tUser = await User.findOne({ teacherId: tfs.teacherId });
+            const normalizedTeacherId = normalizeTeacherId(tfs.teacherId);
+            if (!normalizedTeacherId) continue;
+            const tUser = await User.findOne({ teacherId: normalizedTeacherId });
             if (tUser && (tUser.role === "OWNER" || tUser.role === "PARTNER")) {
               hasPartnerTeacher = true;
               break;
@@ -822,16 +852,17 @@ exports.collectFee = async (req, res) => {
             const uniqueTeachers = [];
             const seenIds = new Set();
             for (const stEntry of subjectTeacherEntries) {
-              if (stEntry.teacherId && !seenIds.has(stEntry.teacherId.toString())) {
-                const tUser = await User.findOne({ teacherId: stEntry.teacherId });
+              const normalizedTeacherId = normalizeTeacherId(stEntry.teacherId);
+              if (normalizedTeacherId && !seenIds.has(normalizedTeacherId)) {
+                const tUser = await User.findOne({ teacherId: normalizedTeacherId });
                 if (tUser && (tUser.role === "OWNER" || tUser.role === "PARTNER")) {
                   uniqueTeachers.push({
-                    teacherId: stEntry.teacherId,
+                    teacherId: normalizedTeacherId,
                     userId: tUser._id,
                     teacherName: stEntry.teacherName || tUser.fullName,
                     role: tUser.role,
                   });
-                  seenIds.add(stEntry.teacherId.toString());
+                  seenIds.add(normalizedTeacherId);
                 }
               }
             }
@@ -1060,6 +1091,7 @@ exports.collectFee = async (req, res) => {
     // ───────────────────────────────────────────────────────────────────────
     // CREATE FEERECORD WITH COMPREHENSIVE TRACKING
     // ───────────────────────────────────────────────────────────────────────
+    debugStage = "create-feerecord";
     const feeRecord = await FeeRecord.create({
       student: student._id,
       studentName: student.studentName,
@@ -1090,19 +1122,31 @@ exports.collectFee = async (req, res) => {
     // ───────────────────────────────────────────────────────────────────────
     // CREATE TRANSACTIONS
     // ───────────────────────────────────────────────────────────────────────
+    debugStage = "create-transactions";
     if (creditTransactions.length > 0) {
+      console.log("[collectFee] creating income transactions", {
+        count: creditTransactions.length,
+      });
       await Transaction.insertMany(creditTransactions);
     }
 
     // ───────────────────────────────────────────────────────────────────────
     // CREATE DAILY REVENUE ENTRIES
     // ───────────────────────────────────────────────────────────────────────
+    debugStage = "create-daily-revenue";
     if (dailyRevenueEntries.length > 0) {
-      const enriched = dailyRevenueEntries.map(e => ({
+      const enriched = dailyRevenueEntries.map((e) => ({
         ...e,
         feeRecordRef: feeRecord._id,
       }));
-      await DailyRevenue.insertMany(enriched);
+
+      // IMPORTANT: use revenueEngine helper to map userId -> partner and populate required fields.
+      await createDailyRevenueEntries(enriched);
+
+      console.log("[collectFee] daily revenue entries created", {
+        requested: dailyRevenueEntries.length,
+        feeRecordId: feeRecord._id,
+      });
     }
 
     // ───────────────────────────────────────────────────────────────────────
@@ -1161,7 +1205,11 @@ exports.collectFee = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("CollectFee Error:", error);
+    console.error("CollectFee Error:", {
+      stage: debugStage,
+      message: error.message,
+      stack: error.stack,
+    });
     res.status(500).json({
       success: false,
       message: error.message,

@@ -34,31 +34,66 @@ const ALL_PERMISSIONS = [
 // ========================================
 exports.getAllUsers = async (req, res) => {
   try {
-    // Only OWNER can access user management
-    if (req.user.role !== "OWNER") {
+    // OWNER gets full user management view.
+    // PARTNER/TEACHER get read-only stakeholder list (OWNER/PARTNER) for finance dashboards.
+    const requesterRole = req.user.role;
+    if (!["OWNER", "PARTNER", "TEACHER"].includes(requesterRole)) {
       return res.status(403).json({
         success: false,
-        message: "Access denied. Only OWNER can manage users.",
+        message: "Access denied.",
       });
     }
 
-    const users = await User.find().select("-password").sort({ createdAt: -1 });
+    const isOwnerRequest = requesterRole === "OWNER";
+    const users = await User.find(
+      isOwnerRequest
+        ? {}
+        : {
+          role: { $in: ["OWNER", "PARTNER"] },
+          isActive: true,
+        },
+    )
+      .select("-password")
+      .sort({ createdAt: -1 });
 
-    // For all users that have a linked Teacher record, attach plainPassword (so Owner can always see credentials)
+    // Attach teacher credentials and self-heal stale teacher links.
+    // Also hide orphan PARTNER users (role says PARTNER but linked teacher no longer exists).
     const Teacher = require("../models/Teacher");
-    const usersData = await Promise.all(
-      users.map(async (u) => {
-        const userData = u.toObject();
-        if (u.teacherId) {
-          const teacher = await Teacher.findById(u.teacherId).select("plainPassword username");
-          if (teacher) {
-            userData.teacherPassword = teacher.plainPassword || null;
-            userData.teacherUsername = teacher.username || null;
-          }
+    const teacherIds = users
+      .filter((u) => u.teacherId)
+      .map((u) => u.teacherId);
+
+    const teachers = teacherIds.length
+      ? await Teacher.find({ _id: { $in: teacherIds } }).select("_id plainPassword username")
+      : [];
+
+    const teacherMap = new Map(teachers.map((t) => [String(t._id), t]));
+
+    const usersData = [];
+    for (const u of users) {
+      const userData = u.toObject();
+      const linkedTeacher = u.teacherId
+        ? teacherMap.get(String(u.teacherId))
+        : null;
+
+      // Fix stale references where teacher document was deleted.
+      if (u.teacherId && !linkedTeacher) {
+        await User.findByIdAndUpdate(u._id, { $unset: { teacherId: "" } });
+
+        // PARTNER accounts must have a valid linked teacher in unified stakeholder model.
+        // Hide orphan legacy partner users from management view and partner counts.
+        if (u.role === "PARTNER") {
+          continue;
         }
-        return userData;
-      })
-    );
+      }
+
+      if (isOwnerRequest && linkedTeacher) {
+        userData.teacherPassword = linkedTeacher.plainPassword || null;
+        userData.teacherUsername = linkedTeacher.username || null;
+      }
+
+      usersData.push(userData);
+    }
 
     res.status(200).json({
       success: true,
