@@ -399,6 +399,12 @@ exports.createTeacher = async (req, res) => {
     } else {
       // Update existing user with missing fields or role corrections
       let shouldSaveUser = false;
+      if (user.role !== userRole) {
+        return res.status(409).json({
+          success: false,
+          message: `Existing user role mismatch (${user.fullName} is ${user.role}).`,
+        });
+      }
       if (profileImage && !user.profileImage) {
         user.profileImage = profileImage;
         shouldSaveUser = true;
@@ -406,12 +412,6 @@ exports.createTeacher = async (req, res) => {
       if (normalizedEmail && !user.email) {
         user.email = normalizedEmail;
         shouldSaveUser = true;
-      }
-      if (user.role !== userRole) {
-        return res.status(409).json({
-          success: false,
-          message: `Existing user role mismatch (${user.fullName} is ${user.role}).`,
-        });
       }
       // Normalize permissions for existing roles to ensure expected access stays aligned
       if (!haveSamePermissions(user.permissions || [], userPermissions)) {
