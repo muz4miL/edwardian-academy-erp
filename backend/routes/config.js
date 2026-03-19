@@ -41,6 +41,10 @@ router.get("/partners", async (req, res) => {
     // - OWNER: Can exist without teacherId (they're the Super Admin)
     // - PARTNER: MUST have a valid teacherId (no orphaned partner accounts!)
     const users = allUsers.filter(u => {
+      if (!u.isActive) {
+        console.log(`🚫 INACTIVE: Skipping "${u.fullName}" (${u.role})`);
+        return false;
+      }
       if (u.role === "OWNER") {
         return true; // OWNER is always valid
       }

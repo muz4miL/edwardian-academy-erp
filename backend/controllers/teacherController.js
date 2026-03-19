@@ -194,8 +194,14 @@ exports.createTeacher = async (req, res) => {
     // AUTO-GENERATE LOGIN CREDENTIALS
     // ========================================
 
-    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-    const normalizedUsername = typeof requestedUsername === "string" ? requestedUsername.trim().toLowerCase() : "";
+    const normalizedEmail =
+      typeof email === "string" && email.trim()
+        ? email.trim().toLowerCase()
+        : null;
+    const normalizedUsername =
+      typeof requestedUsername === "string" && requestedUsername.trim()
+        ? requestedUsername.trim().toLowerCase()
+        : null;
 
     // Generate username from name (e.g., "Ahmed Khan" → "ahmed_khan")
     const baseUsername = name
@@ -271,6 +277,11 @@ exports.createTeacher = async (req, res) => {
         return ["dashboard", "admissions", "students", "teachers", "finance", "classes", "timetable", "sessions", "configuration", "users", "website", "payroll", "settlement", "gatekeeper", "frontdesk", "inquiries", "reports", "lectures"];
       }
       return ["dashboard", "lectures"];
+    };
+    const permissionsMatch = (current = [], next = []) => {
+      if (current.length !== next.length) return false;
+      const set = new Set(current);
+      return next.every((perm) => set.has(perm));
     };
 
     let userPermissions = buildPermissions(userRole);
@@ -397,10 +408,7 @@ exports.createTeacher = async (req, res) => {
         user.permissions = userPermissions;
         shouldSaveUser = true;
       } else {
-        const permissionsMatch =
-          JSON.stringify(user.permissions || []) ===
-          JSON.stringify(userPermissions);
-        if (!permissionsMatch) {
+        if (!permissionsMatch(user.permissions || [], userPermissions)) {
           user.permissions = userPermissions;
           shouldSaveUser = true;
         }
