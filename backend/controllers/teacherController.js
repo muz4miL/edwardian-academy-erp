@@ -266,6 +266,12 @@ exports.createTeacher = async (req, res) => {
       if (existingOwner) {
         console.log("⚠️ OWNER already exists:", existingOwner.fullName);
         console.log("🔗 Will attempt to link this teacher to existing OWNER instead of creating new one");
+        if (existingOwner.teacherId) {
+          return res.status(409).json({
+            success: false,
+            message: `OWNER account already linked to a teacher (${existingOwner.fullName}).`,
+          });
+        }
       }
     }
 
@@ -312,6 +318,10 @@ exports.createTeacher = async (req, res) => {
       if (matchedOwner) {
         if (matchedOwner.teacherId) {
           console.log(`⚠️ Matched OWNER already linked: ${matchedOwner.fullName}`);
+          return res.status(409).json({
+            success: false,
+            message: `OWNER account already linked to a teacher (${matchedOwner.fullName}).`,
+          });
         } else {
           user = matchedOwner;
           existingUserLinked = true;
@@ -325,12 +335,6 @@ exports.createTeacher = async (req, res) => {
       user = existingOwner;
       existingUserLinked = true;
       console.log("🔗 Linking teacher to existing OWNER:", existingOwner.fullName);
-    } else if (!user && userRole === "OWNER" && existingOwner && existingOwner.teacherId) {
-      console.log(`⚠️ OWNER already linked to Teacher: ${existingOwner.fullName}`);
-      return res.status(409).json({
-        success: false,
-        message: `OWNER account already linked to a teacher (${existingOwner.fullName}).`,
-      });
     }
 
     if (!user && (userRole === "OWNER" || userRole === "PARTNER")) {
