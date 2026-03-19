@@ -267,10 +267,7 @@ exports.createTeacher = async (req, res) => {
         console.log("⚠️ OWNER already exists:", existingOwner.fullName);
         console.log("🔗 Will attempt to link this teacher to existing OWNER instead of creating new one");
         if (existingOwner.teacherId) {
-          return res.status(409).json({
-            success: false,
-            message: `OWNER account already linked to a teacher (${existingOwner.fullName}).`,
-          });
+          return ownerAlreadyLinkedResponse(existingOwner);
         }
       }
     }
@@ -284,11 +281,16 @@ exports.createTeacher = async (req, res) => {
       }
       return ["dashboard", "lectures"];
     };
-    const haveSamePermissions = (current = [], next = []) => {
+    const permissionsMatch = (current = [], next = []) => {
       if (current.length !== next.length) return false;
       const set = new Set(current);
       return next.every((perm) => set.has(perm));
     };
+    const ownerAlreadyLinkedResponse = (owner) =>
+      res.status(409).json({
+        success: false,
+        message: `OWNER account already linked to a teacher (${owner.fullName}).`,
+      });
 
     let userPermissions = buildPermissions(userRole);
 
@@ -314,10 +316,7 @@ exports.createTeacher = async (req, res) => {
       if (matchedOwner) {
         if (matchedOwner.teacherId) {
           console.log(`⚠️ Matched OWNER already linked: ${matchedOwner.fullName}`);
-          return res.status(409).json({
-            success: false,
-            message: `OWNER account already linked to a teacher (${matchedOwner.fullName}).`,
-          });
+          return ownerAlreadyLinkedResponse(matchedOwner);
         } else {
           user = matchedOwner;
           existingUserLinked = true;
@@ -414,7 +413,7 @@ exports.createTeacher = async (req, res) => {
         shouldSaveUser = true;
       }
       // Normalize permissions for existing roles to ensure expected access stays aligned
-      if (!haveSamePermissions(user.permissions || [], userPermissions)) {
+      if (!permissionsMatch(user.permissions || [], userPermissions)) {
         user.permissions = userPermissions;
         shouldSaveUser = true;
       }
