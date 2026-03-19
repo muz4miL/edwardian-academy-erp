@@ -1435,13 +1435,6 @@ const Configuration = () => {
                     </div>
                   ) : (
                     <>
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mb-4">
-                        <p className="text-sm text-amber-800">
-                          <strong>💡 Session Pricing:</strong> Instead of summing individual subject fees,
-                          set a single fixed price for each session. This price will be used during admissions.
-                        </p>
-                      </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {sessions.map((session) => {
                           const currentPrice = sessionPrices.find(
@@ -1511,11 +1504,14 @@ const Configuration = () => {
                 size="lg"
                 onClick={handleSaveSettings}
                 disabled={
-                  isSaving || !!splitError || !!poolSplitError || !!academyShareError
+                  isSaving ||
+                  (expenseShares.length > 0 && !!splitError) ||
+                  !!poolSplitError ||
+                  !!academyShareError
                 }
                 className={cn(
                   "h-12 px-8 text-white font-semibold shadow-md transition-all",
-                  splitError || poolSplitError || academyShareError
+                  (expenseShares.length > 0 && splitError) || poolSplitError || academyShareError
                     ? "bg-gray-400 cursor-not-allowed"
                     : hasChanges
                     ? "bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-300 ring-offset-2"

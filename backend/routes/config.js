@@ -23,14 +23,28 @@ router.get("/partners", async (req, res) => {
     // CRITICAL: PARTNER users MUST have a teacherId to be considered valid
     // OWNER can exist without teacherId (Super Admin), but only ONE owner allowed
     // ═══════════════════════════════════════════════════════════════
-    const allUsers = await User.find({ role: { $in: ["OWNER", "PARTNER"] }, isActive: true })
+    const allUsers = await User.find({ role: { $in: ["OWNER", "PARTNER"] } })
       .select("fullName role teacherId phone profileImage isActive")
       .sort({ role: 1, fullName: 1 }); // OWNER first, then PARTNERs alphabetically
+    console.log(
+      "🔎 /config/partners query results:",
+      allUsers.map((u) => ({
+        id: u._id,
+        fullName: u.fullName,
+        role: u.role,
+        teacherId: u.teacherId,
+        isActive: u.isActive,
+      })),
+    );
 
     // GHOST FILTER: Only include valid users
     // - OWNER: Can exist without teacherId (they're the Super Admin)
     // - PARTNER: MUST have a valid teacherId (no orphaned partner accounts!)
     const users = allUsers.filter(u => {
+      if (!u.isActive) {
+        console.log(`🚫 INACTIVE: Skipping "${u.fullName}" (${u.role})`);
+        return false;
+      }
       if (u.role === "OWNER") {
         return true; // OWNER is always valid
       }

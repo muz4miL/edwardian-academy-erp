@@ -31,6 +31,11 @@ const TeacherSchema = new mongoose.Schema(
       enum: ["active", "inactive", "suspended"],
       default: "active",
     },
+    role: {
+      type: String,
+      enum: ["OWNER", "PARTNER", "STAFF", "TEACHER"],
+      default: "TEACHER",
+    },
 
     // ========================================
     // Identity System Fields
