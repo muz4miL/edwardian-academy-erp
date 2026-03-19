@@ -585,6 +585,104 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// @route   GET /api/students/:id/withdrawal-preview
+// @desc    Preview what amounts need to be recovered from teachers/stakeholders on withdrawal
+// @access  Protected (OWNER, STAFF)
+router.get("/:id/withdrawal-preview", protect, async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    // Get all fee records for this student
+    const feeRecords = await FeeRecord.find({ student: student._id, status: "PAID" })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get all DailyRevenue entries for this student
+    const revenueEntries = await DailyRevenue.find({
+      studentRef: student._id,
+      status: { $in: ["UNCOLLECTED", "COLLECTED"] },
+      amount: { $gt: 0 },
+    }).lean();
+
+    // Build teacher breakdown from fee records
+    const teacherMap = {};
+    for (const fr of feeRecords) {
+      for (const t of (fr.teachers || [])) {
+        const key = t.teacherId?.toString() || t.teacherName;
+        if (!teacherMap[key]) {
+          teacherMap[key] = {
+            teacherId: t.teacherId,
+            teacherName: t.teacherName,
+            compensationType: t.compensationType,
+            totalEarned: 0,
+            subjects: [],
+          };
+        }
+        teacherMap[key].totalEarned += (t.teacherShare || 0);
+        if (t.subject && !teacherMap[key].subjects.includes(t.subject)) {
+          teacherMap[key].subjects.push(t.subject);
+        }
+      }
+    }
+
+    // Build stakeholder breakdown from revenue entries
+    const stakeholderMap = {};
+    for (const re of revenueEntries) {
+      const key = re.partner?.toString();
+      if (!key) continue;
+      if (!stakeholderMap[key]) {
+        stakeholderMap[key] = {
+          userId: re.partner,
+          fullName: "",
+          role: "",
+          totalFloating: 0,
+          totalCollected: 0,
+        };
+      }
+      if (re.status === "UNCOLLECTED") {
+        stakeholderMap[key].totalFloating += re.amount;
+      } else {
+        stakeholderMap[key].totalCollected += re.amount;
+      }
+    }
+
+    // Enrich stakeholder names
+    for (const key of Object.keys(stakeholderMap)) {
+      try {
+        const u = await User.findById(key).select("fullName role").lean();
+        if (u) {
+          stakeholderMap[key].fullName = u.fullName;
+          stakeholderMap[key].role = u.role;
+        }
+      } catch (_) {}
+    }
+
+    res.json({
+      success: true,
+      data: {
+        student: {
+          name: student.studentName,
+          id: student.studentId,
+          class: student.class,
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          subjects: student.subjects,
+        },
+        teacherBreakdown: Object.values(teacherMap),
+        stakeholderBreakdown: Object.values(stakeholderMap),
+        totalTeacherEarnings: Object.values(teacherMap).reduce((s, t) => s + t.totalEarned, 0),
+        totalStakeholderEarnings: Object.values(stakeholderMap).reduce((s, sh) => s + sh.totalFloating + sh.totalCollected, 0),
+      },
+    });
+  } catch (error) {
+    console.error("Withdrawal Preview Error:", error);
+    res.status(500).json({ success: false, message: "Error generating withdrawal preview" });
+  }
+});
+
 // @route   DELETE /api/students/:id
 // @desc    Withdraw a student (soft delete) with optional refund
 // @access  Public
