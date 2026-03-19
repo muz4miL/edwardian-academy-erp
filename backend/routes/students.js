@@ -324,8 +324,8 @@ router.get("/:id", async (req, res) => {
 
 // @route   POST /api/students
 // @desc    Create a new student with full financial sync
-// @access  Public
-router.post("/", async (req, res) => {
+// @access  Protected (Admin/Staff — req.user needed for finance audit trail)
+router.post("/", protect, async (req, res) => {
   try {
     console.log("\n📥 FULL REQUEST BODY:", JSON.stringify(req.body, null, 2));
 

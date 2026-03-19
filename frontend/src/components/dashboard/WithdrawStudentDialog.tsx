@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -12,7 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, AlertTriangle, Banknote, UserMinus } from "lucide-react";
+import { Loader2, AlertTriangle, Banknote, UserMinus, Users, GraduationCap } from "lucide-react";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 interface WithdrawStudentDialogProps {
   open: boolean;
@@ -20,6 +23,7 @@ interface WithdrawStudentDialogProps {
   onConfirm: (refundAmount?: number, refundReason?: string) => void;
   studentName: string;
   studentId: string;
+  studentDbId?: string; // MongoDB _id for withdrawal preview
   paidAmount: number;
   isProcessing: boolean;
 }
@@ -30,18 +34,38 @@ export const WithdrawStudentDialog = ({
   onConfirm,
   studentName,
   studentId,
+  studentDbId,
   paidAmount,
   isProcessing,
 }: WithdrawStudentDialogProps) => {
   const [wantRefund, setWantRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [preview, setPreview] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Fetch withdrawal preview when dialog opens
+  useEffect(() => {
+    if (open && studentDbId) {
+      setPreviewLoading(true);
+      fetch(`${API_BASE_URL}/api/students/${studentDbId}/withdrawal-preview`, {
+        credentials: "include",
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success) setPreview(data.data);
+        })
+        .catch(() => {})
+        .finally(() => setPreviewLoading(false));
+    }
+  }, [open, studentDbId]);
 
   const handleOpenChange = (val: boolean) => {
     if (!val) {
       setWantRefund(false);
       setRefundAmount("");
       setRefundReason("");
+      setPreview(null);
     }
     onOpenChange(val);
   };
@@ -59,7 +83,7 @@ export const WithdrawStudentDialog = ({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent className="bg-card border-border sm:max-w-md">
+      <AlertDialogContent className="bg-card border-border sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-foreground flex items-center gap-2">
             <UserMinus className="h-5 w-5 text-amber-600" />
@@ -82,6 +106,92 @@ export const WithdrawStudentDialog = ({
             PKR {paidAmount.toLocaleString()}
           </span>
         </div>
+
+        {/* Teacher & Stakeholder Earnings Breakdown */}
+        {previewLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-slate-400 mr-2" />
+            <span className="text-sm text-slate-500">Loading earnings breakdown...</span>
+          </div>
+        ) : preview && (preview.teacherBreakdown?.length > 0 || preview.stakeholderBreakdown?.length > 0) ? (
+          <div className="space-y-3">
+            {/* Teacher earnings */}
+            {preview.teacherBreakdown?.length > 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-2">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  Teacher Earnings from this Student
+                </p>
+                {preview.teacherBreakdown.map((t: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-blue-100 last:border-0">
+                    <div>
+                      <span className="font-medium text-slate-800">{t.teacherName}</span>
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-600 font-medium">
+                        {t.compensationType}
+                      </span>
+                      {t.subjects?.length > 0 && (
+                        <span className="ml-1 text-xs text-slate-400">
+                          ({t.subjects.join(", ")})
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-blue-700">PKR {t.totalEarned.toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between pt-1 text-sm font-bold text-blue-800 border-t border-blue-200">
+                  <span>Total Teacher Earnings</span>
+                  <span>PKR {preview.totalTeacherEarnings.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Stakeholder earnings */}
+            {preview.stakeholderBreakdown?.length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+                <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Owner/Partner Revenue from this Student
+                </p>
+                {preview.stakeholderBreakdown.map((sh: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-emerald-100 last:border-0">
+                    <div>
+                      <span className="font-medium text-slate-800">{sh.fullName}</span>
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 font-medium">
+                        {sh.role}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      {sh.totalFloating > 0 && (
+                        <span className="text-xs text-amber-600 mr-2">
+                          Floating: PKR {sh.totalFloating.toLocaleString()}
+                        </span>
+                      )}
+                      {sh.totalCollected > 0 && (
+                        <span className="text-xs text-emerald-600 mr-2">
+                          Verified: PKR {sh.totalCollected.toLocaleString()}
+                        </span>
+                      )}
+                      <span className="font-bold text-emerald-700">
+                        PKR {(sh.totalFloating + sh.totalCollected).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {wantRefund && refundNum > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-xs font-bold text-red-700 uppercase tracking-wider mb-1">
+                  ⚠️ Refund Impact: Proportional deductions will be applied
+                </p>
+                <p className="text-xs text-red-600">
+                  Refunding PKR {refundNum.toLocaleString()} ({Math.round((refundNum / paidAmount) * 100)}% of paid amount) will proportionally deduct from floating/verified balances of all stakeholders above.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {/* Refund Toggle */}
         <div className="space-y-3">

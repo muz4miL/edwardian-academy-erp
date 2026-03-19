@@ -677,6 +677,7 @@ const Students = () => {
         onConfirm={confirmWithdraw}
         studentName={selectedStudent?.studentName || ""}
         studentId={selectedStudent?.studentId || ""}
+        studentDbId={selectedStudent?._id || ""}
         paidAmount={selectedStudent?.paidAmount || 0}
         isProcessing={withdrawStudentMutation.isPending}
       />
