@@ -458,12 +458,140 @@ exports.updateStudent = async (req, res) => {
   }
 };
 
-// DELETE student
+// DELETE student with CASCADE cleanup
 exports.deleteStudent = async (req, res) => {
   try {
-    await Student.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Student deleted" });
+    const studentId = req.params.id;
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    console.log(`🗑️  Deleting student: ${student.studentName} (${studentId})`);
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 1: Mark all pending/unpaid FeeRecords as REFUNDED
+    // ═══════════════════════════════════════════════════════════════
+    const pendingFees = await FeeRecord.find({
+      student: studentId,
+      status: { $in: ["PENDING", "PARTIAL"] },
+    });
+
+    if (pendingFees.length > 0) {
+      await FeeRecord.updateMany(
+        { student: studentId, status: { $in: ["PENDING", "PARTIAL"] } },
+        { $set: { status: "REFUNDED", refundedAt: new Date() } }
+      );
+      console.log(`   ✅ Marked ${pendingFees.length} pending fee records as REFUNDED`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 2: Create REFUND transactions for paid fees
+    // Reverse any FLOATING or VERIFIED income that hasn't been closed yet
+    // ═══════════════════════════════════════════════════════════════
+    const paidFees = await FeeRecord.find({
+      student: studentId,
+      status: "PAID",
+    }).lean();
+
+    let totalRefundAmount = 0;
+    const refundTransactions = [];
+
+    for (const fee of paidFees) {
+      // Create refund transaction
+      const refundTx = {
+        type: "EXPENSE",
+        category: "Refund",
+        amount: fee.amount || 0,
+        description: `Refund: ${student.studentName} (student deleted/withdrawn)`,
+        date: new Date(),
+        status: "VERIFIED",
+        refundDetails: {
+          studentId: student._id,
+          studentName: student.studentName,
+          feeRecordId: fee._id,
+          originalAmount: fee.amount,
+          reason: "Student deleted/withdrawn",
+        },
+      };
+
+      refundTransactions.push(refundTx);
+      totalRefundAmount += fee.amount || 0;
+
+      // Mark fee record as REFUNDED
+      await FeeRecord.findByIdAndUpdate(fee._id, {
+        status: "REFUNDED",
+        refundedAt: new Date(),
+      });
+    }
+
+    if (refundTransactions.length > 0) {
+      await Transaction.insertMany(refundTransactions);
+      console.log(`   ✅ Created ${refundTransactions.length} REFUND transactions (total: ${totalRefundAmount} PKR)`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 3: Reverse DailyRevenue entries (for Owner/Partner dashboards)
+    // Create negative adjustment entries to deduct from their closeable amounts
+    // ═══════════════════════════════════════════════════════════════
+    const dailyRevenueEntries = await DailyRevenue.find({
+      studentRef: studentId,
+      status: "UNCOLLECTED", // Only reverse uncollected revenue
+    }).lean();
+
+    if (dailyRevenueEntries.length > 0) {
+      const reversalEntries = dailyRevenueEntries.map((entry) => ({
+        partner: entry.partner,
+        date: new Date(),
+        amount: -Math.abs(entry.amount), // Negative to deduct
+        source: "TUITION",
+        revenueType: "WITHDRAWAL_ADJUSTMENT",
+        status: "UNCOLLECTED",
+        studentRef: studentId,
+        studentName: student.studentName,
+        className: entry.className,
+        splitDetails: {
+          description: `Refund adjustment: ${student.studentName} withdrawn`,
+          originalAmount: entry.amount,
+          originalEntryId: entry._id,
+        },
+      }));
+
+      await DailyRevenue.insertMany(reversalEntries);
+      console.log(`   ✅ Created ${reversalEntries.length} reversal entries in DailyRevenue`);
+
+      // Mark original entries as CANCELLED
+      await DailyRevenue.updateMany(
+        { studentRef: studentId, status: "UNCOLLECTED" },
+        { $set: { status: "CANCELLED" } }
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 4: Mark student as Withdrawn instead of hard delete
+    // (Better for audit trail - can still see historical data)
+    // ═══════════════════════════════════════════════════════════════
+    student.status = "Withdrawn";
+    student.withdrawnAt = new Date();
+    await student.save();
+
+    console.log(`   ✅ Marked student as Withdrawn`);
+    console.log(`\n✅ Student deletion cascade complete for ${student.studentName}`);
+
+    res.json({
+      success: true,
+      message: "Student withdrawn and all financial records cleaned up",
+      data: {
+        studentId: student._id,
+        studentName: student.studentName,
+        refundedFees: paidFees.length,
+        totalRefundAmount,
+        reversedDailyRevenue: dailyRevenueEntries.length,
+      },
+    });
   } catch (error) {
+    console.error("❌ Error deleting student:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
