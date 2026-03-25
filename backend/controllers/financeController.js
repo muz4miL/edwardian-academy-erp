@@ -20,7 +20,6 @@ const Teacher = require("../models/Teacher");
 const Student = require("../models/Student");
 const Class = require("../models/Class");
 const FeeRecord = require("../models/FeeRecord");
-const Session = require("../models/Session");
 const TeacherPayment = require("../models/TeacherPayment");
 const {
   getClosePreview,
@@ -237,6 +236,82 @@ exports.getClosePreview = async (req, res) => {
     return res.json({ success: true, data: preview });
   } catch (error) {
     console.error("ClosePreview Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================================
+// PARTNER EARNINGS BREAKDOWN — Subject-level closeable earnings
+// =====================================================================
+exports.getPartnerEarningsBreakdown = async (req, res) => {
+  try {
+    const userId = req.params.userId || req.user._id;
+    const fromDate = req.query.fromDate ? new Date(req.query.fromDate) : null;
+    const toDate = req.query.toDate ? new Date(req.query.toDate) : null;
+
+    const match = {
+      partner: new mongoose.Types.ObjectId(String(userId)),
+      revenueType: { $in: ["TUITION_SHARE", "ACADEMY_SHARE"] },
+    };
+
+    if (fromDate || toDate) {
+      match.createdAt = {};
+      if (fromDate) match.createdAt.$gte = fromDate;
+      if (toDate) match.createdAt.$lte = toDate;
+    }
+
+    const rows = await DailyRevenue.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: {
+            subject: { $ifNull: ["$subject", "General"] },
+            revenueType: "$revenueType",
+          },
+          total: { $sum: "$amount" },
+          closeable: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "UNCOLLECTED"] }, "$amount", 0],
+            },
+          },
+          txCount: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.subject": 1 } },
+    ]);
+
+    const bySubject = rows.map((r) => ({
+      subject: r._id.subject,
+      revenueType: r._id.revenueType,
+      totalEarned: r.total || 0,
+      closeableAmount: r.closeable || 0,
+      transactions: r.txCount || 0,
+    }));
+
+    const summary = bySubject.reduce(
+      (acc, row) => {
+        acc.totalEarned += row.totalEarned;
+        acc.totalCloseable += row.closeableAmount;
+        acc.transactionCount += row.transactions;
+        return acc;
+      },
+      { totalEarned: 0, totalCloseable: 0, transactionCount: 0 },
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        userId,
+        period: {
+          fromDate: fromDate || null,
+          toDate: toDate || null,
+        },
+        summary,
+        bySubject,
+      },
+    });
+  } catch (error) {
+    console.error("PartnerEarningsBreakdown Error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -1064,10 +1139,6 @@ exports.processTeacherPayout = async (req, res) => {
     teacher.totalPaid = originalTotalPaid + payoutAmount;
     await teacher.save();
 
-    const activeSession = await Session.findOne({ status: "active" })
-      .sort({ startDate: -1 })
-      .lean();
-
     let paymentRecord;
     try {
       paymentRecord = await TeacherPayment.create({
@@ -1081,8 +1152,6 @@ exports.processTeacherPayout = async (req, res) => {
         paymentMethod: "cash",
         status: "paid",
         notes: notes || "Teacher payout",
-        sessionId: activeSession?._id,
-        sessionName: activeSession?.sessionName,
       });
     } catch (paymentError) {
       teacher.balance.verified = originalBalance.verified;
@@ -1139,7 +1208,6 @@ exports.processTeacherPayout = async (req, res) => {
           paymentDate: paymentRecord.paymentDate,
           paymentMethod: paymentRecord.paymentMethod,
           notes: paymentRecord.notes,
-          sessionName: paymentRecord.sessionName,
         },
         remainingBalance: teacher.balance?.pending || 0,
       },
@@ -2269,6 +2337,8 @@ exports.getTeacherPayrollReport = async (req, res) => {
 
     for (const teacher of payrollTeachers) {
       const compType = teacher.compensation?.type || "percentage";
+      const teacherIdStr = teacher._id.toString();
+      const normalize = (value) => (value || "").toString().toLowerCase().trim();
 
       // Find all classes this teacher is assigned to
       const assignedClasses = await Class.find({
@@ -2290,6 +2360,90 @@ exports.getTeacherPayrollReport = async (req, res) => {
         ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
       }).lean();
 
+      // Build subject-level fee flow proof (student paid -> teacher share + academy pool + stakeholder split)
+      const classIds = assignedClasses.map((c) => c._id).filter(Boolean);
+      const taughtSubjects = new Set();
+
+      for (const cls of assignedClasses) {
+        for (const st of cls.subjectTeachers || []) {
+          const primaryId = st.teacherId?.toString?.();
+          if (primaryId === teacherIdStr) {
+            taughtSubjects.add(normalize(st.subject));
+          }
+          for (const co of st.coTeachers || []) {
+            const coId = co.teacherId?.toString?.();
+            if (coId === teacherIdStr) {
+              taughtSubjects.add(normalize(st.subject));
+            }
+          }
+        }
+      }
+      if (teacher.subject) {
+        taughtSubjects.add(normalize(teacher.subject));
+      }
+
+      const classFeeRecordsForFlow = classIds.length > 0
+        ? await FeeRecord.find({
+            status: "PAID",
+            class: { $in: classIds },
+            ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+          })
+            .select("studentName className createdAt receiptNumber subjectBreakdown academyDistribution")
+            .lean()
+        : [];
+
+      const subjectFlowItems = [];
+      const subjectFlowTotals = {
+        subjectFeesCollected: 0,
+        teacherShareFromFees: 0,
+        academyPoolRouted: 0,
+        ownerPartnerDirectRouted: 0,
+        feePaymentCount: 0,
+      };
+
+      for (const fr of classFeeRecordsForFlow) {
+        for (const sb of fr.subjectBreakdown || []) {
+          const subjectNorm = normalize(sb.subject);
+          const sbTeacherId = sb.teacherId?.toString?.();
+          const matchesTeacherId = !!sbTeacherId && sbTeacherId === teacherIdStr;
+          const matchesTeacherSubject = subjectNorm && taughtSubjects.has(subjectNorm);
+
+          if (!matchesTeacherId && !matchesTeacherSubject) {
+            continue;
+          }
+
+          const stakeholderSplits = (fr.academyDistribution || [])
+            .filter((dist) => normalize(dist.subject) === subjectNorm && Number(dist.amount || 0) > 0)
+            .map((dist) => ({
+              fullName: dist.fullName,
+              role: dist.role,
+              percentage: dist.percentage,
+              amount: Number(dist.amount || 0),
+            }));
+
+          const row = {
+            studentName: fr.studentName,
+            className: fr.className,
+            date: fr.createdAt,
+            receipt: fr.receiptNumber,
+            subject: sb.subject,
+            subjectFee: Number(sb.subjectPrice || 0),
+            teacherShare: Number(sb.teacherShare || 0),
+            academyPoolShare: Number(sb.academyShare || 0),
+            ownerPartnerDirectShare: Number(sb.ownerPartnerShare || 0),
+            compensationType: sb.compensationType || "percentage",
+            stakeholderSplits,
+          };
+
+          subjectFlowItems.push(row);
+          subjectFlowTotals.subjectFeesCollected += row.subjectFee;
+          subjectFlowTotals.teacherShareFromFees += row.teacherShare;
+          subjectFlowTotals.academyPoolRouted += row.academyPoolShare;
+          subjectFlowTotals.ownerPartnerDirectRouted += row.ownerPartnerDirectShare;
+          subjectFlowTotals.feePaymentCount += 1;
+        }
+      }
+
       let owedAmount = 0;
       let proof = [];
 
@@ -2305,20 +2459,45 @@ exports.getTeacherPayrollReport = async (req, res) => {
         }).lean();
 
         owedAmount = teacherTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-        proof = teacherTransactions.map(tx => {
-          // Parse student name and subject from description: "Biology teacher share: Kashif Ullah (March 2026)"
-          const desc = tx.description || "";
-          const subjectMatch = desc.match(/^(.+?) teacher share:/);
-          const studentMatch = desc.match(/teacher share: (.+?) \(/);
-          return {
-            studentName: tx.splitDetails?.studentName || studentMatch?.[1] || "Student",
-            className: feeRecords.find(fr => fr.student?.toString() === tx.splitDetails?.studentId?.toString())?.className || "",
-            amount: tx.splitDetails?.subjectFee || tx.amount || 0,
-            teacherShare: tx.amount || 0,
-            date: tx.date || tx.createdAt,
-            subject: tx.splitDetails?.subject || subjectMatch?.[1] || "",
-          };
-        });
+
+        const flowBackedProof = subjectFlowItems
+          .filter((item) => item.teacherShare > 0)
+          .map((item) => ({
+            studentName: item.studentName,
+            className: item.className,
+            amount: item.subjectFee,
+            teacherShare: item.teacherShare,
+            academyPoolShare: item.academyPoolShare,
+            ownerPartnerDirectShare: item.ownerPartnerDirectShare,
+            date: item.date,
+            subject: item.subject,
+            receipt: item.receipt,
+            compensationType: item.compensationType,
+            stakeholderSplits: item.stakeholderSplits,
+          }));
+
+        if (flowBackedProof.length > 0) {
+          proof = flowBackedProof;
+        } else {
+          proof = teacherTransactions.map(tx => {
+            // Parse student name and subject from description: "Biology teacher share: Kashif Ullah (March 2026)"
+            const desc = tx.description || "";
+            const subjectMatch = desc.match(/^(.+?) teacher share:/);
+            const studentMatch = desc.match(/teacher share: (.+?) \(/);
+            const subjectFee = Number(tx.splitDetails?.subjectFee || tx.amount || 0);
+            const teacherFeeShare = Number(tx.amount || 0);
+            return {
+              studentName: tx.splitDetails?.studentName || studentMatch?.[1] || "Student",
+              className: feeRecords.find(fr => fr.student?.toString() === tx.splitDetails?.studentId?.toString())?.className || "",
+              amount: subjectFee,
+              teacherShare: teacherFeeShare,
+              academyPoolShare: Math.max(0, subjectFee - teacherFeeShare),
+              date: tx.date || tx.createdAt,
+              subject: tx.splitDetails?.subject || subjectMatch?.[1] || "",
+              stakeholderSplits: [],
+            };
+          });
+        }
 
         // Fallback: if no transactions found, use FeeRecord method (legacy + multi-teacher data)
         if (teacherTransactions.length === 0 && feeRecords.length > 0) {
@@ -2530,23 +2709,47 @@ exports.getTeacherPayrollReport = async (req, res) => {
         withdrawalDeduction,
         withdrawalAdjustments: withdrawalDeduction,
         netOwed,
+        revenueFlow: {
+          subjectFeesCollected: subjectFlowTotals.subjectFeesCollected,
+          teacherShareFromFees: subjectFlowTotals.teacherShareFromFees,
+          academyPoolRouted: subjectFlowTotals.academyPoolRouted,
+          ownerPartnerDirectRouted: subjectFlowTotals.ownerPartnerDirectRouted,
+          feePaymentCount: subjectFlowTotals.feePaymentCount,
+          sampleItems: subjectFlowItems.slice(0, 20),
+        },
         proof: compType === "percentage" ? {
           teacherSharePercent: teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70,
           feeRecordCount: proof.length,
           totalFromFees: owedAmount,
+          totalAcademyPoolFromFees: proof.reduce((sum, item) => sum + Number(item.academyPoolShare || 0), 0),
+          totalOwnerPartnerDirectFromFees: proof.reduce((sum, item) => sum + Number(item.ownerPartnerDirectShare || 0), 0),
           items: proof,
         } : compType === "perStudent" ? {
           perStudentAmount: teacher.compensation?.perStudentAmount || 0,
           activeStudentCount: proof.reduce((s, p) => s + (p.studentCount || 0), 0),
           calculatedAmount: owedAmount,
+          collectionHandling: "Student fee for these subjects is routed to academy pool/stakeholders at collection time. Teacher amount is calculated from active student count in payroll.",
+          subjectFeesCollected: subjectFlowTotals.subjectFeesCollected,
+          academyPoolRouted: subjectFlowTotals.academyPoolRouted,
+          ownerPartnerDirectRouted: subjectFlowTotals.ownerPartnerDirectRouted,
+          feeFlowItems: subjectFlowItems,
           items: proof,
         } : compType === "fixed" ? {
           fixedSalary: teacher.compensation?.fixedSalary || 0,
+          collectionHandling: "Student fee for these subjects is routed to academy pool/stakeholders at collection time. Fixed salary is paid via monthly payroll.",
+          subjectFeesCollected: subjectFlowTotals.subjectFeesCollected,
+          academyPoolRouted: subjectFlowTotals.academyPoolRouted,
+          ownerPartnerDirectRouted: subjectFlowTotals.ownerPartnerDirectRouted,
+          feeFlowItems: subjectFlowItems,
           items: proof,
         } : compType === "hybrid" ? {
           baseSalary: teacher.compensation?.baseSalary || 0,
           profitSharePercent: teacher.compensation?.profitShare || 0,
           profitShareAmount: owedAmount - (teacher.compensation?.baseSalary || 0),
+          subjectFeesCollected: subjectFlowTotals.subjectFeesCollected,
+          academyPoolRouted: subjectFlowTotals.academyPoolRouted,
+          ownerPartnerDirectRouted: subjectFlowTotals.ownerPartnerDirectRouted,
+          feeFlowItems: subjectFlowItems,
           items: proof,
         } : { items: proof },
         currentBalance: teacher.balance,

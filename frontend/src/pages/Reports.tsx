@@ -305,6 +305,28 @@ function FinancialReport({ period, onBack }: { period: string; onBack: () => voi
 function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
 
+  const getProofText = (teacher: any) => {
+    const proof = teacher?.proof || {};
+    if (teacher?.compensationType === "percentage") {
+      return `${proof.teacherSharePercent || 0}% x ${proof.feeRecordCount || 0} fee payments (from collected fees)`;
+    }
+    if (teacher?.compensationType === "perStudent") {
+      return `${fmt(proof.perStudentAmount || 0)} x ${proof.activeStudentCount || 0} active students`;
+    }
+    if (teacher?.compensationType === "fixed") {
+      return `Fixed monthly salary: ${fmt(proof.fixedSalary || 0)}`;
+    }
+    if (teacher?.compensationType === "hybrid") {
+      return `Base ${fmt(proof.baseSalary || 0)} + ${proof.profitSharePercent || 0}% share (${fmt(proof.profitShareAmount || 0)})`;
+    }
+    return "Based on configured compensation";
+  };
+
+  const getFlowText = (teacher: any) => {
+    const flow = teacher?.revenueFlow || {};
+    return `Fees ${fmt(flow.subjectFeesCollected || 0)} | Teacher-from-fees ${fmt(flow.teacherShareFromFees || 0)} | Academy ${fmt(flow.academyPoolRouted || 0)}`;
+  };
+
   const { data: teacherData, isLoading: tLoading } = useQuery({
     queryKey: ["report", "teachers"],
     queryFn: async () => { const res = await fetch(`${API_BASE}/api/teachers`, { credentials: "include" }); if (!res.ok) throw new Error("Failed"); return res.json(); },
@@ -357,7 +379,7 @@ function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
             <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-5 w-5 text-blue-600" />Payroll Detail — This Month</CardTitle></CardHeader>
             <CardContent className="p-0">
               <Table>
-                <TableHeader><TableRow><TableHead>Teacher</TableHead><TableHead>Subject</TableHead><TableHead>Type</TableHead><TableHead>Classes</TableHead><TableHead className="text-right">Gross Owed</TableHead><TableHead className="text-right">Already Paid</TableHead><TableHead className="text-right">Net Owed</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Teacher</TableHead><TableHead>Subject</TableHead><TableHead>Type</TableHead><TableHead>Classes</TableHead><TableHead>Calculation Proof</TableHead><TableHead>Fee Flow</TableHead><TableHead className="text-right">Gross Owed</TableHead><TableHead className="text-right">Already Paid</TableHead><TableHead className="text-right">Net Owed</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {payroll.map((t: any) => (
                     <TableRow key={t.teacherId}>
@@ -365,12 +387,14 @@ function TeacherPaymentReport({ onBack }: { onBack: () => void }) {
                       <TableCell>{t.subject || "—"}</TableCell>
                       <TableCell><Badge variant="outline" className="capitalize">{t.compensationType}</Badge></TableCell>
                       <TableCell className="text-sm">{t.classes?.map((c: any) => c.title).join(", ") || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{getProofText(t)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{getFlowText(t)}</TableCell>
                       <TableCell className="text-right font-medium">{fmt(t.grossOwed)}</TableCell>
                       <TableCell className="text-right text-red-600">{fmt(t.alreadyPaid)}</TableCell>
                       <TableCell className="text-right font-bold text-emerald-700">{fmt(t.netOwed)}</TableCell>
                     </TableRow>
                   ))}
-                  <TableRow className="bg-emerald-50 font-bold"><TableCell colSpan={4}>Total</TableCell><TableCell className="text-right">{fmt(payroll.reduce((s: number, t: any) => s + t.grossOwed, 0))}</TableCell><TableCell className="text-right text-red-600">{fmt(payroll.reduce((s: number, t: any) => s + t.alreadyPaid, 0))}</TableCell><TableCell className="text-right text-emerald-700">{fmt(payroll.reduce((s: number, t: any) => s + t.netOwed, 0))}</TableCell></TableRow>
+                  <TableRow className="bg-emerald-50 font-bold"><TableCell colSpan={6}>Total</TableCell><TableCell className="text-right">{fmt(payroll.reduce((s: number, t: any) => s + t.grossOwed, 0))}</TableCell><TableCell className="text-right text-red-600">{fmt(payroll.reduce((s: number, t: any) => s + t.alreadyPaid, 0))}</TableCell><TableCell className="text-right text-emerald-700">{fmt(payroll.reduce((s: number, t: any) => s + t.netOwed, 0))}</TableCell></TableRow>
                 </TableBody>
               </Table>
             </CardContent>

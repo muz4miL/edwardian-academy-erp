@@ -1763,7 +1763,7 @@ const OwnerDashboard = () => {
                 </div>
                 Are you sure you want to move your floating cash to the <span className="font-bold text-slate-900 underline">Verified Accounts</span>?
                 <br /><br />
-                This will lock the amount for today's session.
+                This will lock the amount for today's close cycle.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="gap-3">

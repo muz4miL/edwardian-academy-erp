@@ -33,7 +33,7 @@ import {
   Printer,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { studentApi, classApi, sessionApi, settingsApi } from "@/lib/api";
+import { studentApi, classApi, sessionApi, settingsApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useNavigate, useLocation } from "react-router-dom";
 import confetti from "canvas-confetti";
@@ -41,10 +41,6 @@ import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
 import { ImageCapture } from "@/components/shared/ImageCapture";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
-
-// API Base URL for config fetch
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // TASK 1: Draft Persistence Key
 const ADMISSION_DRAFT_KEY = "academy_sparkle_admission_draft";
@@ -79,6 +75,14 @@ const Admissions = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: teachersData } = useQuery({
+    queryKey: ["teachers", { status: "active" }],
+    queryFn: () => teacherApi.getAll({ status: "active" }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const teachers = teachersData?.data || [];
+
   // Form state
   const [studentName, setStudentName] = useState("");
   const [fatherName, setFatherName] = useState("");
@@ -86,6 +90,8 @@ const Admissions = () => {
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [group, setGroup] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [subjectFeeOverrides, setSubjectFeeOverrides] = useState<Record<string, number>>({});
+  const [subjectTeacherOverrides, setSubjectTeacherOverrides] = useState<Record<string, string>>({});
   const [parentCell, setParentCell] = useState("");
   const [studentCell, setStudentCell] = useState("");
   const [address, setAddress] = useState("");
@@ -98,11 +104,6 @@ const Admissions = () => {
 
   // TASK 4: Custom Fee Toggle (Lump Sum mode)
   const [isCustomFeeMode, setIsCustomFeeMode] = useState(false);
-
-  // WAQAR PROTOCOL V2: Session-Based Pricing
-  const [sessionPrice, setSessionPrice] = useState<number | null>(null);
-  const [isSessionPriceMode, setIsSessionPriceMode] = useState(false);
-  const [sessionPriceLoading, setSessionPriceLoading] = useState(false);
 
   // Discount/Scholarship Calculation
   const [discountAmount, setDiscountAmount] = useState<number>(0);
@@ -141,6 +142,8 @@ const Admissions = () => {
         setTotalFee(draft.totalFee || "");
         setPaidAmount(draft.paidAmount || "");
         setIsCustomFeeMode(draft.isCustomFeeMode || false);
+        setSubjectFeeOverrides(draft.subjectFeeOverrides || {});
+        setSubjectTeacherOverrides(draft.subjectTeacherOverrides || {});
         setPhoto(draft.photo || null);
         console.log("✅ Draft loaded from localStorage");
       } catch (error) {
@@ -192,6 +195,8 @@ const Admissions = () => {
       totalFee,
       paidAmount,
       isCustomFeeMode,
+      subjectFeeOverrides,
+      subjectTeacherOverrides,
       photo,
     };
 
@@ -215,58 +220,9 @@ const Admissions = () => {
     totalFee,
     paidAmount,
     isCustomFeeMode,
+    subjectFeeOverrides,
+    subjectTeacherOverrides,
   ]);
-
-  // WAQAR PROTOCOL V2: Fetch session price when session changes
-  useEffect(() => {
-    const fetchSessionPrice = async () => {
-      // Reset if no session selected
-      if (!selectedSessionId) {
-        setSessionPrice(null);
-        setIsSessionPriceMode(false);
-        setTotalFee("");
-        setDiscountAmount(0);
-        return;
-      }
-
-      setSessionPriceLoading(true);
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/api/config/session-price/${selectedSessionId}`,
-          { credentials: "include" }
-        );
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.data?.found && result.data?.price > 0) {
-            console.log("📊 Session price found:", result.data.price);
-            const price = result.data.price;
-            setSessionPrice(price);
-            setIsSessionPriceMode(true);
-            setTotalFee(String(price));
-            setDiscountAmount(0); // Reset discount when session changes
-          } else {
-            console.log("📊 No session price configured");
-            setSessionPrice(null);
-            setIsSessionPriceMode(false);
-            setTotalFee("");
-          }
-        } else {
-          console.error("Failed to fetch session price - response not ok");
-          setSessionPrice(null);
-          setIsSessionPriceMode(false);
-        }
-      } catch (error) {
-        console.error("Failed to fetch session price:", error);
-        setSessionPrice(null);
-        setIsSessionPriceMode(false);
-      } finally {
-        setSessionPriceLoading(false);
-      }
-    };
-
-    fetchSessionPrice();
-  }, [selectedSessionId]); // Only re-fetch when session changes
 
   // Get selected class
   const getSelectedClass = () =>
@@ -287,41 +243,95 @@ const Admissions = () => {
 
   const filteredClasses = getFilteredClasses();
 
+  const normalizeSubjectKey = (value: string) => String(value || "").toLowerCase().trim();
+
   const selectedClass = getSelectedClass();
-  const classSubjectNames = (selectedClass?.subjects || [])
-    .map((s: any) => (typeof s === "string" ? s : s?.name))
-    .filter(Boolean);
+  const classSubjectsWithFees = (selectedClass?.subjects || [])
+    .map((s: any) => ({
+      name: typeof s === "string" ? s : s?.name,
+      fee: typeof s === "object" ? Number(s?.fee) || 0 : 0,
+    }))
+    .filter((s: any) => s.name);
+  const classSubjectNames = classSubjectsWithFees.map((s: any) => s.name);
+  const classSubjectNameSet = new Set(classSubjectNames.map((s: string) => normalizeSubjectKey(s)));
+
+  const classSubjectTeacherMap = new Map(
+    (selectedClass?.subjectTeachers || [])
+      .filter((st: any) => st?.subject)
+      .map((st: any) => [
+        normalizeSubjectKey(st.subject),
+        {
+          teacherId:
+            typeof st.teacherId === "string"
+              ? st.teacherId
+              : st.teacherId?._id || "",
+          teacherName: st.teacherName || st.teacherId?.name || "",
+        },
+      ]),
+  );
+
+  const configSubjectFeeMap = new Map(
+    (configData?.data?.defaultSubjectFees || [])
+      .filter((s: any) => s?.name)
+      .map((s: any) => [normalizeSubjectKey(s.name), Number(s.fee) || 0]),
+  );
   const configSubjectNames = (configData?.data?.defaultSubjectFees || [])
     .map((s: any) => s?.name)
     .filter(Boolean);
-  const availableSubjects = configSubjectNames.length > 0 ? configSubjectNames : classSubjectNames;
 
-  // Session rate is the default source of Total Fee unless custom override is enabled.
+  const subjectNameLookup = new Map<string, string>();
+  configSubjectNames.forEach((name: string) => {
+    subjectNameLookup.set(normalizeSubjectKey(name), name);
+  });
+  classSubjectNames.forEach((name: string) => {
+    subjectNameLookup.set(normalizeSubjectKey(name), name);
+  });
+  const availableSubjects = Array.from(subjectNameLookup.values());
+
+  const getDefaultSubjectFeeByName = (subjectName: string) => {
+    const found = classSubjectsWithFees.find(
+      (s: any) => normalizeSubjectKey(s.name) === normalizeSubjectKey(subjectName),
+    );
+    const classFee = Number(found?.fee) || 0;
+    if (classFee > 0) return classFee;
+    return configSubjectFeeMap.get(normalizeSubjectKey(subjectName)) || 0;
+  };
+
+  const getSubjectFeeByName = (subjectName: string) => {
+    const key = normalizeSubjectKey(subjectName);
+    const override = subjectFeeOverrides[key];
+    if (Number.isFinite(override) && override >= 0) {
+      return Number(override);
+    }
+    return getDefaultSubjectFeeByName(subjectName);
+  };
+
+  const selectedSubjectsTotal = selectedSubjects.reduce(
+    (sum, name) => sum + getSubjectFeeByName(name),
+    0,
+  );
+  const hasSubjectPricing = selectedSubjects.length > 0 && selectedSubjectsTotal > 0;
+
+  // Primary pricing mode: selected subjects total.
   useEffect(() => {
     if (isCustomFeeMode) return;
-    if (isSessionPriceMode && sessionPrice && sessionPrice > 0) {
-      setTotalFee(String(sessionPrice));
+    if (hasSubjectPricing) {
+      setTotalFee(String(selectedSubjectsTotal));
+      return;
     }
-  }, [isCustomFeeMode, isSessionPriceMode, sessionPrice]);
+    setTotalFee("");
+  }, [isCustomFeeMode, hasSubjectPricing, selectedSubjectsTotal]);
 
-  // WAQAR PROTOCOL V2: Calculate Discount when Custom Fee is used
+  // Discount is derived from selected subject total when manual override reduces the total.
   useEffect(() => {
-    if (isCustomFeeMode && sessionPrice && sessionPrice > 0) {
+    if (isCustomFeeMode && hasSubjectPricing) {
       const customFee = Number(totalFee) || 0;
-      const discount = Math.max(0, sessionPrice - customFee);
+      const discount = Math.max(0, selectedSubjectsTotal - customFee);
       setDiscountAmount(discount);
     } else {
       setDiscountAmount(0);
     }
-  }, [totalFee, isCustomFeeMode, sessionPrice]);
-
-  // Reset to session rate when custom mode is disabled
-  useEffect(() => {
-    if (!isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0) {
-      setTotalFee(String(sessionPrice));
-      setDiscountAmount(0);
-    }
-  }, [isCustomFeeMode, isSessionPriceMode, sessionPrice]);
+  }, [totalFee, isCustomFeeMode, hasSubjectPricing, selectedSubjectsTotal]);
 
   // Reset class selection when group changes (cascading behavior)
   // Skip reset if prefilling from Front Desk navigation
@@ -341,25 +351,80 @@ const Admissions = () => {
   // Reset subjects when class changes
   useEffect(() => {
     if (selectedClassId) {
-      setSelectedSubjects([]);
       setIsCustomFeeMode(false);
-      // Auto-select all subjects if no individual selection
-      const selectedClass = getSelectedClass();
-      if (selectedClass?.subjects?.length > 0) {
-        const subjectNames = selectedClass.subjects.map((s: any) =>
-          typeof s === "string" ? s : s.name,
-        );
-        setSelectedSubjects(subjectNames);
-      }
+      const nextSubjects = (selectedClass?.subjects || [])
+        .map((s: any) => (typeof s === "string" ? s : s?.name))
+        .filter(Boolean);
+
+      setSelectedSubjects(nextSubjects);
+
+      setSubjectFeeOverrides((prev) => {
+        const next = { ...prev };
+        for (const subjectName of availableSubjects) {
+          const key = normalizeSubjectKey(subjectName);
+          if (!Number.isFinite(next[key])) {
+            next[key] = getDefaultSubjectFeeByName(subjectName);
+          }
+        }
+        return next;
+      });
+
+      setSubjectTeacherOverrides((prev) => {
+        const next = { ...prev };
+        for (const subjectName of nextSubjects) {
+          const key = normalizeSubjectKey(subjectName);
+          const mapping = classSubjectTeacherMap.get(key);
+          if (mapping?.teacherId) {
+            next[key] = mapping.teacherId;
+          }
+        }
+        return next;
+      });
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, classes.length, configSubjectNames.length]);
 
   // Subject toggle handler
   const handleSubjectToggle = (subjectName: string) => {
-    setSelectedSubjects((prev) =>
-      prev.includes(subjectName)
+    setSelectedSubjects((prev) => {
+      const exists = prev.includes(subjectName);
+      const next = exists
         ? prev.filter((id) => id !== subjectName)
-        : [...prev, subjectName],
+        : [...prev, subjectName];
+
+      if (!exists) {
+        const key = normalizeSubjectKey(subjectName);
+        setSubjectFeeOverrides((fees) => {
+          if (Number.isFinite(fees[key])) return fees;
+          return { ...fees, [key]: getDefaultSubjectFeeByName(subjectName) };
+        });
+
+        const classTeacher = classSubjectTeacherMap.get(key);
+        if (classTeacher?.teacherId) {
+          setSubjectTeacherOverrides((teachersMap) => ({
+            ...teachersMap,
+            [key]: classTeacher.teacherId,
+          }));
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleSubjectFeeChange = (subjectName: string, value: string) => {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 0;
+    const key = normalizeSubjectKey(subjectName);
+    setSubjectFeeOverrides((prev) => ({
+      ...prev,
+      [key]: nextValue,
+    }));
+  };
+
+  const getTeachersForSubject = (subjectName: string) => {
+    const key = normalizeSubjectKey(subjectName);
+    return teachers.filter(
+      (teacher: any) => normalizeSubjectKey(teacher?.subject || "") === key,
     );
   };
 
@@ -479,25 +544,57 @@ const Admissions = () => {
 
     setFeeValidationError("");
 
-    // Calculate discount if custom fee mode is active (Session-Based Pricing)
+    // Calculate discount only from subject total (session pricing removed).
     let calculatedDiscount = 0;
-    if (isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0) {
+    if (isCustomFeeMode && hasSubjectPricing) {
       const customTotal = Number(totalFee);
-      calculatedDiscount = Math.max(0, sessionPrice - customTotal);
+      calculatedDiscount = Math.max(0, selectedSubjectsTotal - customTotal);
       console.log(
-        `🎓 Session Discount Calculation: Session Rate ${sessionPrice} - Custom ${customTotal} = ${calculatedDiscount}`
+        `🎓 Subject Discount Calculation: Subject Total ${selectedSubjectsTotal} - Custom ${customTotal} = ${calculatedDiscount}`
       );
     }
 
-    // Prepare student data
-    // Split totalFee equally among selected subjects for clean revenue calculations
-    const numSubjects = selectedSubjects.length;
-    const feePerSubject = numSubjects > 0 ? Math.floor(Number(totalFee) / numSubjects) : 0;
-    const remainder = numSubjects > 0 ? Number(totalFee) - (feePerSubject * numSubjects) : 0;
-    const subjectsWithFees = selectedSubjects.map((subjectName, idx) => ({
-      name: subjectName,
-      fee: feePerSubject + (idx === numSubjects - 1 ? remainder : 0),
-    }));
+    if (isCustomFeeMode && hasSubjectPricing && Number(totalFee) > selectedSubjectsTotal) {
+      toast.error("Invalid Override", {
+        description: "Custom override is discount-only and cannot exceed subject total.",
+        duration: 3500,
+      });
+      return;
+    }
+
+    const missingTeacherSubjects = selectedSubjects.filter((subjectName) => {
+      const key = normalizeSubjectKey(subjectName);
+      const isClassSubject = classSubjectNameSet.has(key);
+      if (isClassSubject) return false;
+      const selectedTeacherId = subjectTeacherOverrides[key];
+      return !selectedTeacherId;
+    });
+
+    if (missingTeacherSubjects.length > 0) {
+      toast.error("Teacher Required for Extra Subjects", {
+        description: `Assign a teacher for: ${missingTeacherSubjects.join(", ")}`,
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Prepare student data with exact subject fees and teacher links from admission time.
+    const subjectsWithFees = selectedSubjects.map((subjectName) => {
+      const key = normalizeSubjectKey(subjectName);
+      const classTeacher = classSubjectTeacherMap.get(key);
+      const teacherId = classTeacher?.teacherId || subjectTeacherOverrides[key] || undefined;
+      const teacherName =
+        classTeacher?.teacherName ||
+        teachers.find((t: any) => t._id === teacherId)?.name ||
+        undefined;
+
+      return {
+        name: subjectName,
+        fee: getSubjectFeeByName(subjectName),
+        teacherId,
+        teacherName,
+      };
+    });
 
     // Ensure we have a valid class name
     const classTitle =
@@ -522,8 +619,7 @@ const Admissions = () => {
       admissionDate: new Date(admissionDate),
       totalFee: Number(totalFee),
       paidAmount: Number(paidAmount) || 0,
-      discountAmount: calculatedDiscount, // Session-based discount
-      sessionRate: isSessionPriceMode && sessionPrice ? sessionPrice : undefined, // Original session rate
+      discountAmount: calculatedDiscount,
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
       photo: photo || undefined,
@@ -551,6 +647,8 @@ const Admissions = () => {
     setTotalFee("");
     setPaidAmount("");
     setIsCustomFeeMode(false);
+    setSubjectFeeOverrides({});
+    setSubjectTeacherOverrides({});
     setFeeValidationError(""); // Clear validation error
     setPhoto(null);
 
@@ -756,19 +854,75 @@ const Admissions = () => {
                   <div className="grid grid-cols-2 gap-2 rounded-lg border border-border p-3 bg-secondary/10">
                     {availableSubjects.map((subjectName: string) => {
                       const checked = selectedSubjects.includes(subjectName);
-                      const inClass = classSubjectNames.includes(subjectName);
+                      const key = normalizeSubjectKey(subjectName);
+                      const inClass = classSubjectNameSet.has(key);
+                      const subjectFee = getSubjectFeeByName(subjectName);
+                      const selectedTeacherId = subjectTeacherOverrides[key] || "";
+                      const classTeacher = classSubjectTeacherMap.get(key);
+                      const effectiveTeacherId = classTeacher?.teacherId || selectedTeacherId;
                       return (
-                        <label
+                        <div
                           key={subjectName}
-                          className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm cursor-pointer ${checked ? "border-primary bg-primary/5" : "border-border bg-background"}`}
+                          className={`rounded-md border px-2 py-2 text-sm ${checked ? "border-primary bg-primary/5" : "border-border bg-background"}`}
                         >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => handleSubjectToggle(subjectName)}
-                          />
-                          <span>{subjectName}</span>
-                          {inClass && <span className="ml-auto text-[10px] text-emerald-600 font-medium">Class</span>}
-                        </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => handleSubjectToggle(subjectName)}
+                            />
+                            <span>{subjectName}</span>
+                            <span className="ml-auto text-[10px] font-semibold text-slate-600">PKR {subjectFee.toLocaleString()}</span>
+                            {inClass && <span className="text-[10px] text-emerald-600 font-medium">Class</span>}
+                          </label>
+
+                          {checked && (
+                            <div className="mt-2 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Label className="text-[10px] uppercase tracking-wide text-slate-500">Fee</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={subjectFee}
+                                  onChange={(e) => handleSubjectFeeChange(subjectName, e.target.value)}
+                                  className="h-8"
+                                />
+                              </div>
+
+                              {!inClass && (
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] uppercase tracking-wide text-amber-700">
+                                    Extra Subject Teacher *
+                                  </Label>
+                                  {getTeachersForSubject(subjectName).length === 0 && (
+                                    <p className="text-[10px] text-red-600">
+                                      No teacher found with subject specialization: {subjectName}
+                                    </p>
+                                  )}
+                                  <Select
+                                    value={effectiveTeacherId || ""}
+                                    onValueChange={(value) =>
+                                      setSubjectTeacherOverrides((prev) => ({
+                                        ...prev,
+                                        [key]: value,
+                                      }))
+                                    }
+                                  >
+                                    <SelectTrigger className="h-8 bg-background">
+                                      <SelectValue placeholder="Select teacher" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-popover">
+                                      {getTeachersForSubject(subjectName).map((teacher: any) => (
+                                        <SelectItem key={teacher._id} value={teacher._id}>
+                                          {teacher.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -829,13 +983,13 @@ const Admissions = () => {
                 />
               </div>
 
-              {/* Session-Based Pricing (Only Method) */}
+              {/* Subject-Based Pricing */}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                   <div>
                     <p className="text-sm font-medium text-amber-900">Custom Fee Override</p>
-                    <p className="text-xs text-amber-700">Keep ON only when applying scholarship/discount.</p>
+                    <p className="text-xs text-amber-700">Discount-only override from subject total.</p>
                   </div>
                   <Switch
                     checked={isCustomFeeMode}
@@ -851,15 +1005,10 @@ const Admissions = () => {
                       <AlertCircle className="h-3 w-3" />
                       Manual Override Active
                     </span>
-                  ) : isSessionPriceMode && sessionPrice && sessionPrice > 0 ? (
-                    <span className="text-xs text-emerald-600 flex items-center gap-1 font-medium animate-in fade-in duration-300">
+                  ) : hasSubjectPricing ? (
+                    <span className="text-xs text-indigo-600 flex items-center gap-1 font-medium animate-in fade-in duration-300">
                       <Package className="h-3 w-3" />
-                      Session Rate: PKR {sessionPrice.toLocaleString()}
-                    </span>
-                  ) : sessionPriceLoading ? (
-                    <span className="text-xs text-slate-400 flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Checking session price...
+                      Subject Total: PKR {selectedSubjectsTotal.toLocaleString()}
                     </span>
                   ) : null}
                 </div>
@@ -870,17 +1019,17 @@ const Admissions = () => {
                     placeholder="0"
                     value={totalFee}
                     onChange={(e) => setTotalFee(e.target.value)}
-                    readOnly={!isCustomFeeMode && isSessionPriceMode}
+                    readOnly={!isCustomFeeMode && hasSubjectPricing}
                     className={`${isCustomFeeMode
                       ? "border-amber-400 bg-amber-50 ring-2 ring-amber-200"
-                      : isSessionPriceMode && sessionPrice && sessionPrice > 0
-                        ? "border-emerald-400 bg-emerald-50 cursor-not-allowed font-bold text-emerald-700"
-                          : ""
+                      : hasSubjectPricing
+                        ? "border-indigo-400 bg-indigo-50 cursor-not-allowed font-bold text-indigo-700"
+                      : ""
                       }`}
                   />
-                  {!isCustomFeeMode && isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
+                  {!isCustomFeeMode && hasSubjectPricing && (
                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                      <Package className="h-4 w-4 text-emerald-500" />
+                      <Package className="h-4 w-4 text-indigo-500" />
                     </div>
                   )}
                   {isCustomFeeMode && (
@@ -889,65 +1038,33 @@ const Admissions = () => {
                     </div>
                   )}
                 </div>
-                {/* Session Rate Summary with Discount */}
-                {isSessionPriceMode && sessionPrice && sessionPrice > 0 && (
-                  <div className={`mt-2 p-3 rounded-lg border ${isCustomFeeMode && discountAmount > 0
-                      ? "bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200"
-                      : "bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200"
-                    }`}>
+                {/* Subject Summary with Discount */}
+                {hasSubjectPricing ? (
+                  <div className="mt-2 p-3 rounded-lg border bg-gradient-to-r from-indigo-50 to-sky-50 border-indigo-200">
                     <div className="flex items-center gap-2 mb-2">
-                      <Package className={`h-4 w-4 ${isCustomFeeMode && discountAmount > 0 ? "text-amber-600" : "text-emerald-600"}`} />
-                      <p className={`text-sm font-semibold ${isCustomFeeMode && discountAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
-                        {isCustomFeeMode && discountAmount > 0 ? "Scholarship / Discount Applied" : "Session-Based Pricing"}
-                      </p>
+                      <Package className="h-4 w-4 text-indigo-600" />
+                      <p className="text-sm font-semibold text-indigo-800">Subject-Based Pricing</p>
                     </div>
-
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-600">Session Rate</span>
-                        <span className={`font-medium ${isCustomFeeMode && discountAmount > 0 ? "line-through text-slate-400" : "text-slate-700"}`}>
-                          PKR {sessionPrice.toLocaleString()}
+                        <span className="text-slate-600">Selected Subjects</span>
+                        <span className="font-medium text-slate-700">{selectedSubjects.length}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1.5 border-t border-indigo-200">
+                        <span className="text-xs font-medium text-indigo-600">Total Fee</span>
+                        <span className="text-lg font-bold text-indigo-700">
+                          PKR {Number(totalFee || 0).toLocaleString()}
                         </span>
                       </div>
-
                       {isCustomFeeMode && discountAmount > 0 && (
-                        <>
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-green-600 font-medium">Discount</span>
-                            <span className="font-bold text-green-600">
-                              -PKR {discountAmount.toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center pt-1.5 border-t border-amber-200">
-                            <span className="text-sm font-semibold text-amber-800">Final Fee</span>
-                            <span className="text-lg font-bold text-amber-700">
-                              PKR {Number(totalFee).toLocaleString()}
-                            </span>
-                          </div>
-                        </>
-                      )}
-
-                      {!isCustomFeeMode && (
-                        <div className="flex justify-between items-center pt-1.5 border-t border-emerald-200">
-                          <span className="text-xs font-medium text-emerald-600">Total Fee</span>
-                          <span className="text-lg font-bold text-emerald-700">
-                            PKR {sessionPrice.toLocaleString()}
-                          </span>
+                        <div className="flex justify-between items-center text-xs pt-1 border-t border-indigo-200">
+                          <span className="text-emerald-700 font-medium">Discount</span>
+                          <span className="font-bold text-emerald-700">-PKR {discountAmount.toLocaleString()}</span>
                         </div>
                       )}
                     </div>
                   </div>
-                )}
-
-                {/* No Session Price Warning */}
-                {!isSessionPriceMode && selectedSessionId && !sessionPriceLoading && (
-                  <div className="mt-2 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-                    <p className="text-xs text-yellow-700">
-                      <strong>Note:</strong> No session rate configured for this session.
-                      Please configure session pricing in Settings → Configuration.
-                    </p>
-                  </div>
-                )}
+                ) : null}
               </div>
 
               <div className="space-y-2">

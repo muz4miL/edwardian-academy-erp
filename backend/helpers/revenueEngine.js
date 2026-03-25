@@ -31,6 +31,12 @@ const normalizeObjectId = (value) => {
   return null;
 };
 
+const toSafeInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.trunc(parsed));
+};
+
 /**
  * Detect class revenue mode based on assigned teacher roles.
  * If ANY subject teacher is OWNER or PARTNER → TUITION mode.
@@ -167,6 +173,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
     saud: tuitionSplit.saud || 20,
   };
 
+  const normalizedFee = toSafeInt(feeAmount);
   const result = [];
   let distributed = 0;
 
@@ -202,9 +209,9 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
     // Last person gets remainder to avoid rounding errors
     let amount;
     if (isLast) {
-      amount = feeAmount - distributed;
+      amount = normalizedFee - distributed;
     } else {
-      amount = Math.round((feeAmount * percentage) / 100);
+      amount = Math.floor((normalizedFee * percentage) / 100);
     }
 
     distributed += amount;
@@ -216,7 +223,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
       role: person.role,
       amount,
       percentage: percentage || 0,
-      description: `Tuition share: ${feeAmount} × ${percentage}% = ${amount}`,
+      description: `Tuition share: ${normalizedFee} × ${percentage}% = ${amount}`,
     });
   }
 
@@ -236,6 +243,7 @@ async function calculateTuitionSplit(feeAmount, ownerPartnerTeachers, config) {
 async function calculateAcademySplit(feeAmount, teacher, config) {
   if (!config) config = await Configuration.findOne();
 
+  const normalizedFee = toSafeInt(feeAmount);
   let teacherAmount = 0;
   let academyAmount = 0;
 
@@ -243,22 +251,22 @@ async function calculateAcademySplit(feeAmount, teacher, config) {
 
   if (compType === "percentage") {
     const teacherShare = teacher.compensation.teacherShare || config?.salaryConfig?.teacherShare || 70;
-    teacherAmount = Math.round((feeAmount * teacherShare) / 100);
-    academyAmount = feeAmount - teacherAmount;
+    teacherAmount = Math.floor((normalizedFee * teacherShare) / 100);
+    academyAmount = normalizedFee - teacherAmount;
   } else if (compType === "perStudent") {
     // Per-student: teacher gets fixed amount per student per session, rest is academy's
     // This is handled separately in payroll — for fee collection, full amount goes to academy share
     teacherAmount = 0;
-    academyAmount = feeAmount;
+    academyAmount = normalizedFee;
   } else if (compType === "fixed") {
     // Fixed salary: teacher is paid monthly, all fee revenue goes to academy
     teacherAmount = 0;
-    academyAmount = feeAmount;
+    academyAmount = normalizedFee;
   } else if (compType === "hybrid") {
     // Hybrid: teacher gets profitShare % of fee
     const profitShare = teacher.compensation.profitShare || 0;
-    teacherAmount = Math.round((feeAmount * profitShare) / 100);
-    academyAmount = feeAmount - teacherAmount;
+    teacherAmount = Math.floor((normalizedFee * profitShare) / 100);
+    academyAmount = normalizedFee - teacherAmount;
   }
 
   // Distribute academy's share among Owner/Partners per config
@@ -281,7 +289,8 @@ async function calculateAcademySplit(feeAmount, teacher, config) {
  */
 async function distributeAcademyShare(amount, config) {
   if (!config) config = await Configuration.findOne();
-  if (amount <= 0) return [];
+  const normalizedAmount = toSafeInt(amount);
+  if (normalizedAmount <= 0) return [];
 
   // Use dynamic academyShareSplit if configured
   if (config.academyShareSplit && config.academyShareSplit.length > 0) {
@@ -289,8 +298,8 @@ async function distributeAcademyShare(amount, config) {
     const result = config.academyShareSplit.map((entry, index) => {
       const isLast = index === config.academyShareSplit.length - 1;
       const share = isLast
-        ? amount - distributed // Last person gets remainder to avoid rounding issues
-        : Math.round((amount * entry.percentage) / 100);
+        ? normalizedAmount - distributed // Last person gets remainder to avoid rounding issues
+        : Math.floor((normalizedAmount * entry.percentage) / 100);
       distributed += share;
 
       return {
@@ -309,9 +318,9 @@ async function distributeAcademyShare(amount, config) {
   const split = config.expenseSplit || { waqar: 40, zahid: 30, saud: 30 };
   const partnerIds = config.partnerIds || {};
 
-  const waqarShare = Math.round((amount * split.waqar) / 100);
-  const zahidShare = Math.round((amount * split.zahid) / 100);
-  const saudShare = amount - waqarShare - zahidShare;
+  const waqarShare = Math.floor((normalizedAmount * split.waqar) / 100);
+  const zahidShare = Math.floor((normalizedAmount * split.zahid) / 100);
+  const saudShare = normalizedAmount - waqarShare - zahidShare;
 
   return [
     { userId: partnerIds.waqar, fullName: "Sir Waqar Baig", role: "OWNER", percentage: split.waqar, amount: waqarShare },
@@ -342,6 +351,8 @@ async function createDailyRevenueEntries(entries) {
       studentRef: entry.studentRef || null,
       studentName: entry.studentName || "",
       feeRecordRef: entry.feeRecordRef || null,
+      subject: entry.subject || "",
+      transactionReference: entry.transactionReference || "",
       splitDetails: entry.splitDetails || {},
     }));
 
@@ -526,12 +537,13 @@ async function executeDailyClose(userId, userName, userRole) {
  */
 async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
   if (!config) config = await Configuration.findOne();
+  const normalizedFee = toSafeInt(feeAmount);
   if (!teachersData || teachersData.length === 0) {
     // No teachers → all goes to academy
-    const academyDist = await distributeAcademyShare(feeAmount, config);
+    const academyDist = await distributeAcademyShare(normalizedFee, config);
     return {
       teacherPayouts: [],
-      academyAmount: feeAmount,
+      academyAmount: normalizedFee,
       academyDistribution: academyDist,
     };
   }
@@ -552,7 +564,7 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
     if (compType === "percentage") {
       // Percentage split: gets X% of fee
       const percentage = teacher.compensation?.teacherShare || 70;
-      teacherShare = Math.round((feeAmount * percentage) / 100);
+      teacherShare = Math.floor((normalizedFee * percentage) / 100);
       reason = `${percentage}% percentage split`;
     } else if (compType === "fixed") {
       // Fixed salary: gets 0 from fees (paid monthly)
@@ -565,11 +577,11 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
     } else if (compType === "hybrid") {
       // Hybrid: gets profitShare % of fee
       const profitShare = teacher.compensation?.profitShare || 10;
-      teacherShare = Math.round((feeAmount * profitShare) / 100);
+      teacherShare = Math.floor((normalizedFee * profitShare) / 100);
       reason = `${profitShare}% profit share (hybrid)`;
     } else {
       // Default: 70/30
-      teacherShare = Math.round((feeAmount * 70) / 100);
+      teacherShare = Math.floor((normalizedFee * 70) / 100);
       reason = "70% default percentage split";
     }
 
@@ -587,7 +599,7 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
   }
 
   // Academy gets remainder
-  const academyAmount = feeAmount - totalTeacherAmount;
+  const academyAmount = normalizedFee - totalTeacherAmount;
 
   // Distribute academy's share among Owner/Partners
   const academyDistribution = academyAmount > 0 
@@ -599,7 +611,7 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
     academyAmount,
     academyDistribution,
     totalTeacherAmount,
-    totalFee: feeAmount,
+    totalFee: normalizedFee,
   };
 }
 

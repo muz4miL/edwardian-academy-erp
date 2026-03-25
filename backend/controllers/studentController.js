@@ -25,6 +25,12 @@ const normalizeTeacherId = (teacherRef) => {
   return null;
 };
 
+const toSafeInt = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.trunc(parsed));
+};
+
 // Minimal revenue helper inline to avoid import errors
 const calculateRevenueSplit = async ({ fee, teacherRole, config }) => {
   const isPartner = teacherRole === "OWNER" || teacherRole === "PARTNER";
@@ -609,7 +615,7 @@ exports.collectFee = async (req, res) => {
   let debugStage = "init";
   try {
     const { id } = req.params;
-    const { amount, month, paymentMethod, notes } = req.body;
+    const { amount, month, paymentMethod, notes, subjects: selectedSubjects } = req.body;
 
     console.log("[collectFee] start", {
       studentId: id,
@@ -632,7 +638,7 @@ exports.collectFee = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Student not found" });
 
-    const amountNum = Number(amount);
+    const amountNum = toSafeInt(amount);
     if (amountNum <= 0) {
       return res
         .status(400)
@@ -675,15 +681,45 @@ exports.collectFee = async (req, res) => {
 
     let totalTeacherShare = 0;
     let totalAcademyShare = 0;
+    let totalOwnerPartnerShare = 0;
     const creditTransactions = [];
     const dailyRevenueEntries = [];
     const feeTeachers = []; // For FeeRecord.teachers array
     const academyDistributions = [];
+    const subjectBreakdown = [];
 
     // Pre-calculate student subjects
-    const studentSubjects = (student.subjects || []).filter(
-      (s) => (typeof s === "string" ? s : s.name)
+    const selectedSubjectSet = new Set(
+      Array.isArray(selectedSubjects)
+        ? selectedSubjects
+            .map((s) => {
+              if (typeof s === "string") return s;
+              if (s && typeof s === "object") return s.name;
+              return "";
+            })
+            .map((s) => String(s || "").toLowerCase().trim())
+            .filter(Boolean)
+        : []
     );
+    const studentSubjectObjects = (student.subjects || [])
+      .map((s) => {
+        if (typeof s === "string") {
+          return { name: s, fee: 0, teacherId: null, teacherName: null };
+        }
+        return {
+          name: s?.name,
+          fee: toSafeInt(s?.fee),
+          teacherId: normalizeTeacherId(s?.teacherId),
+          teacherName: s?.teacherName || null,
+        };
+      })
+      .filter((s) => s.name);
+    const payableSubjects =
+      selectedSubjectSet.size > 0
+        ? studentSubjectObjects.filter((s) =>
+            selectedSubjectSet.has(String(s.name || "").toLowerCase().trim())
+          )
+        : studentSubjectObjects;
 
     const OLD_FEE_STATUS = student.feeStatus;
 
@@ -778,41 +814,128 @@ exports.collectFee = async (req, res) => {
     // CASE 2: ACADEMY or MIXED MODE (MULTIPLE TEACHERS WITH DIFFERENT COMPENSATION)
     // ═════════════════════════════════════════════════════════════════
     else {
-      const hasSubjectTeachers = classDoc?.subjectTeachers?.length > 0 && studentSubjects.length > 0;
+      const hasSubjectTeachers =
+        payableSubjects.length > 0 &&
+        ((classDoc?.subjectTeachers?.length || 0) > 0 ||
+          payableSubjects.some((s) => normalizeTeacherId(s.teacherId)));
 
       if (hasSubjectTeachers) {
         // Process by subject to handle multiple teachers per subject
-        const totalSubjectFees = studentSubjects.reduce((sum, s) => {
-          return sum + (typeof s === "object" ? s.fee || 0 : 0);
+        const totalSubjectFees = payableSubjects.reduce((sum, s) => {
+          return sum + toSafeInt(s.fee);
         }, 0);
 
         let allocatedSoFar = 0;
-        for (let idx = 0; idx < studentSubjects.length; idx++) {
-          const subj = studentSubjects[idx];
-          const subjName = typeof subj === "string" ? subj : subj.name;
-          const subjFee = typeof subj === "object" ? subj.fee || 0 : 0;
+        for (let idx = 0; idx < payableSubjects.length; idx++) {
+          const subj = payableSubjects[idx];
+          const subjName = subj.name;
+          const subjFee = toSafeInt(subj.fee);
+          const explicitTeacherId = normalizeTeacherId(subj.teacherId);
+
+          let localTeacherShare = 0;
+          let localAcademyShare = 0;
+          let localOwnerPartnerShare = 0;
+          const localDistributionEntries = [];
+          let primarySubjectTeacherId = explicitTeacherId || null;
+          let primarySubjectTeacherName = subj.teacherName || null;
+          let subjectCompensationType = "percentage";
 
           let subjShare;
-          if (idx === studentSubjects.length - 1) {
+          if (idx === payableSubjects.length - 1) {
             subjShare = amountNum - allocatedSoFar; // Remainder to last subject
           } else {
             subjShare =
               totalSubjectFees > 0
-                ? Math.round((subjFee / totalSubjectFees) * amountNum)
-                : Math.round(amountNum / studentSubjects.length);
+                ? Math.floor((subjFee * amountNum) / totalSubjectFees)
+                : Math.floor(amountNum / payableSubjects.length);
           }
           allocatedSoFar += subjShare;
 
-          if (subjShare <= 0) continue;
+          if (subjShare <= 0) {
+            continue;
+          }
 
-          // Find all teachers for this subject
-          const subjectTeacherEntries = classDoc.subjectTeachers.filter(
-            (st) => st.subject && st.subject.toLowerCase().trim() === subjName.toLowerCase().trim()
-          );
+          // Prefer admission-level explicit teacher mapping; fallback to class subject mapping.
+          let subjectTeacherEntries = [];
+          if (explicitTeacherId) {
+            const explicitTeacher = await Teacher.findById(explicitTeacherId).lean();
+            subjectTeacherEntries = [
+              {
+                subject: subjName,
+                teacherId: explicitTeacher?._id || explicitTeacherId,
+                teacherName: subj.teacherName || explicitTeacher?.name || "",
+              },
+            ];
+            if (!primarySubjectTeacherName && explicitTeacher?.name) {
+              primarySubjectTeacherName = explicitTeacher.name;
+            }
+          } else {
+            subjectTeacherEntries = (classDoc?.subjectTeachers || []).filter(
+              (st) => st.subject && st.subject.toLowerCase().trim() === subjName.toLowerCase().trim()
+            );
+          }
 
           if (subjectTeacherEntries.length === 0) {
             // NO TEACHER FOR THIS SUBJECT → all to academy
+            const fallbackAcademyDistribution = await distributeAcademyShare(subjShare, config);
+            for (const dist of fallbackAcademyDistribution) {
+              academyDistributions.push({
+                userId: dist.userId,
+                fullName: dist.fullName,
+                role: dist.role,
+                percentage: dist.percentage,
+                amount: dist.amount,
+                subject: subjName,
+              });
+
+              if (dist.amount > 0 && dist.userId) {
+                const user = await User.findById(dist.userId);
+                if (user) {
+                  if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
+                  user.walletBalance.floating = (user.walletBalance.floating || 0) + dist.amount;
+                  await user.save();
+                }
+
+                localDistributionEntries.push({
+                  recipientType: dist.role === "OWNER" ? "OWNER" : "PARTNER",
+                  recipientId: dist.userId,
+                  amount: dist.amount,
+                  note: `Academy share for ${subjName}`,
+                });
+
+                dailyRevenueEntries.push({
+                  userId: dist.userId,
+                  amount: dist.amount,
+                  revenueType: "ACADEMY_SHARE",
+                  classRef: classDoc?._id,
+                  className: classDoc?.classTitle || student.class,
+                  studentRef: student._id,
+                  studentName: student.studentName,
+                  subject: subjName,
+                  splitDetails: {
+                    totalFee: amountNum,
+                    subjectFee: subjShare,
+                    description: `Academy fallback (${subjName}): ${student.studentName} → ${dist.fullName}`,
+                  },
+                });
+              }
+            }
+
+            localAcademyShare += subjShare;
             totalAcademyShare += subjShare;
+
+            subjectBreakdown.push({
+              subject: subjName,
+              subjectPrice: subjShare,
+              teacherShare: localTeacherShare,
+              academyShare: localAcademyShare,
+              ownerPartnerShare: localOwnerPartnerShare,
+              compensationType: "percentage",
+              teacherId: primarySubjectTeacherId,
+              teacherName: primarySubjectTeacherName,
+              distributionEntries: localDistributionEntries,
+              distributed: true,
+            });
             continue;
           }
 
@@ -868,6 +991,7 @@ exports.collectFee = async (req, res) => {
             }
 
             if (uniqueTeachers.length > 0) {
+              subjectCompensationType = "owner-partner";
               const perTeacher = Math.floor(subjShare / uniqueTeachers.length);
               let remainder = subjShare - (perTeacher * uniqueTeachers.length);
 
@@ -904,6 +1028,18 @@ exports.collectFee = async (req, res) => {
                 }
 
                 totalTeacherShare += amount;
+                totalOwnerPartnerShare += amount;
+                localOwnerPartnerShare += amount;
+                if (!primarySubjectTeacherId) {
+                  primarySubjectTeacherId = ut.teacherId;
+                  primarySubjectTeacherName = ut.teacherName;
+                }
+                localDistributionEntries.push({
+                  recipientType: ut.role === "OWNER" ? "OWNER" : "PARTNER",
+                  recipientId: ut.userId,
+                  amount,
+                  note: `${subjName} partner-owned subject share`,
+                });
                 dailyRevenueEntries.push({
                   userId: ut.userId,
                   amount: amount,
@@ -912,6 +1048,7 @@ exports.collectFee = async (req, res) => {
                   className: classDoc?.classTitle || student.class,
                   studentRef: student._id,
                   studentName: student.studentName,
+                  subject: subjName,
                   splitDetails: {
                     description: `TUITION (${subjName}): ${student.studentName} → ${ut.teacherName}`,
                   },
@@ -941,6 +1078,18 @@ exports.collectFee = async (req, res) => {
           } else {
             // ── ACADEMY MODE: respect each teacher's compensation type ──
             const split = await splitFeeAmongTeachers(subjShare, teachersForSubject, config);
+            const subjectCompTypes = Array.from(
+              new Set(
+                (split.teacherPayouts || [])
+                  .map((p) => p.compensationType)
+                  .filter(Boolean),
+              ),
+            );
+            if (subjectCompTypes.length === 1) {
+              subjectCompensationType = subjectCompTypes[0];
+            } else if (subjectCompTypes.length > 1) {
+              subjectCompensationType = "hybrid";
+            }
 
             // Record teacher payouts
             for (const payout of split.teacherPayouts) {
@@ -983,11 +1132,23 @@ exports.collectFee = async (req, res) => {
                   });
                 }
                 totalTeacherShare += payout.amount;
+                localTeacherShare += payout.amount;
+                if (!primarySubjectTeacherId) {
+                  primarySubjectTeacherId = payout.teacherId;
+                  primarySubjectTeacherName = payout.teacherName || null;
+                }
+                localDistributionEntries.push({
+                  recipientType: "TEACHER",
+                  recipientId: payout.teacherId,
+                  amount: payout.amount,
+                  note: `${subjName} teacher payout (${payout.compensationType})`,
+                });
               }
             }
 
             // Academy share distribution
             totalAcademyShare += split.academyAmount;
+            localAcademyShare += split.academyAmount;
 
             // Calculate teacher deductions for this subject for audit/proof
             const subjectTeacherDeductions = split.teacherPayouts.reduce((sum, p) => sum + p.amount, 0);
@@ -1048,7 +1209,15 @@ exports.collectFee = async (req, res) => {
                   className: classDoc?.classTitle || student.class,
                   studentRef: student._id,
                   studentName: student.studentName,
+                  subject: subjName,
                   splitDetails: proofMetadata,
+                });
+
+                localDistributionEntries.push({
+                  recipientType: dist.role === "OWNER" ? "OWNER" : "PARTNER",
+                  recipientId: dist.userId,
+                  amount: dist.amount,
+                  note: `${subjName} academy pool distribution`,
                 });
 
                 creditTransactions.push({
@@ -1065,6 +1234,19 @@ exports.collectFee = async (req, res) => {
               }
             }
           }
+
+          subjectBreakdown.push({
+            subject: subjName,
+            subjectPrice: subjShare,
+            teacherShare: localTeacherShare,
+            academyShare: localAcademyShare,
+            ownerPartnerShare: localOwnerPartnerShare,
+            compensationType: localOwnerPartnerShare > 0 ? "owner-partner" : subjectCompensationType,
+            teacherId: primarySubjectTeacherId,
+            teacherName: primarySubjectTeacherName,
+            distributionEntries: localDistributionEntries,
+            distributed: true,
+          });
         }
       } else {
         // Fallback: no subject mapping
@@ -1107,16 +1289,20 @@ exports.collectFee = async (req, res) => {
       isPartnerTeacher: feeTeachers.some(t => t.isPartner),
       teachers: feeTeachers,
       splitBreakdown: {
-        teacherShare: totalTeacherShare,
+        teacherShare: Math.max(0, totalTeacherShare - totalOwnerPartnerShare),
         academyShare: totalAcademyShare,
+        ownerPartnerShare: totalOwnerPartnerShare,
         teacherPercentage: totalTeacherShare > 0 ? Math.round((totalTeacherShare / amountNum) * 100) : 0,
         academyPercentage: totalAcademyShare > 0 ? Math.round((totalAcademyShare / amountNum) * 100) : 0,
         totalTeachers: feeTeachers.length,
       },
+      subjectBreakdown,
       academyDistribution: academyDistributions,
       paymentMethod,
       notes,
-      revenueSource: mode === "TUITION" ? "tuition-auto" : "academy-teacher-split",
+      revenueSource: "subject-based-pricing",
+      distributionCompleted: true,
+      distributionCompletedAt: new Date(),
     });
 
     // ───────────────────────────────────────────────────────────────────────
@@ -1195,7 +1381,8 @@ exports.collectFee = async (req, res) => {
           academyDistributions: academyDistributions.length,
         },
         split: {
-          teacherShare: totalTeacherShare,
+          teacherShare: Math.max(0, totalTeacherShare - totalOwnerPartnerShare),
+          ownerPartnerShare: totalOwnerPartnerShare,
           academyShare: totalAcademyShare,
           teacherPercentage: totalTeacherShare > 0 ? Math.round((totalTeacherShare / amountNum) * 100) : 0,
         },

@@ -2043,7 +2043,10 @@ const TeacherPayrollTab = () => {
                         <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-2">
                           <p className="font-semibold text-slate-700">How this was calculated:</p>
                           {t.compensationType === "percentage" && (
-                            <p>Gets {t.proof.teacherSharePercent}% of each fee payment ({t.proof.feeRecordCount || 0} payments this month = {formatCurrency(t.proof.totalFromFees || 0)})</p>
+                            <p>
+                              Gets {t.proof.teacherSharePercent}% of each subject fee payment ({t.proof.feeRecordCount || 0} payments this month = {formatCurrency(t.proof.totalFromFees || 0)} teacher share).
+                              Academy pool from these same payments: {formatCurrency(t.proof.totalAcademyPoolFromFees || 0)}.
+                            </p>
                           )}
                           {t.compensationType === "perStudent" && (
                             <p>{formatCurrency(t.proof.perStudentAmount || 0)} per student x {t.proof.activeStudentCount || 0} active students = {formatCurrency(t.proof.calculatedAmount || 0)}</p>
@@ -2055,22 +2058,60 @@ const TeacherPayrollTab = () => {
                             <p>Base {formatCurrency(t.proof.baseSalary || 0)} + {t.proof.profitSharePercent}% profit share ({formatCurrency(t.proof.profitShareAmount || 0)})</p>
                           )}
 
+                          {t.revenueFlow && (
+                            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 border-t pt-2">
+                              <div className="rounded bg-slate-50 p-2 border">
+                                <p className="text-[10px] text-slate-500">Subject Fees</p>
+                                <p className="font-semibold text-slate-800">{formatCurrency(t.revenueFlow.subjectFeesCollected || 0)}</p>
+                              </div>
+                              <div className="rounded bg-emerald-50 p-2 border border-emerald-100">
+                                <p className="text-[10px] text-emerald-700">Teacher From Fees</p>
+                                <p className="font-semibold text-emerald-700">{formatCurrency(t.revenueFlow.teacherShareFromFees || 0)}</p>
+                              </div>
+                              <div className="rounded bg-blue-50 p-2 border border-blue-100">
+                                <p className="text-[10px] text-blue-700">Academy Pool Routed</p>
+                                <p className="font-semibold text-blue-700">{formatCurrency(t.revenueFlow.academyPoolRouted || 0)}</p>
+                              </div>
+                              <div className="rounded bg-amber-50 p-2 border border-amber-100">
+                                <p className="text-[10px] text-amber-700">Direct Owner/Partner</p>
+                                <p className="font-semibold text-amber-700">{formatCurrency(t.revenueFlow.ownerPartnerDirectRouted || 0)}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {(t.compensationType === "perStudent" || t.compensationType === "fixed") && t.proof.collectionHandling && (
+                            <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded p-2">
+                              {t.proof.collectionHandling}
+                            </p>
+                          )}
+
                           {/* Per-student fee breakdown for percentage teachers */}
                           {t.proof.items?.length > 0 && t.compensationType === "percentage" && (
                             <div className="mt-2 border-t pt-2 space-y-1.5">
-                              <p className="font-semibold text-slate-600">Fee-wise breakdown:</p>
+                              <p className="font-semibold text-slate-600">Fee-wise breakdown (subject fee to teacher + academy pool):</p>
                               {t.proof.items.map((item: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between py-1 px-2 bg-emerald-50/50 rounded">
-                                  <span className="text-slate-700">
-                                    {item.studentName}
-                                    {item.subject && <span className="text-slate-500 ml-1">({item.subject})</span>}
-                                    {!item.subject && item.className && <span className="text-slate-500 ml-1">— {item.className}</span>}
-                                    {item.date && <span className="text-slate-400 ml-1">({new Date(item.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })})</span>}
-                                  </span>
-                                  <span className="font-semibold text-emerald-700">
-                                    {formatCurrency(item.teacherShare || 0)}
-                                    {item.amount !== item.teacherShare && <span className="text-slate-400 font-normal ml-1">of {formatCurrency(item.amount || 0)}</span>}
-                                  </span>
+                                <div key={i} className="py-1.5 px-2 bg-emerald-50/50 rounded border border-emerald-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-700">
+                                      {item.studentName}
+                                      {item.subject && <span className="text-slate-500 ml-1">({item.subject})</span>}
+                                      {!item.subject && item.className && <span className="text-slate-500 ml-1">— {item.className}</span>}
+                                      {item.date && <span className="text-slate-400 ml-1">({new Date(item.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })})</span>}
+                                    </span>
+                                    <span className="font-semibold text-emerald-700">{formatCurrency(item.teacherShare || 0)} teacher</span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-3 text-[11px]">
+                                    <span className="text-slate-600">Subject fee: <span className="font-medium">{formatCurrency(item.amount || 0)}</span></span>
+                                    <span className="text-blue-700">Academy pool: <span className="font-medium">{formatCurrency(item.academyPoolShare || 0)}</span></span>
+                                    {!!item.ownerPartnerDirectShare && (
+                                      <span className="text-amber-700">Owner/Partner direct: <span className="font-medium">{formatCurrency(item.ownerPartnerDirectShare || 0)}</span></span>
+                                    )}
+                                  </div>
+                                  {item.stakeholderSplits?.length > 0 && (
+                                    <div className="mt-1 text-[11px] text-violet-700">
+                                      Stakeholder split: {item.stakeholderSplits.map((s: any) => `${s.fullName || s.role} (${s.percentage}%): ${formatCurrency(s.amount || 0)}`).join(" • ")}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -2086,6 +2127,27 @@ const TeacherPayrollTab = () => {
                                   <span className="font-semibold text-blue-700">
                                     {item.studentCount} students x {formatCurrency(item.perStudentAmount || 0)} = {formatCurrency(item.total || 0)}
                                   </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {t.proof.feeFlowItems?.length > 0 && (t.compensationType === "perStudent" || t.compensationType === "fixed" || t.compensationType === "hybrid") && (
+                            <div className="mt-2 border-t pt-2 space-y-1.5">
+                              <p className="font-semibold text-slate-600">Student fee flow for this teacher's subjects:</p>
+                              {t.proof.feeFlowItems.slice(0, 10).map((item: any, i: number) => (
+                                <div key={i} className="py-1.5 px-2 bg-slate-50 rounded border">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-700">
+                                      {item.studentName} {item.subject ? `(${item.subject})` : ""}
+                                    </span>
+                                    <span className="text-slate-800 font-semibold">{formatCurrency(item.subjectFee || 0)}</span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-slate-600">
+                                    <span>Teacher from fee: {formatCurrency(item.teacherShare || 0)}</span>
+                                    <span>Academy pool: {formatCurrency(item.academyPoolShare || 0)}</span>
+                                    {!!item.ownerPartnerDirectShare && <span>Owner/Partner direct: {formatCurrency(item.ownerPartnerDirectShare || 0)}</span>}
+                                  </div>
                                 </div>
                               ))}
                             </div>

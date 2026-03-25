@@ -13,6 +13,7 @@ const {
   getDashboardStats,
   closeDay,
   getClosePreview,
+  getPartnerEarningsBreakdown,
   getClosingHistory,
   processWithdrawalReversal,
   getTeacherPayrollReport,
@@ -122,6 +123,12 @@ router.post("/close-day", protect, restrictTo("OWNER", "STAFF", "PARTNER"), clos
 // @access  Protected (OWNER, PARTNER)
 router.get("/close-preview/:userId", protect, restrictTo("OWNER", "PARTNER"), getClosePreview);
 router.get("/close-preview", protect, restrictTo("OWNER", "PARTNER"), getClosePreview);
+
+// @route   GET /api/finance/partner/earnings-breakdown/:userId?
+// @desc    Subject-level earnings and closeable amounts for Owner/Partner
+// @access  Protected (OWNER, PARTNER)
+router.get("/partner/earnings-breakdown/:userId", protect, restrictTo("OWNER", "PARTNER"), getPartnerEarningsBreakdown);
+router.get("/partner/earnings-breakdown", protect, restrictTo("OWNER", "PARTNER"), getPartnerEarningsBreakdown);
 
 // @route   GET /api/finance/closing-history/:userId
 // @desc    Past closing records with breakdown

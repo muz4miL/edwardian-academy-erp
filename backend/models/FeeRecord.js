@@ -112,9 +112,45 @@ const feeRecordSchema = new mongoose.Schema(
     splitBreakdown: {
       teacherShare: { type: Number, default: 0 },
       academyShare: { type: Number, default: 0 },
+      ownerPartnerShare: { type: Number, default: 0 },
       teacherPercentage: { type: Number, default: 70 },
       academyPercentage: { type: Number, default: 30 },
       totalTeachers: { type: Number, default: 1 },
+    },
+    // Subject-wise fee and distribution breakdown for exact audit trail
+    subjectBreakdown: {
+      type: [
+        {
+          subject: { type: String, required: true, trim: true },
+          subjectPrice: { type: Number, default: 0, min: 0 },
+          teacherShare: { type: Number, default: 0, min: 0 },
+          academyShare: { type: Number, default: 0, min: 0 },
+          ownerPartnerShare: { type: Number, default: 0, min: 0 },
+          compensationType: {
+            type: String,
+            enum: ["percentage", "fixed", "hybrid", "perStudent", "owner-partner"],
+            default: "percentage",
+          },
+          teacherId: { type: mongoose.Schema.Types.ObjectId, ref: "Teacher" },
+          teacherName: { type: String, trim: true },
+          distributionEntries: {
+            type: [
+              {
+                recipientType: {
+                  type: String,
+                  enum: ["TEACHER", "OWNER", "PARTNER", "ACADEMY_POOL"],
+                },
+                recipientId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+                amount: { type: Number, default: 0 },
+                note: { type: String, trim: true },
+              },
+            ],
+            default: [],
+          },
+          distributed: { type: Boolean, default: true },
+        },
+      ],
+      default: [],
     },
     // Academy pool distribution (who gets the 30% academy share)
     academyDistribution: {
@@ -175,7 +211,15 @@ const feeRecordSchema = new mongoose.Schema(
         "tuition-auto",
         "academy-teacher-split",
         "academy-per-student",
+        "subject-based-pricing",
       ],
+    },
+    distributionCompleted: {
+      type: Boolean,
+      default: false,
+    },
+    distributionCompletedAt: {
+      type: Date,
     },
   },
   {

@@ -3,6 +3,7 @@ const router = express.Router();
 const Class = require("../models/Class");
 const Student = require("../models/Student");
 const Timetable = require("../models/Timetable");
+const Configuration = require("../models/Configuration");
 
 // Helper: Remove duplicate subjects (case-insensitive), keeping the one with highest fee
 const deduplicateSubjects = (subjects) => {
@@ -29,6 +30,38 @@ const deduplicateSubjects = (subjects) => {
   }
 
   return Array.from(subjectMap.values());
+};
+
+const applyDefaultSubjectFees = async (subjects, baseFee = 0) => {
+  const config = await Configuration.findOne().lean();
+  const defaults = new Map(
+    (config?.defaultSubjectFees || [])
+      .filter((s) => s?.name)
+      .map((s) => [String(s.name).toLowerCase().trim(), Number(s.fee) || 0]),
+  );
+
+  return (subjects || []).map((subject) => {
+    if (typeof subject === "string") {
+      const normalized = String(subject).toLowerCase().trim();
+      return {
+        name: subject,
+        fee: defaults.get(normalized) || Number(baseFee) || 0,
+      };
+    }
+
+    const name = subject?.name || "";
+    const normalized = String(name).toLowerCase().trim();
+    const configuredFee = defaults.get(normalized) || 0;
+    const incomingFee = Number(subject?.fee);
+
+    return {
+      name,
+      fee:
+        Number.isFinite(incomingFee) && incomingFee > 0
+          ? incomingFee
+          : configuredFee || Number(baseFee) || 0,
+    };
+  });
 };
 
 // ========== CONFLICT DETECTION HELPER ==========
@@ -230,6 +263,62 @@ router.get("/", async (req, res) => {
   }
 });
 
+// @route   GET /api/classes/:id/subjects-with-pricing
+// @desc    Get class subjects with exact configured prices for admission flow
+// @access  Public
+router.get("/:id/subjects-with-pricing", async (req, res) => {
+  try {
+    const classDoc = await Class.findById(req.params.id)
+      .populate("subjectTeachers.teacherId", "name compensation")
+      .lean();
+
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found",
+      });
+    }
+
+    const subjects = (classDoc.subjects || []).map((subject) => {
+      const name = typeof subject === "string" ? subject : subject?.name;
+      const fee = typeof subject === "object" ? Number(subject?.fee) || 0 : 0;
+
+      const teacherMap = (classDoc.subjectTeachers || []).find(
+        (st) => st.subject && name && st.subject.toLowerCase().trim() === name.toLowerCase().trim(),
+      );
+
+      const comp = teacherMap?.teacherId?.compensation || {};
+      return {
+        name,
+        fee,
+        teacher: teacherMap?.teacherName || teacherMap?.teacherId?.name || null,
+        teacherId: teacherMap?.teacherId?._id || null,
+        teacherCompensationType: comp.type || "percentage",
+        teacherSharePercentage: comp.teacherShare ?? 70,
+      };
+    });
+
+    const totalFee = subjects.reduce((sum, s) => sum + (Number(s.fee) || 0), 0);
+
+    return res.json({
+      success: true,
+      data: {
+        classId: classDoc._id,
+        classTitle: classDoc.classTitle,
+        subjects,
+        totalFee,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error loading class subjects with pricing:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load class subject pricing",
+      error: error.message,
+    });
+  }
+});
+
 // @route   GET /api/classes/:id
 // @desc    Get single class by ID with stats
 // @access  Public
@@ -331,8 +420,9 @@ router.post("/", async (req, res) => {
       classData.subjects = [];
     }
 
-    // Remove duplicate subjects (case-insensitive)
+    // Remove duplicate subjects and apply configured default fees
     classData.subjects = deduplicateSubjects(classData.subjects);
+    classData.subjects = await applyDefaultSubjectFees(classData.subjects, classData.baseFee);
 
     // Ensure baseFee is a number
     if (classData.baseFee !== undefined) {
@@ -432,6 +522,10 @@ router.put("/:id", async (req, res) => {
     // Remove duplicate subjects (case-insensitive)
     if (updateData.subjects && Array.isArray(updateData.subjects)) {
       updateData.subjects = deduplicateSubjects(updateData.subjects);
+      updateData.subjects = await applyDefaultSubjectFees(
+        updateData.subjects,
+        updateData.baseFee !== undefined ? updateData.baseFee : classDoc.baseFee,
+      );
     }
 
     // Never allow frontend to override classId

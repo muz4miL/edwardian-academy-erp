@@ -140,6 +140,14 @@ const configurationSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // Monetary precision setting. For PKR this should remain 0.
+    precision: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 2,
+    },
   },
   { timestamps: true },
 );

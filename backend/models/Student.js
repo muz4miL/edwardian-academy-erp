@@ -14,6 +14,14 @@ const studentSubjectSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    teacherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Teacher",
+    },
+    teacherName: {
+      type: String,
+      trim: true,
+    },
   },
   { _id: false },
 );
