@@ -33,6 +33,8 @@ const {
   generateFinancialReport,
   recordStudentMiscPayment,
   getStudentMiscPayments,
+  getFloatingAmountsDetail,
+  getTeacherPayrollSummary,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -116,6 +118,10 @@ router.get("/close-day/preview", protect, restrictTo("OWNER", "STAFF", "PARTNER"
   req.query.preview = "true";
   return closeDay(req, res, next);
 });
+router.get("/close-day", protect, restrictTo("OWNER", "STAFF", "PARTNER"), (req, res, next) => {
+  if (req.query.preview === "true") return closeDay(req, res, next);
+  return next(); // Pass to /:id or other handlers if not preview
+});
 router.post("/close-day", protect, restrictTo("OWNER", "STAFF", "PARTNER"), closeDay);
 
 // @route   GET /api/finance/close-preview/:userId
@@ -149,6 +155,26 @@ router.get(
   protect,
   restrictTo("OWNER", "PARTNER", "TEACHER"),
   getTeacherPayrollReport,
+);
+
+// @route   GET /api/finance/teacher-payroll-summary
+// @desc    Real-time floating amounts for teachers
+// @access  Protected (OWNER, PARTNER)
+router.get(
+  "/teacher-payroll-summary",
+  protect,
+  restrictTo("OWNER", "PARTNER"),
+  getTeacherPayrollSummary,
+);
+
+// @route   GET /api/finance/floating-amounts-detail
+// @desc    Real-time breakdown of floating amounts for Owner/Partners
+// @access  Protected (OWNER, PARTNER)
+router.get(
+  "/floating-amounts-detail",
+  protect,
+  restrictTo("OWNER", "PARTNER"),
+  getFloatingAmountsDetail,
 );
 
 // @route   GET/PUT /api/finance/academy-share-split

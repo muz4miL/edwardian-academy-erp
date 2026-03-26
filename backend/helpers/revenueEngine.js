@@ -353,6 +353,7 @@ async function createDailyRevenueEntries(entries) {
       feeRecordRef: entry.feeRecordRef || null,
       subject: entry.subject || "",
       transactionReference: entry.transactionReference || "",
+      description: entry.description || "",
       splitDetails: entry.splitDetails || {},
     }));
 
@@ -422,7 +423,7 @@ async function getClosePreview(userId) {
       amount: entry.amount,
       className: entry.className,
       studentName: entry.studentName,
-      description: entry.splitDetails?.description || "",
+      description: entry.description || entry.splitDetails?.description || "",
       splitDetails: entry.splitDetails,
     };
 
@@ -527,90 +528,127 @@ async function executeDailyClose(userId, userName, userRole) {
  * ================================================================
  * MULTI-TEACHER SUBJECT SPLIT FUNCTION (NEW)
  * ================================================================
- * Handles complex scenarios with multiple teachers per subject
- * Respects each teacher's compensation type
+ * Handles complex scenarios with multiple teachers per subject.
+ * - Regular teachers get their defined share (percentage/fixed/perStudent).
+ * - Owner/Partner teachers get 100% of their share of the subject fee.
+ * - The remaining amount (Academy Share) is split among all stakeholders.
  * 
  * @param {number} feeAmount - Total fee for this subject
- * @param {Array} teachersData - Array of {teacherId, teacher doc, compensationType, ...}
+ * @param {Array} teachersData - Array of {teacherId, teacher doc, ...}
  * @param {Object} config - Configuration doc for academy split ratios
- * @returns {Promise<{teacherPayouts: Array, academyAmount: number, academyDistribution: Array}>}
+ * @returns {Promise<{
+ *   teacherPayouts: Array,
+ *   directStakeholderPayouts: Array,
+ *   academyAmount: number,
+ *   academyDistribution: Array,
+ *   totalTeacherAmount: number,
+ *   totalFee: number
+ * }>}
  */
 async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
   if (!config) config = await Configuration.findOne();
   const normalizedFee = toSafeInt(feeAmount);
+  
   if (!teachersData || teachersData.length === 0) {
     // No teachers → all goes to academy
     const academyDist = await distributeAcademyShare(normalizedFee, config);
     return {
       teacherPayouts: [],
+      directStakeholderPayouts: [],
       academyAmount: normalizedFee,
       academyDistribution: academyDist,
+      totalTeacherAmount: 0,
+      totalFee: normalizedFee,
     };
   }
 
   const teacherPayouts = [];
+  const directStakeholderPayouts = [];
   let totalTeacherAmount = 0;
+  let totalDirectStakeholderAmount = 0;
 
-  for (const tData of teachersData) {
+  // Split the subject fee equally among the assigned teachers for this subject
+  const portionPerTeacher = Math.floor(normalizedFee / teachersData.length);
+  const remainder = normalizedFee - (portionPerTeacher * teachersData.length);
+
+  for (let i = 0; i < teachersData.length; i++) {
+    const tData = teachersData[i];
+    const portion = portionPerTeacher + (i === 0 ? remainder : 0);
+    
     const teacher = tData.teacher || (tData.teacherId ? await Teacher.findById(tData.teacherId) : null);
-    if (!teacher) {
-      continue; // Skip if teacher not found
-    }
+    if (!teacher) continue;
 
+    const role = teacher.role || "TEACHER";
     const compType = teacher.compensation?.type || "percentage";
-    let teacherShare = 0;
-    let reason = "";
-
-    if (compType === "percentage") {
-      // Percentage split: gets X% of fee
-      const percentage = teacher.compensation?.teacherShare || 70;
-      teacherShare = Math.floor((normalizedFee * percentage) / 100);
-      reason = `${percentage}% percentage split`;
-    } else if (compType === "fixed") {
-      // Fixed salary: gets 0 from fees (paid monthly)
-      teacherShare = 0;
-      reason = "Fixed salary (paid monthly, not from fees)";
-    } else if (compType === "perStudent") {
-      // Per-student: gets 0 from fees (calculated in payroll per active students)
-      teacherShare = 0;
-      reason = "Per-student compensation (calculated in payroll)";
-    } else if (compType === "hybrid") {
-      // Hybrid: gets profitShare % of fee
-      const profitShare = teacher.compensation?.profitShare || 10;
-      teacherShare = Math.floor((normalizedFee * profitShare) / 100);
-      reason = `${profitShare}% profit share (hybrid)`;
+    
+    if (role === "OWNER" || role === "PARTNER") {
+      // ── STAKEHOLDER TEACHER: Gets 100% of their portion directly ──
+      const stakeholderAmount = portion;
+      totalDirectStakeholderAmount += stakeholderAmount;
+      
+      directStakeholderPayouts.push({
+        teacherId: teacher._id,
+        userId: teacher.userId || null,
+        teacherName: teacher.name,
+        role: role,
+        amount: stakeholderAmount,
+        percentage: 100,
+        reason: "Owner/Partner direct tuition share (100%)",
+        subject: tData.subject || "",
+      });
     } else {
-      // Default: 70/30
-      teacherShare = Math.floor((normalizedFee * 70) / 100);
-      reason = "70% default percentage split";
+      // ── REGULAR TEACHER: Gets their defined share ──
+      let teacherShare = 0;
+      let reason = "";
+
+      if (compType === "percentage") {
+        const percentage = teacher.compensation?.teacherShare || 70;
+        teacherShare = Math.floor((portion * percentage) / 100);
+        reason = `${percentage}% percentage split`;
+      } else if (compType === "fixed") {
+        teacherShare = 0;
+        reason = "Fixed salary (paid monthly)";
+      } else if (compType === "perStudent") {
+        teacherShare = 0;
+        reason = "Per-student compensation (calculated in payroll)";
+      } else if (compType === "hybrid") {
+        const profitShare = teacher.compensation?.profitShare || 10;
+        teacherShare = Math.floor((portion * profitShare) / 100);
+        reason = `${profitShare}% profit share (hybrid)`;
+      } else {
+        teacherShare = Math.floor((portion * 70) / 100);
+        reason = "70% default percentage split";
+      }
+
+      totalTeacherAmount += teacherShare;
+
+      teacherPayouts.push({
+        teacherId: teacher._id,
+        teacherName: teacher.name,
+        compensationType: compType,
+        amount: teacherShare,
+        percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : undefined,
+        reason,
+        isPartner: false,
+      });
     }
-
-    totalTeacherAmount += teacherShare;
-
-    teacherPayouts.push({
-      teacherId: teacher._id,
-      teacherName: teacher.name,
-      compensationType: compType,
-      amount: teacherShare,
-      percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : undefined,
-      reason,
-      isPartner: tData.isPartner || false,
-    });
   }
 
-  // Academy gets remainder
-  const academyAmount = normalizedFee - totalTeacherAmount;
+  // Academy pool gets the remainder (Portions not taken by regular teachers)
+  const academyAmount = normalizedFee - totalTeacherAmount - totalDirectStakeholderAmount;
 
-  // Distribute academy's share among Owner/Partners
+  // Distribute academy's share among all stakeholders (including those who teach)
   const academyDistribution = academyAmount > 0 
     ? await distributeAcademyShare(academyAmount, config)
     : [];
 
   return {
     teacherPayouts,
+    directStakeholderPayouts,
     academyAmount,
     academyDistribution,
     totalTeacherAmount,
+    totalDirectStakeholderAmount,
     totalFee: normalizedFee,
   };
 }

@@ -10,7 +10,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 
-const BASE = "http://localhost:5001/api";
+const BASE = process.env.BASE_URL || "http://localhost:5000/api";
 let TOKEN = "";
 let OWNER_USER = null;
 let TEST_STUDENT_ID = null;

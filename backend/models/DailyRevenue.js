@@ -34,6 +34,7 @@ const dailyRevenueSchema = new mongoose.Schema(
     feeRecordRef: { type: mongoose.Schema.Types.ObjectId, ref: "FeeRecord" },
     subject: { type: String, trim: true },
     transactionReference: { type: String, trim: true },
+    description: { type: String, trim: true }, // Added for UI display
     // For tuition: how many owner/partners shared, what was total fee
     splitDetails: {
       totalFee: { type: Number },

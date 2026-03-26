@@ -262,13 +262,24 @@ studentSchema.pre("save", async function () {
       const classDoc = await Class.findById(this.classRef).lean();
 
       if (classDoc && classDoc.subjects) {
-        // Copy subject prices from Class to lock them at admission time
-        this.subjects = classDoc.subjects.map((s) => ({
-          name: typeof s === "string" ? s : s.name,
-          fee: typeof s === "object" ? s.fee || 0 : classDoc.baseFee || 0,
-        }));
+        // Copy subject prices and teacher mappings from Class to lock them at admission time
+        this.subjects = classDoc.subjects.map((s) => {
+          const subjectName = typeof s === "string" ? s : s.name;
+          
+          // Find the teacher assigned to this subject in the class
+          const classSubjectTeacher = (classDoc.subjectTeachers || []).find(
+            (st) => st.subject && st.subject.toLowerCase().trim() === subjectName.toLowerCase().trim()
+          );
+
+          return {
+            name: subjectName,
+            fee: typeof s === "object" ? s.fee || 0 : classDoc.baseFee || 0,
+            teacherId: classSubjectTeacher ? classSubjectTeacher.teacherId : null,
+            teacherName: classSubjectTeacher ? classSubjectTeacher.teacherName : null,
+          };
+        });
         console.log(
-          `📌 LOCKED ${this.subjects.length} subjects with prices from Class`,
+          `📌 LOCKED ${this.subjects.length} subjects with prices and teachers from Class`,
         );
       }
     } catch (err) {

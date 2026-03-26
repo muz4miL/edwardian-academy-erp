@@ -2661,13 +2661,13 @@ exports.getTeacherPayrollReport = async (req, res) => {
       } else if (compType === "hybrid") {
         const baseSalary = teacher.compensation?.baseSalary || 0;
         const profitShare = teacher.compensation?.profitShare || 0;
-        const feeTotal = feeRecords.reduce((sum, fr) => sum + fr.amount, 0);
-        const profitAmount = Math.round((feeTotal * profitShare) / 100);
+        // Profit share should be on the fees collected for their specific subjects
+        const profitAmount = Math.round((subjectFlowTotals.subjectFeesCollected * profitShare) / 100);
         owedAmount = baseSalary + profitAmount;
         proof = [{
           baseSalary,
           profitShare: `${profitShare}%`,
-          totalFees: feeTotal,
+          totalFees: subjectFlowTotals.subjectFeesCollected,
           profitAmount,
           total: owedAmount,
         }];
