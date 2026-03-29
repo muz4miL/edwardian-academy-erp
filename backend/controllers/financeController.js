@@ -3251,15 +3251,10 @@ exports.releasePartnerSettlements = async (req, res) => {
 
     // Create notification for partner
     await Notification.create({
-      title: "Academy Share Released",
+      recipient: partnerId,
+      recipientRole: partner.role,
       message: `Your academy share of PKR ${result.releasedAmount.toLocaleString()} has been released by ${releasedBy.fullName}. It is now available in your closing dashboard.`,
-      type: "finance",
-      priority: "high",
-      recipients: [partnerId],
-      metadata: {
-        releasedAmount: result.releasedAmount,
-        releasedBy: releasedBy._id,
-      },
+      type: "FINANCE",
     });
 
     return res.json({

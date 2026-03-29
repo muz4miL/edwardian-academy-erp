@@ -59,6 +59,11 @@ const transactionSchema = new mongoose.Schema(
         "Event_Fee",
         "Student_Misc",
         "Withdrawal_Reversal",
+        "Advance",
+        "Bonus",
+        "Other",
+        "Reversal",
+        "Salary",
       ],
       required: [true, "Category is required"],
     },
@@ -102,7 +107,7 @@ const transactionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["FLOATING", "VERIFIED", "CANCELLED", "REFUNDED"],
+      enum: ["FLOATING", "VERIFIED", "CANCELLED", "REFUNDED", "DEFERRED"],
       default: "FLOATING",
     },
     // SRS 3.0: Split Details (for 70/30 staff logic + pool dividends)
