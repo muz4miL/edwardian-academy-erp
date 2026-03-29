@@ -797,3 +797,119 @@ export const inventoryApi = {
         return data;
     },
 };
+
+// ========================================
+// Finance API Endpoints
+// ========================================
+export const financeApi = {
+    // Academy Settlements - Summary
+    getAcademySettlementsSummary: async () => {
+        const response = await fetch(`${API_BASE_URL}/finance/academy-settlements/summary`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch settlements summary');
+        return data;
+    },
+
+    // Academy Settlements - Partner Details
+    getPartnerSettlementDetails: async (partnerId: string) => {
+        const response = await fetch(`${API_BASE_URL}/finance/academy-settlements/partner/${partnerId}`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch partner settlement details');
+        return data;
+    },
+
+    // Academy Settlements - Release
+    releasePartnerSettlements: async (partnerId: string, options?: { amount?: number; notes?: string }) => {
+        const response = await fetch(`${API_BASE_URL}/finance/academy-settlements/release/${partnerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(options || {}),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to release settlements');
+        return data;
+    },
+
+    // Academy Settlements - History
+    getSettlementHistory: async (partnerId?: string) => {
+        const url = partnerId 
+            ? `${API_BASE_URL}/finance/academy-settlements/history?partnerId=${partnerId}`
+            : `${API_BASE_URL}/finance/academy-settlements/history`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch settlement history');
+        return data;
+    },
+
+    // Owner Breakdown Report
+    getOwnerBreakdown: async () => {
+        const response = await fetch(`${API_BASE_URL}/finance/owner-breakdown`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch owner breakdown');
+        return data;
+    },
+};
+
+// ========================================
+// Payroll API Endpoints
+// ========================================
+export const payrollApi = {
+    // Create Teacher Deposit
+    createTeacherDeposit: async (depositData: {
+        teacherId: string;
+        amount: number;
+        type: 'ADVANCE' | 'BONUS' | 'REIMBURSEMENT' | 'ADJUSTMENT' | 'OTHER';
+        reason?: string;
+        paymentMethod?: string;
+    }) => {
+        const response = await fetch(`${API_BASE_URL}/payroll/deposit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(depositData),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to create deposit');
+        return data;
+    },
+
+    // Get Teacher Deposits
+    getTeacherDeposits: async (teacherId: string) => {
+        const response = await fetch(`${API_BASE_URL}/payroll/deposits/${teacherId}`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch deposits');
+        return data;
+    },
+
+    // Reverse Teacher Deposit
+    reverseTeacherDeposit: async (depositId: string, reason?: string) => {
+        const response = await fetch(`${API_BASE_URL}/payroll/deposits/${depositId}/reverse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ reason }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to reverse deposit');
+        return data;
+    },
+
+    // Get Teacher Earnings Breakdown
+    getTeacherEarningsBreakdown: async (teacherId: string) => {
+        const response = await fetch(`${API_BASE_URL}/payroll/teacher-earnings/${teacherId}`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch earnings breakdown');
+        return data;
+    },
+};

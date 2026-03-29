@@ -35,6 +35,12 @@ const {
   getStudentMiscPayments,
   getFloatingAmountsDetail,
   getTeacherPayrollSummary,
+  // Academy Settlements (Partner Deferred Academy Share)
+  getAcademySettlementsSummary,
+  getPartnerSettlementDetails,
+  releasePartnerSettlements,
+  getSettlementHistory,
+  getOwnerBreakdown,
 } = require("../controllers/financeController");
 const { protect, restrictTo } = require("../middleware/authMiddleware");
 
@@ -80,6 +86,60 @@ router.get(
   protect,
   restrictTo("OWNER"),
   generateFinancialReport,
+);
+
+// =====================================================================
+// ACADEMY SETTLEMENTS - Partner Deferred Academy Share Management
+// =====================================================================
+
+// @route   GET /api/finance/academy-settlements/summary
+// @desc    Get summary of pending academy settlements for all partners
+// @access  Protected (OWNER only)
+router.get(
+  "/academy-settlements/summary",
+  protect,
+  restrictTo("OWNER"),
+  getAcademySettlementsSummary,
+);
+
+// @route   GET /api/finance/academy-settlements/history
+// @desc    Get settlement release history
+// @access  Protected (OWNER only)
+router.get(
+  "/academy-settlements/history",
+  protect,
+  restrictTo("OWNER"),
+  getSettlementHistory,
+);
+
+// @route   GET /api/finance/academy-settlements/partner/:partnerId
+// @desc    Get detailed pending settlements for a specific partner
+// @access  Protected (OWNER only)
+router.get(
+  "/academy-settlements/partner/:partnerId",
+  protect,
+  restrictTo("OWNER"),
+  getPartnerSettlementDetails,
+);
+
+// @route   POST /api/finance/academy-settlements/release/:partnerId
+// @desc    Release pending settlements for a partner
+// @access  Protected (OWNER only)
+router.post(
+  "/academy-settlements/release/:partnerId",
+  protect,
+  restrictTo("OWNER"),
+  releasePartnerSettlements,
+);
+
+// @route   GET /api/finance/owner-breakdown
+// @desc    Get Owner's dashboard breakdown (own earnings, teacher collections, settlements)
+// @access  Protected (OWNER only)
+router.get(
+  "/owner-breakdown",
+  protect,
+  restrictTo("OWNER"),
+  getOwnerBreakdown,
 );
 
 // @route   DELETE /api/finance/transaction/:id

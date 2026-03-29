@@ -8,6 +8,11 @@ const {
   approvePayoutRequest,
   rejectPayoutRequest,
   getPayrollDashboard,
+  // Teacher Deposits
+  createTeacherDeposit,
+  getTeacherDeposits,
+  reverseTeacherDeposit,
+  getTeacherEarningsBreakdown,
 } = require("../controllers/payrollController");
 
 // @route   POST /api/payroll/request
@@ -49,5 +54,44 @@ router.post(
 // @desc    Get payroll dashboard stats
 // @access  Protected (OWNER only)
 router.get("/dashboard", protect, restrictTo("OWNER"), getPayrollDashboard);
+
+// =====================================================================
+// TEACHER DEPOSITS - Arbitrary Payments (Advance, Bonus, Reimbursement)
+// =====================================================================
+
+// @route   POST /api/payroll/deposit
+// @desc    Deposit arbitrary amount to teacher
+// @access  Protected (OWNER only)
+router.post("/deposit", protect, restrictTo("OWNER"), createTeacherDeposit);
+
+// @route   GET /api/payroll/deposits/:teacherId
+// @desc    Get deposit history for a teacher
+// @access  Protected (OWNER only)
+router.get(
+  "/deposits/:teacherId",
+  protect,
+  restrictTo("OWNER"),
+  getTeacherDeposits,
+);
+
+// @route   POST /api/payroll/deposits/:depositId/reverse
+// @desc    Reverse a deposit (mistake correction)
+// @access  Protected (OWNER only)
+router.post(
+  "/deposits/:depositId/reverse",
+  protect,
+  restrictTo("OWNER"),
+  reverseTeacherDeposit,
+);
+
+// @route   GET /api/payroll/teacher-earnings/:teacherId
+// @desc    Get detailed earnings breakdown for a teacher
+// @access  Protected (OWNER only)
+router.get(
+  "/teacher-earnings/:teacherId",
+  protect,
+  restrictTo("OWNER"),
+  getTeacherEarningsBreakdown,
+);
 
 module.exports = router;

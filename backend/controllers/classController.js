@@ -6,12 +6,15 @@ exports.createClass = async (req, res) => {
   try {
     const { classTitle, gradeLevel, session } = req.body;
 
+    console.log("📦 createClass received:", { classTitle, gradeLevel, session });
+
     // Validate session
     const sessionExists = await Session.findById(session);
     if (!sessionExists) {
+      console.log("❌ Session not found for ID:", session);
       return res
         .status(400)
-        .json({ success: false, message: "Invalid session ID" });
+        .json({ success: false, message: `Invalid session ID: ${session}` });
     }
 
     const newClass = await Class.create({

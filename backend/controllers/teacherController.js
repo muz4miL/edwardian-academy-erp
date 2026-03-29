@@ -341,16 +341,9 @@ exports.createTeacher = async (req, res) => {
         }
       }
 
-      if (!user) {
-        const unlinkedPartner = await User.findOne({
-          role: "PARTNER",
-          $or: [{ teacherId: { $exists: false } }, { teacherId: null }],
-        });
-        if (unlinkedPartner) {
-          user = unlinkedPartner;
-          existingUserLinked = true;
-        }
-      }
+      // NOTE: Unlike OWNER (only one allowed), PARTNER teachers always get their own
+      // new user accounts. We only link to existing PARTNER accounts if there's an
+      // explicit username/email match above. We do NOT auto-link to random unlinked partners.
     }
 
     if (!user) {

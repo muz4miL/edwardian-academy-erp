@@ -14,6 +14,8 @@ import {
   Calendar,
   FileText,
   DollarSign,
+  Wallet,
+  ChartBar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +41,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { TeacherDepositModal } from "@/components/finance/TeacherDepositModal";
+import { TeacherEarningsDetails } from "@/components/finance/TeacherEarningsDetails";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5001/api";
@@ -52,6 +56,12 @@ export default function Payroll() {
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [actionType, setActionType] = useState<"approve" | "reject" | null>(null);
   const [notes, setNotes] = useState("");
+
+  // State for deposit modal
+  const [depositTeacher, setDepositTeacher] = useState<{ id: string; name: string } | null>(null);
+  
+  // State for earnings details modal
+  const [earningsTeacher, setEarningsTeacher] = useState<{ id: string; name: string } | null>(null);
 
   // Redirect non-owners
   if (user?.role !== "OWNER") {
@@ -348,20 +358,51 @@ export default function Payroll() {
                 {dashboard.teachersWithBalances.map((teacher: any) => (
                   <div
                     key={teacher._id}
-                    className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => navigate(`/teachers/${teacher._id}`)}
+                    className="p-4 border rounded-lg hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">{teacher.name}</span>
+                      <span 
+                        className="font-medium cursor-pointer hover:text-primary"
+                        onClick={() => navigate(`/teachers/${teacher._id}`)}
+                      >
+                        {teacher.name}
+                      </span>
                       <Badge className="capitalize">{teacher.subject}</Badge>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-3">
                       <span className="text-sm text-muted-foreground">
                         Verified Balance
                       </span>
                       <span className="text-lg font-bold text-green-600">
                         Rs. {(teacher.balance?.verified || 0).toLocaleString()}
                       </span>
+                    </div>
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDepositTeacher({ id: teacher._id, name: teacher.name });
+                        }}
+                      >
+                        <Wallet className="h-3 w-3 mr-1" />
+                        Deposit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEarningsTeacher({ id: teacher._id, name: teacher.name });
+                        }}
+                      >
+                        <ChartBar className="h-3 w-3 mr-1" />
+                        Details
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -466,6 +507,35 @@ export default function Payroll() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Teacher Deposit Modal */}
+      {depositTeacher && (
+        <TeacherDepositModal
+          teacherId={depositTeacher.id}
+          teacherName={depositTeacher.name}
+          open={!!depositTeacher}
+          onOpenChange={(open) => {
+            if (!open) setDepositTeacher(null);
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["payroll-dashboard"] });
+            queryClient.invalidateQueries({ queryKey: ["teacher-payroll-report"] });
+            setDepositTeacher(null);
+          }}
+        />
+      )}
+
+      {/* Teacher Earnings Details Modal */}
+      {earningsTeacher && (
+        <TeacherEarningsDetails
+          teacherId={earningsTeacher.id}
+          teacherName={earningsTeacher.name}
+          open={!!earningsTeacher}
+          onOpenChange={(open) => {
+            if (!open) setEarningsTeacher(null);
+          }}
+        />
+      )}
 
       {/* ======= TEACHER REVENUE REPORT ======= */}
       <TeacherPayrollReportSection />

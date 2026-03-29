@@ -74,6 +74,7 @@ import {
   Upload,
   Receipt,
   ChevronDown,
+  Building2,
 } from "lucide-react";
 import {
   BarChart,
@@ -92,6 +93,8 @@ import {
   Area,
   AreaChart,
 } from "recharts";
+import { AcademySettlements } from "@/components/finance/AcademySettlements";
+import { OwnerBreakdownReport } from "@/components/finance/OwnerBreakdownReport";
 
 // API Base URL - Auto-detect Codespaces
 const getApiBaseUrl = () => {
@@ -864,6 +867,43 @@ const OwnerDashboard = () => {
             </div>
           </div>
 
+        </div>
+
+        {/* Finance Breakdown & Settlements - Owner Only Section */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {/* Owner Financial Breakdown */}
+          <Card className="border-slate-200 bg-white shadow-xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                <DollarSign className="h-5 w-5 text-emerald-500" />
+                Financial Breakdown
+              </CardTitle>
+              <CardDescription>Real-time view of your academy finances</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OwnerBreakdownReport 
+                onViewSettlements={() => {
+                  const settlementsEl = document.getElementById('academy-settlements-section');
+                  if (settlementsEl) settlementsEl.scrollIntoView({ behavior: 'smooth' });
+                }}
+                onViewPayroll={() => window.location.href = '/payroll'}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Academy Settlements for Partners */}
+          <Card id="academy-settlements-section" className="border-slate-200 bg-white shadow-xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                <Building2 className="h-5 w-5 text-purple-500" />
+                Partner Academy Settlements
+              </CardTitle>
+              <CardDescription>Manage deferred academy share for partners</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AcademySettlements />
+            </CardContent>
+          </Card>
         </div>
 
         {/* Charts Section */}

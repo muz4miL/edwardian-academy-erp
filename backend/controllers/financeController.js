@@ -26,7 +26,11 @@ const {
   executeDailyClose,
   createWithdrawalAdjustments,
   detectClassRevenueMode,
+  getPendingSettlementsSummary,
+  getPartnerPendingSettlements,
+  releasePartnerAcademySettlements,
 } = require("../helpers/revenueEngine");
+const AcademySettlement = require("../models/AcademySettlement");
 
 // =====================================================================
 // UNIFIED EXPENSE HELPER — Combines Transaction(EXPENSE) + Expense model
@@ -3082,6 +3086,326 @@ exports.getAcademyPoolReport = async (req, res) => {
     });
   } catch (error) {
     console.error("getAcademyPoolReport error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================================
+// ACADEMY SETTLEMENTS - Partner Deferred Academy Share Management
+// =====================================================================
+
+/**
+ * Get summary of pending academy settlements for all partners.
+ * Used by Owner (Waqar) to see what he owes partners.
+ * @route GET /api/finance/academy-settlements/summary
+ * @access OWNER only
+ */
+exports.getAcademySettlementsSummary = async (req, res) => {
+  try {
+    const summary = await getPendingSettlementsSummary();
+    
+    // Get user details for each partner
+    const partnerIds = summary.map(s => s._id);
+    const partners = await User.find({ _id: { $in: partnerIds } })
+      .select("fullName role profileImage")
+      .lean();
+    const partnerMap = new Map(partners.map(p => [p._id.toString(), p]));
+
+    const enrichedSummary = summary.map(s => ({
+      partnerId: s._id,
+      partnerName: s.partnerName,
+      partnerRole: s.partnerRole,
+      percentage: s.percentage,
+      totalPendingAmount: s.totalAmount,
+      pendingCount: s.count,
+      oldestSettlement: s.oldestDate,
+      newestSettlement: s.newestDate,
+      profileImage: partnerMap.get(s._id?.toString())?.profileImage || null,
+    }));
+
+    // Calculate total
+    const totalPending = enrichedSummary.reduce((sum, s) => sum + s.totalPendingAmount, 0);
+
+    return res.json({
+      success: true,
+      data: {
+        partners: enrichedSummary,
+        totalPending,
+        totalPartners: enrichedSummary.length,
+      },
+    });
+  } catch (error) {
+    console.error("getAcademySettlementsSummary error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Get detailed pending settlements for a specific partner.
+ * Shows breakdown of each settlement with source details.
+ * @route GET /api/finance/academy-settlements/partner/:partnerId
+ * @access OWNER only
+ */
+exports.getPartnerSettlementDetails = async (req, res) => {
+  try {
+    const { partnerId } = req.params;
+    
+    const settlements = await getPartnerPendingSettlements(partnerId);
+    const totalStats = await AcademySettlement.getPendingTotal(partnerId);
+
+    // Get partner info
+    const partner = await User.findById(partnerId).select("fullName role profileImage").lean();
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    // Group settlements by class for easier viewing
+    const byClass = {};
+    for (const s of settlements) {
+      const className = s.sourceDetails?.className || "Unknown Class";
+      if (!byClass[className]) {
+        byClass[className] = { className, settlements: [], total: 0 };
+      }
+      byClass[className].settlements.push({
+        _id: s._id,
+        amount: s.amount,
+        percentage: s.percentage,
+        sourceDate: s.sourceDate,
+        studentName: s.sourceDetails?.studentName || "",
+        subject: s.sourceDetails?.subject || "",
+        teacherName: s.sourceDetails?.teacherName || "",
+        totalAcademyShare: s.sourceDetails?.totalAcademyShare || 0,
+        calculationProof: s.sourceDetails?.calculationProof || "",
+      });
+      byClass[className].total += s.amount;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        partner: {
+          _id: partner._id,
+          fullName: partner.fullName,
+          role: partner.role,
+          profileImage: partner.profileImage,
+        },
+        summary: {
+          totalPending: totalStats.total,
+          pendingCount: totalStats.count,
+        },
+        byClass: Object.values(byClass).sort((a, b) => b.total - a.total),
+        settlements,
+      },
+    });
+  } catch (error) {
+    console.error("getPartnerSettlementDetails error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Release pending settlements for a partner.
+ * Creates DailyRevenue entry and updates partner's floating balance.
+ * @route POST /api/finance/academy-settlements/release/:partnerId
+ * @access OWNER only
+ */
+exports.releasePartnerSettlements = async (req, res) => {
+  try {
+    const { partnerId } = req.params;
+    const { partial, amount, notes } = req.body;
+    const releasedBy = req.user;
+
+    // Verify partner exists
+    const partner = await User.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    // Get current pending total for validation
+    const currentStats = await AcademySettlement.getPendingTotal(partnerId);
+    if (currentStats.count === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "No pending settlements to release for this partner" 
+      });
+    }
+
+    // If partial release, validate amount
+    if (partial && (!amount || amount <= 0 || amount > currentStats.total)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid amount. Must be between 1 and ${currentStats.total}`,
+      });
+    }
+
+    // Perform release
+    const result = await releasePartnerAcademySettlements(partnerId, releasedBy, {
+      partial: !!partial,
+      amount: partial ? amount : undefined,
+      notes: notes || `Released by ${releasedBy.fullName}`,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    // Create notification for partner
+    await Notification.create({
+      title: "Academy Share Released",
+      message: `Your academy share of PKR ${result.releasedAmount.toLocaleString()} has been released by ${releasedBy.fullName}. It is now available in your closing dashboard.`,
+      type: "finance",
+      priority: "high",
+      recipients: [partnerId],
+      metadata: {
+        releasedAmount: result.releasedAmount,
+        releasedBy: releasedBy._id,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: `Released PKR ${result.releasedAmount.toLocaleString()} to ${partner.fullName}`,
+      data: {
+        releasedAmount: result.releasedAmount,
+        releasedCount: result.releasedCount,
+        remainingPending: result.remainingPending,
+        partnerName: partner.fullName,
+      },
+    });
+  } catch (error) {
+    console.error("releasePartnerSettlements error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Get settlement history (released settlements).
+ * @route GET /api/finance/academy-settlements/history
+ * @access OWNER only
+ */
+exports.getSettlementHistory = async (req, res) => {
+  try {
+    const { partnerId, startDate, endDate, limit = 100 } = req.query;
+
+    const match = { status: "RELEASED" };
+    if (partnerId) match.partnerId = new mongoose.Types.ObjectId(partnerId);
+    if (startDate && endDate) {
+      match.releasedAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    const history = await AcademySettlement.find(match)
+      .sort({ releasedAt: -1 })
+      .limit(parseInt(limit))
+      .lean();
+
+    // Group by release date
+    const byDate = {};
+    for (const h of history) {
+      const dateKey = h.releasedAt?.toISOString().split("T")[0] || "Unknown";
+      if (!byDate[dateKey]) {
+        byDate[dateKey] = { date: dateKey, settlements: [], total: 0 };
+      }
+      byDate[dateKey].settlements.push(h);
+      byDate[dateKey].total += h.amount;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        history,
+        byDate: Object.values(byDate).sort((a, b) => new Date(b.date) - new Date(a.date)),
+        totalReleased: history.reduce((sum, h) => sum + h.amount, 0),
+      },
+    });
+  } catch (error) {
+    console.error("getSettlementHistory error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Get Owner's dashboard breakdown showing own earnings vs teacher collections vs settlements.
+ * @route GET /api/finance/owner-breakdown
+ * @access OWNER only
+ */
+exports.getOwnerBreakdown = async (req, res) => {
+  try {
+    const owner = req.user;
+    if (owner.role !== "OWNER") {
+      return res.status(403).json({ success: false, message: "Owner access only" });
+    }
+
+    // Get owner's uncollected revenue
+    const ownerPreview = await getClosePreview(owner._id);
+
+    // Get teacher balances (what will be paid later)
+    const teachers = await Teacher.find({ status: "active" }).select("name balance subject").lean();
+    const teacherCollections = teachers.map(t => ({
+      teacherId: t._id,
+      teacherName: t.name,
+      subject: t.subject,
+      floating: t.balance?.floating || 0,
+      verified: t.balance?.verified || 0,
+      pending: t.balance?.pending || 0,
+      total: (t.balance?.floating || 0) + (t.balance?.verified || 0),
+    })).filter(t => t.total > 0);
+
+    // Get pending partner settlements
+    const pendingSettlements = await getPendingSettlementsSummary();
+    const totalPendingSettlements = pendingSettlements.reduce((sum, s) => sum + s.totalAmount, 0);
+
+    // Get today's fee collections
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayFeeRecords = await FeeRecord.find({
+      createdAt: { $gte: startOfToday },
+    }).lean();
+    const todayTotal = todayFeeRecords.reduce((sum, f) => sum + (f.amount || 0), 0);
+
+    return res.json({
+      success: true,
+      data: {
+        owner: {
+          fullName: owner.fullName,
+          role: owner.role,
+        },
+        ownEarnings: {
+          tuitionShare: ownerPreview.tuitionRevenue.total,
+          academyShare: ownerPreview.academyShareRevenue.total,
+          adjustments: ownerPreview.withdrawalAdjustments.total,
+          netTotal: ownerPreview.netTotal,
+          entryCount: ownerPreview.totalEntries,
+        },
+        teacherCollections: {
+          teachers: teacherCollections,
+          totalFloating: teacherCollections.reduce((sum, t) => sum + t.floating, 0),
+          totalVerified: teacherCollections.reduce((sum, t) => sum + t.verified, 0),
+          totalOwed: teacherCollections.reduce((sum, t) => sum + t.total, 0),
+          teacherCount: teacherCollections.length,
+        },
+        partnerSettlements: {
+          partners: pendingSettlements.map(s => ({
+            partnerId: s._id,
+            partnerName: s.partnerName,
+            pendingAmount: s.totalAmount,
+            pendingCount: s.count,
+          })),
+          totalPending: totalPendingSettlements,
+          partnerCount: pendingSettlements.length,
+        },
+        todaySummary: {
+          feeCollected: todayTotal,
+          recordCount: todayFeeRecords.length,
+        },
+        // What owner can close right now
+        availableToClose: ownerPreview.netTotal,
+      },
+    });
+  } catch (error) {
+    console.error("getOwnerBreakdown error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

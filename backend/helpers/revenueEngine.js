@@ -16,6 +16,7 @@ const User = require("../models/User");
 const Class = require("../models/Class");
 const Configuration = require("../models/Configuration");
 const DailyRevenue = require("../models/DailyRevenue");
+const AcademySettlement = require("../models/AcademySettlement");
 
 const normalizeObjectId = (value) => {
   if (!value) return null;
@@ -327,6 +328,245 @@ async function distributeAcademyShare(amount, config) {
     { userId: partnerIds.zahid, fullName: "Dr. Zahid Khan", role: "PARTNER", percentage: split.zahid, amount: zahidShare },
     { userId: partnerIds.saud, fullName: "Sir Shah Saud", role: "PARTNER", percentage: split.saud, amount: saudShare },
   ].filter(p => p.amount > 0);
+}
+
+/**
+ * Distribute academy's share with DEFERRED partner settlements.
+ * 
+ * KEY CHANGE: Partners do NOT receive immediate academy share credit.
+ * Instead, AcademySettlement records are created (PENDING status).
+ * Only the OWNER (Waqar) gets immediate credit.
+ * 
+ * Partners can SEE their pending academy share but can't close it
+ * until Waqar releases it via the Academy Settlements page.
+ * 
+ * @param {number} amount - Academy's share amount
+ * @param {Object} config - Configuration document
+ * @param {Object} sourceInfo - Details about where this came from
+ * @returns {{
+ *   ownerShare: {userId, amount, percentage},
+ *   partnerSettlements: Array<AcademySettlement>,
+ *   fullDistribution: Array
+ * }}
+ */
+async function distributeAcademyShareDeferred(amount, config, sourceInfo = {}) {
+  if (!config) config = await Configuration.findOne();
+  const normalizedAmount = toSafeInt(amount);
+  if (normalizedAmount <= 0) {
+    return { ownerShare: null, partnerSettlements: [], fullDistribution: [] };
+  }
+
+  // Calculate the full distribution first
+  const fullDistribution = await distributeAcademyShare(normalizedAmount, config);
+
+  let ownerShare = null;
+  const partnerSettlements = [];
+
+  for (const dist of fullDistribution) {
+    if (dist.role === "OWNER") {
+      // Owner gets immediate credit (returned for DailyRevenue entry)
+      ownerShare = {
+        userId: dist.userId,
+        fullName: dist.fullName,
+        role: dist.role,
+        percentage: dist.percentage,
+        amount: dist.amount,
+      };
+    } else if (dist.role === "PARTNER" && dist.amount > 0) {
+      // Partners get deferred settlement (PENDING status)
+      try {
+        const settlement = new AcademySettlement({
+          partnerId: dist.userId,
+          partnerName: dist.fullName,
+          partnerRole: dist.role,
+          percentage: dist.percentage,
+          amount: dist.amount,
+          status: "PENDING",
+          sourceDate: new Date(),
+          sourceDetails: {
+            feeRecordId: sourceInfo.feeRecordId || null,
+            studentId: sourceInfo.studentId || null,
+            studentName: sourceInfo.studentName || "",
+            classId: sourceInfo.classId || null,
+            className: sourceInfo.className || "",
+            subject: sourceInfo.subject || "",
+            teacherId: sourceInfo.teacherId || null,
+            teacherName: sourceInfo.teacherName || "",
+            totalAcademyShare: normalizedAmount,
+            calculationProof: `Total Academy Share: PKR ${normalizedAmount} × ${dist.percentage}% = PKR ${dist.amount}`,
+          },
+          sessionRef: sourceInfo.sessionRef || null,
+          sessionName: sourceInfo.sessionName || "",
+        });
+
+        await settlement.save();
+        partnerSettlements.push(settlement);
+      } catch (err) {
+        console.error(`Failed to create AcademySettlement for ${dist.fullName}:`, err.message);
+      }
+    }
+  }
+
+  return { ownerShare, partnerSettlements, fullDistribution };
+}
+
+/**
+ * Release pending academy settlements for a partner.
+ * Called by Waqar when he decides to pay out partner's academy share.
+ * 
+ * @param {string} partnerId - Partner's user ID
+ * @param {Object} releasedBy - User who is releasing (must be OWNER)
+ * @param {Object} options - { partial: boolean, amount: number, notes: string }
+ * @returns {{success, releasedAmount, releasedCount, dailyRevenueEntry}}
+ */
+async function releasePartnerAcademySettlements(partnerId, releasedBy, options = {}) {
+  const pendingSettlements = await AcademySettlement.find({
+    partnerId,
+    status: "PENDING",
+  }).sort({ sourceDate: 1 });
+
+  if (pendingSettlements.length === 0) {
+    return { success: false, message: "No pending settlements found for this partner." };
+  }
+
+  const totalPending = pendingSettlements.reduce((sum, s) => sum + s.amount, 0);
+  let amountToRelease = options.partial ? Math.min(options.amount || 0, totalPending) : totalPending;
+  
+  if (amountToRelease <= 0) {
+    return { success: false, message: "No amount to release." };
+  }
+
+  const releasedSettlements = [];
+  let releasedAmount = 0;
+
+  // Release settlements in order (oldest first) until we hit the amount
+  for (const settlement of pendingSettlements) {
+    if (releasedAmount >= amountToRelease) break;
+
+    const remainingToRelease = amountToRelease - releasedAmount;
+    
+    if (settlement.amount <= remainingToRelease) {
+      // Release entire settlement
+      settlement.status = "RELEASED";
+      settlement.releasedAt = new Date();
+      settlement.releasedBy = releasedBy._id || releasedBy;
+      settlement.releasedByName = releasedBy.fullName || "System";
+      settlement.releaseNotes = options.notes || "";
+      await settlement.save();
+      
+      releasedAmount += settlement.amount;
+      releasedSettlements.push(settlement);
+    } else {
+      // Partial release: split the settlement
+      // Create a new released settlement for the partial amount
+      const partialSettlement = new AcademySettlement({
+        ...settlement.toObject(),
+        _id: undefined,
+        amount: remainingToRelease,
+        status: "RELEASED",
+        releasedAt: new Date(),
+        releasedBy: releasedBy._id || releasedBy,
+        releasedByName: releasedBy.fullName || "System",
+        releaseNotes: options.notes || `Partial release from settlement ${settlement._id}`,
+      });
+      await partialSettlement.save();
+      
+      // Reduce the original settlement
+      settlement.amount -= remainingToRelease;
+      await settlement.save();
+      
+      releasedAmount += remainingToRelease;
+      releasedSettlements.push(partialSettlement);
+    }
+  }
+
+  // Create DailyRevenue entry for the partner to close
+  const partner = await User.findById(partnerId);
+  if (partner && releasedAmount > 0) {
+    const dailyRevenueEntry = {
+      partner: partnerId,
+      date: new Date(),
+      amount: releasedAmount,
+      source: "TUITION",
+      revenueType: "ACADEMY_SHARE",
+      status: "UNCOLLECTED",
+      className: `Academy Settlement Release`,
+      studentName: "",
+      description: `Academy share released by ${releasedBy.fullName || "Owner"}: PKR ${releasedAmount}`,
+      splitDetails: {
+        description: `Released ${releasedSettlements.length} settlement(s) totaling PKR ${releasedAmount}`,
+        settlementsReleased: releasedSettlements.map(s => s._id),
+        totalPendingBefore: totalPending,
+        remainingPending: totalPending - releasedAmount,
+      },
+    };
+
+    const created = await DailyRevenue.create(dailyRevenueEntry);
+
+    // Update settlement records with DailyRevenue reference
+    for (const s of releasedSettlements) {
+      s.dailyRevenueId = created._id;
+      await s.save();
+    }
+
+    // Update partner's floating balance
+    if (!partner.walletBalance) partner.walletBalance = { floating: 0, verified: 0 };
+    partner.walletBalance.floating += releasedAmount;
+    await partner.save();
+
+    return {
+      success: true,
+      releasedAmount,
+      releasedCount: releasedSettlements.length,
+      remainingPending: totalPending - releasedAmount,
+      dailyRevenueEntry: created,
+    };
+  }
+
+  return {
+    success: true,
+    releasedAmount,
+    releasedCount: releasedSettlements.length,
+    remainingPending: totalPending - releasedAmount,
+  };
+}
+
+/**
+ * Cancel academy settlements (e.g., due to student withdrawal).
+ * 
+ * @param {string} feeRecordId - The FeeRecord that generated these settlements
+ * @param {Object} cancelledBy - User cancelling
+ * @param {string} reason - Reason for cancellation
+ */
+async function cancelAcademySettlementsByFeeRecord(feeRecordId, cancelledBy, reason = "Student withdrawal") {
+  const settlements = await AcademySettlement.find({
+    "sourceDetails.feeRecordId": feeRecordId,
+    status: "PENDING",
+  });
+
+  for (const settlement of settlements) {
+    settlement.status = "CANCELLED";
+    settlement.cancelledAt = new Date();
+    settlement.cancelledBy = cancelledBy._id || cancelledBy;
+    settlement.cancellationReason = reason;
+    await settlement.save();
+  }
+
+  return { cancelled: settlements.length };
+}
+
+/**
+ * Get pending settlements summary for all partners (for Owner dashboard).
+ */
+async function getPendingSettlementsSummary() {
+  return AcademySettlement.getAllPendingSummary();
+}
+
+/**
+ * Get detailed pending settlements for a specific partner.
+ */
+async function getPartnerPendingSettlements(partnerId) {
+  return AcademySettlement.getPendingForPartner(partnerId);
 }
 
 /**
@@ -658,6 +898,11 @@ module.exports = {
   calculateTuitionSplit,
   calculateAcademySplit,
   distributeAcademyShare,
+  distributeAcademyShareDeferred,
+  releasePartnerAcademySettlements,
+  cancelAcademySettlementsByFeeRecord,
+  getPendingSettlementsSummary,
+  getPartnerPendingSettlements,
   splitFeeAmongTeachers,
   createDailyRevenueEntries,
   createWithdrawalAdjustments,

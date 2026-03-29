@@ -123,9 +123,17 @@ const feeRecordSchema = new mongoose.Schema(
         {
           subject: { type: String, required: true, trim: true },
           subjectPrice: { type: Number, default: 0, min: 0 },
+          // Per-subject discount tracking
+          originalPrice: { type: Number, default: 0, min: 0 }, // Price before discount
+          discountAmount: { type: Number, default: 0, min: 0 }, // Discount applied
+          discountReason: { type: String, trim: true },
+          effectivePrice: { type: Number, default: 0, min: 0 }, // Price after discount (subjectPrice)
           teacherShare: { type: Number, default: 0, min: 0 },
           academyShare: { type: Number, default: 0, min: 0 },
           ownerPartnerShare: { type: Number, default: 0, min: 0 },
+          // How discount affected teacher share
+          teacherShareBeforeDiscount: { type: Number, default: 0, min: 0 },
+          teacherShareReduction: { type: Number, default: 0, min: 0 },
           compensationType: {
             type: String,
             enum: ["percentage", "fixed", "hybrid", "perStudent", "owner-partner"],
@@ -151,6 +159,23 @@ const feeRecordSchema = new mongoose.Schema(
         },
       ],
       default: [],
+    },
+    // Total discount summary for quick lookup
+    totalDiscountBreakdown: {
+      totalOriginalFee: { type: Number, default: 0 },
+      totalDiscount: { type: Number, default: 0 },
+      totalEffectiveFee: { type: Number, default: 0 },
+      subjectDiscounts: {
+        type: [
+          {
+            subject: String,
+            originalFee: Number,
+            discount: Number,
+            effectiveFee: Number,
+          },
+        ],
+        default: [],
+      },
     },
     // Academy pool distribution (who gets the 30% academy share)
     academyDistribution: {

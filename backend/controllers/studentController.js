@@ -12,8 +12,10 @@ const {
   detectClassRevenueMode,
   splitFeeAmongTeachers,
   distributeAcademyShare,
+  distributeAcademyShareDeferred,
   createDailyRevenueEntries,
 } = require("../helpers/revenueEngine");
+const AcademySettlement = require("../models/AcademySettlement");
 
 const normalizeTeacherId = (teacherRef) => {
   if (!teacherRef) return null;
@@ -104,12 +106,24 @@ const processRevenueDistribution = async ({
   );
   
   const studentSubjectObjects = (student.subjects || [])
-    .map((s) => ({
-      name: typeof s === "string" ? s : s?.name,
-      fee: toSafeInt(typeof s === "string" ? 0 : s?.fee),
-      teacherId: normalizeTeacherId(typeof s === "string" ? null : s?.teacherId),
-      teacherName: typeof s === "string" ? null : s?.teacherName,
-    }))
+    .map((s) => {
+      if (typeof s === "string") {
+        return { name: s, fee: 0, effectiveFee: 0, discount: 0, discountEnabled: false, teacherId: null, teacherName: null };
+      }
+      const originalFee = toSafeInt(s?.fee);
+      const discount = (s?.discountEnabled && s?.discount > 0) ? Math.min(toSafeInt(s.discount), originalFee) : 0;
+      const effectiveFee = originalFee - discount;
+      return {
+        name: s?.name,
+        fee: originalFee,
+        effectiveFee,
+        discount,
+        discountEnabled: s?.discountEnabled || false,
+        discountReason: s?.discountReason || "",
+        teacherId: normalizeTeacherId(s?.teacherId),
+        teacherName: s?.teacherName,
+      };
+    })
     .filter((s) => s.name);
 
   const payableSubjects = selectedSubjectSet.size > 0
@@ -117,18 +131,20 @@ const processRevenueDistribution = async ({
     : studentSubjectObjects;
 
   if (payableSubjects.length > 0) {
-    const totalSubjectFees = payableSubjects.reduce((sum, s) => sum + toSafeInt(s.fee), 0);
+    // Use EFFECTIVE fees (after per-subject discounts) for proportional splitting
+    const totalEffectiveFees = payableSubjects.reduce((sum, s) => sum + toSafeInt(s.effectiveFee), 0);
     let allocatedSoFar = 0;
 
     for (let idx = 0; idx < payableSubjects.length; idx++) {
       const subj = payableSubjects[idx];
       const subjName = subj.name;
-      const subjFee = toSafeInt(subj.fee);
+      const subjEffectiveFee = toSafeInt(subj.effectiveFee);
       const explicitTeacherId = normalizeTeacherId(subj.teacherId);
 
+      // Proportional split based on EFFECTIVE (discounted) fees
       let subjShare = (idx === payableSubjects.length - 1)
         ? amountNum - allocatedSoFar
-        : (totalSubjectFees > 0 ? Math.floor((subjFee * amountNum) / totalSubjectFees) : Math.floor(amountNum / payableSubjects.length));
+        : (totalEffectiveFees > 0 ? Math.floor((subjEffectiveFee * amountNum) / totalEffectiveFees) : Math.floor(amountNum / payableSubjects.length));
       
       allocatedSoFar += subjShare;
       if (subjShare <= 0) continue;
@@ -148,27 +164,68 @@ const processRevenueDistribution = async ({
       }
 
       if (subjectTeacherEntries.length === 0) {
-        // Fallback: No teacher assigned
+        // Fallback: No teacher assigned - distribute to academy pool
+        // Apply same DEFERRED logic for PARTNERS
         const fallbackAcademyDistribution = await distributeAcademyShare(subjShare, config);
         for (const dist of fallbackAcademyDistribution) {
           if (dist.amount > 0 && dist.userId) {
             const user = await User.findById(dist.userId);
             if (user) {
-              if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
-              user.walletBalance.floating += dist.amount;
-              await user.save();
+              const proof = { description: `Academy fallback (${subjName}): ${student.studentName} → ${dist.fullName}` };
+              
+              // Check if user is PARTNER - defer their academy share
+              if (user.role === "PARTNER") {
+                // Create deferred settlement record
+                await AcademySettlement.create({
+                  partnerId: user._id,
+                  partnerName: user.fullName,
+                  partnerRole: user.role || "PARTNER",
+                  percentage: dist.percentage || 0,
+                  amount: dist.amount,
+                  sourceDetails: {
+                    feeRecordId: null,
+                    studentId: student._id,
+                    studentName: student.studentName,
+                    className: classDoc?.classTitle || student.class,
+                    subject: subjName,
+                    originalFee: subjShare,
+                    calculationProof: `Fallback academy share (${dist.percentage || 0}%) = PKR ${dist.amount}`,
+                    academyPercentage: dist.percentage || 0,
+                  },
+                  status: "PENDING",
+                });
+                
+                dailyRevenueEntries.push({
+                  userId: dist.userId,
+                  amount: dist.amount,
+                  revenueType: "ACADEMY_SHARE",
+                  className: classDoc?.classTitle || student.class,
+                  studentRef: student._id,
+                  studentName: student.studentName,
+                  subject: subjName,
+                  description: "Academy share (DEFERRED - pending release)",
+                  splitDetails: proof,
+                  isDeferred: true,
+                });
+              } else {
+                // OWNER gets immediate credit
+                if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
+                user.walletBalance.floating += dist.amount;
+                await user.save();
+                
+                dailyRevenueEntries.push({
+                  userId: dist.userId,
+                  amount: dist.amount,
+                  revenueType: "ACADEMY_SHARE",
+                  className: classDoc?.classTitle || student.class,
+                  studentRef: student._id,
+                  studentName: student.studentName,
+                  subject: subjName,
+                  description: "Academy share split",
+                  splitDetails: proof,
+                });
+              }
             }
-            dailyRevenueEntries.push({
-              userId: dist.userId,
-              amount: dist.amount,
-              revenueType: "ACADEMY_SHARE",
-              className: classDoc?.classTitle || student.class,
-              studentRef: student._id,
-              studentName: student.studentName,
-              subject: subjName,
-              description: "Academy share split",
-              splitDetails: { description: `Academy fallback (${subjName}): ${student.studentName} → ${dist.fullName}` },
-            });
           }
         }
         totalAcademyShare += subjShare;
@@ -284,43 +341,85 @@ const processRevenueDistribution = async ({
         totalTeacherShare += payout.amount;
       }
 
-      // 3. Academy Distribution
+      // 3. Academy Distribution - DEFERRED for PARTNERS, IMMEDIATE for OWNER
       totalAcademyShare += split.academyAmount;
       for (const dist of split.academyDistribution) {
         if (dist.amount > 0 && dist.userId) {
           const user = await User.findById(dist.userId);
           if (user) {
-            if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
-            user.walletBalance.floating += dist.amount;
-            await user.save();
+            const proof = {
+              studentName: student.studentName,
+              subject: subjName,
+              calculationProof: `PKR ${subjShare} (${subjName}) pool share (${dist.percentage}%) = PKR ${dist.amount}`,
+            };
+
+            // Check if user is PARTNER - defer their academy share
+            if (user.role === "PARTNER") {
+              // Create deferred settlement record instead of immediate credit
+              await AcademySettlement.create({
+                partnerId: user._id,
+                partnerName: user.fullName,
+                partnerRole: user.role || "PARTNER",
+                percentage: dist.percentage || 0,
+                amount: dist.amount,
+                sourceDetails: {
+                  feeRecordId: null, // Will be set after fee record is created
+                  studentId: student._id,
+                  studentName: student.studentName,
+                  className: classDoc?.classTitle || student.class,
+                  subject: subjName,
+                  originalFee: subjShare,
+                  calculationProof: proof.calculationProof,
+                  academyPercentage: dist.percentage,
+                },
+                status: "PENDING",
+              });
+              
+              // Note: Partner's wallet NOT credited yet - deferred until release
+              // But still record daily revenue for tracking (marked as DEFERRED)
+              dailyRevenueEntries.push({
+                userId: dist.userId,
+                amount: dist.amount,
+                revenueType: "ACADEMY_SHARE",
+                className: classDoc?.classTitle || student.class,
+                studentRef: student._id,
+                studentName: student.studentName,
+                subject: subjName,
+                description: "Academy share (DEFERRED - pending release)",
+                splitDetails: proof,
+                isDeferred: true,
+              });
+            } else {
+              // OWNER gets immediate credit
+              if (!user.walletBalance) user.walletBalance = { floating: 0, verified: 0 };
+              user.walletBalance.floating += dist.amount;
+              await user.save();
+              
+              dailyRevenueEntries.push({
+                userId: dist.userId,
+                amount: dist.amount,
+                revenueType: "ACADEMY_SHARE",
+                className: classDoc?.classTitle || student.class,
+                studentRef: student._id,
+                studentName: student.studentName,
+                subject: subjName,
+                description: "Academy share split",
+                splitDetails: proof,
+              });
+            }
+            
+            creditTransactions.push({
+              type: "INCOME",
+              category: "Academy Share",
+              stream: "ACADEMY_POOL",
+              amount: dist.amount,
+              description: `Academy share (${subjName}): ${student.studentName} → ${dist.fullName}`,
+              collectedBy: req.user?._id,
+              status: user.role === "PARTNER" ? "DEFERRED" : "FLOATING",
+              date: new Date(),
+              studentId: student._id,
+            });
           }
-          const proof = {
-            studentName: student.studentName,
-            subject: subjName,
-            calculationProof: `PKR ${subjShare} (${subjName}) pool share (${dist.percentage}%) = PKR ${dist.amount}`,
-          };
-          dailyRevenueEntries.push({
-            userId: dist.userId,
-            amount: dist.amount,
-            revenueType: "ACADEMY_SHARE",
-            className: classDoc?.classTitle || student.class,
-            studentRef: student._id,
-            studentName: student.studentName,
-            subject: subjName,
-            description: "Academy share split",
-            splitDetails: proof,
-          });
-          creditTransactions.push({
-            type: "INCOME",
-            category: "Academy Share",
-            stream: "ACADEMY_POOL",
-            amount: dist.amount,
-            description: `Academy share (${subjName}): ${student.studentName} → ${dist.fullName}`,
-            collectedBy: req.user?._id,
-            status: "FLOATING",
-            date: new Date(),
-            studentId: student._id,
-          });
         }
       }
 

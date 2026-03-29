@@ -14,6 +14,22 @@ const studentSubjectSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Per-subject discount (PKR amount, not percentage)
+    discount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Whether discount is enabled for this subject
+    discountEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    // Reason for discount (optional, for audit)
+    discountReason: {
+      type: String,
+      trim: true,
+    },
     teacherId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Teacher",
@@ -239,6 +255,40 @@ studentSchema.virtual("balance").get(function () {
 studentSchema.virtual("totalSubjectFees").get(function () {
   if (!this.subjects || !Array.isArray(this.subjects)) return 0;
   return this.subjects.reduce((sum, s) => sum + (s.fee || 0), 0);
+});
+
+// Virtual for total discounts applied (sum of all per-subject discounts)
+studentSchema.virtual("totalSubjectDiscounts").get(function () {
+  if (!this.subjects || !Array.isArray(this.subjects)) return 0;
+  return this.subjects.reduce((sum, s) => {
+    if (s.discountEnabled && s.discount > 0) {
+      return sum + Math.min(s.discount, s.fee || 0); // Can't discount more than fee
+    }
+    return sum;
+  }, 0);
+});
+
+// Virtual for effective fee (after all discounts)
+studentSchema.virtual("effectiveFee").get(function () {
+  const subjectTotal = this.totalSubjectFees || 0;
+  const subjectDiscounts = this.totalSubjectDiscounts || 0;
+  const overallDiscount = this.discountAmount || 0;
+  return Math.max(0, subjectTotal - subjectDiscounts - overallDiscount);
+});
+
+// Virtual for subjects with effective (discounted) fees
+studentSchema.virtual("subjectsWithEffectiveFees").get(function () {
+  if (!this.subjects || !Array.isArray(this.subjects)) return [];
+  return this.subjects.map((s) => ({
+    name: s.name,
+    originalFee: s.fee || 0,
+    discount: (s.discountEnabled && s.discount > 0) ? Math.min(s.discount, s.fee || 0) : 0,
+    discountEnabled: s.discountEnabled || false,
+    discountReason: s.discountReason || "",
+    effectiveFee: Math.max(0, (s.fee || 0) - ((s.discountEnabled && s.discount > 0) ? Math.min(s.discount, s.fee || 0) : 0)),
+    teacherId: s.teacherId,
+    teacherName: s.teacherName,
+  }));
 });
 
 // Ensure virtuals are included in JSON responses

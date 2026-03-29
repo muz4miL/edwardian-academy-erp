@@ -4,6 +4,7 @@ const Class = require("../models/Class");
 const Student = require("../models/Student");
 const Timetable = require("../models/Timetable");
 const Configuration = require("../models/Configuration");
+const Session = require("../models/Session");
 
 // Helper: Remove duplicate subjects (case-insensitive), keeping the one with highest fee
 const deduplicateSubjects = (subjects) => {
@@ -381,6 +382,25 @@ router.post("/", async (req, res) => {
 
     // Sanitize data
     const classData = { ...req.body };
+
+    // ========== SESSION VALIDATION ==========
+    if (!classData.session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session is required. Please select an academic session.",
+      });
+    }
+
+    // Check if session ID is valid and exists
+    const sessionExists = await Session.findById(classData.session);
+    if (!sessionExists) {
+      console.log("❌ Invalid session ID:", classData.session);
+      return res.status(400).json({
+        success: false,
+        message: `Invalid session ID: "${classData.session}". Please select a valid academic session from the dropdown.`,
+      });
+    }
+    console.log("✅ Session validated:", sessionExists.sessionName);
 
     // ========== CONFLICT DETECTION (HARD STOP) ==========
     if (

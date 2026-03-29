@@ -17,14 +17,16 @@ const dailyRevenueSchema = new mongoose.Schema(
     // Distinguishes revenue type for dashboard breakdown
     revenueType: {
       type: String,
-      enum: ["TUITION_SHARE", "ACADEMY_SHARE", "WITHDRAWAL_ADJUSTMENT"],
+      enum: ["TUITION_SHARE", "ACADEMY_SHARE", "WITHDRAWAL_ADJUSTMENT", "SETTLEMENT_RELEASE"],
       default: "TUITION_SHARE",
     },
     status: {
       type: String,
-      enum: ["UNCOLLECTED", "COLLECTED"],
+      enum: ["UNCOLLECTED", "COLLECTED", "DEFERRED"],
       default: "UNCOLLECTED",
     },
+    // Flag for partner deferred academy share (not yet released)
+    isDeferred: { type: Boolean, default: false },
     collectedAt: { type: Date },
     // Audit trail: which class/student generated this revenue
     classRef: { type: mongoose.Schema.Types.ObjectId, ref: "Class" },
@@ -42,11 +44,13 @@ const dailyRevenueSchema = new mongoose.Schema(
       splitCount: { type: Number },
       perPersonShare: { type: Number },
       description: { type: String },
+      calculationProof: { type: String },
     },
   },
   { timestamps: true },
 );
 
 dailyRevenueSchema.index({ partner: 1, date: 1, status: 1 });
+dailyRevenueSchema.index({ isDeferred: 1 });
 
 module.exports = mongoose.model("DailyRevenue", dailyRevenueSchema);

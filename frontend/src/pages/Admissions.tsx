@@ -92,6 +92,8 @@ const Admissions = () => {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [subjectFeeOverrides, setSubjectFeeOverrides] = useState<Record<string, number>>({});
   const [subjectTeacherOverrides, setSubjectTeacherOverrides] = useState<Record<string, string>>({});
+  // Per-subject discounts: { normalizedSubjectKey: { enabled: boolean, amount: number, reason: string } }
+  const [subjectDiscounts, setSubjectDiscounts] = useState<Record<string, { enabled: boolean; amount: number; reason: string }>>({});
   const [parentCell, setParentCell] = useState("");
   const [studentCell, setStudentCell] = useState("");
   const [address, setAddress] = useState("");
@@ -306,30 +308,59 @@ const Admissions = () => {
     return getDefaultSubjectFeeByName(subjectName);
   };
 
+  // Get effective fee after per-subject discount
+  const getEffectiveSubjectFee = (subjectName: string) => {
+    const key = normalizeSubjectKey(subjectName);
+    const baseFee = getSubjectFeeByName(subjectName);
+    const discount = subjectDiscounts[key];
+    if (discount?.enabled && discount.amount > 0) {
+      return Math.max(0, baseFee - discount.amount);
+    }
+    return baseFee;
+  };
+
+  // Calculate total discount from per-subject discounts
+  const totalSubjectDiscounts = selectedSubjects.reduce((sum, name) => {
+    const key = normalizeSubjectKey(name);
+    const discount = subjectDiscounts[key];
+    if (discount?.enabled && discount.amount > 0) {
+      return sum + Math.min(discount.amount, getSubjectFeeByName(name)); // Don't allow discount > fee
+    }
+    return sum;
+  }, 0);
+
   const selectedSubjectsTotal = selectedSubjects.reduce(
     (sum, name) => sum + getSubjectFeeByName(name),
     0,
   );
+  
+  // Effective total after discounts
+  const selectedSubjectsTotalAfterDiscount = selectedSubjects.reduce(
+    (sum, name) => sum + getEffectiveSubjectFee(name),
+    0,
+  );
+
   const hasSubjectPricing = selectedSubjects.length > 0 && selectedSubjectsTotal > 0;
 
-  // Primary pricing mode: selected subjects total.
+  // Primary pricing mode: selected subjects total (after discounts).
   useEffect(() => {
     if (isCustomFeeMode) return;
     if (hasSubjectPricing) {
-      setTotalFee(String(selectedSubjectsTotal));
+      setTotalFee(String(selectedSubjectsTotalAfterDiscount));
+      setDiscountAmount(totalSubjectDiscounts);
       return;
     }
     setTotalFee("");
-  }, [isCustomFeeMode, hasSubjectPricing, selectedSubjectsTotal]);
+    setDiscountAmount(0);
+  }, [isCustomFeeMode, hasSubjectPricing, selectedSubjectsTotalAfterDiscount, totalSubjectDiscounts]);
 
-  // Discount is derived from selected subject total when manual override reduces the total.
+  // Discount in custom mode is derived from selected subject total when manual override reduces the total.
   useEffect(() => {
     if (isCustomFeeMode && hasSubjectPricing) {
       const customFee = Number(totalFee) || 0;
-      const discount = Math.max(0, selectedSubjectsTotal - customFee);
-      setDiscountAmount(discount);
-    } else {
-      setDiscountAmount(0);
+      const additionalDiscount = Math.max(0, selectedSubjectsTotal - customFee);
+      // In custom mode, total discount = per-subject discounts + additional lump-sum discount
+      setDiscountAmount(additionalDiscount);
     }
   }, [totalFee, isCustomFeeMode, hasSubjectPricing, selectedSubjectsTotal]);
 
@@ -587,12 +618,20 @@ const Admissions = () => {
         classTeacher?.teacherName ||
         teachers.find((t: any) => t._id === teacherId)?.name ||
         undefined;
+      
+      // Include per-subject discount
+      const discount = subjectDiscounts[key];
+      const discountEnabled = discount?.enabled && discount.amount > 0;
 
       return {
         name: subjectName,
         fee: getSubjectFeeByName(subjectName),
         teacherId,
         teacherName,
+        // Per-subject discount fields
+        discountEnabled,
+        discount: discountEnabled ? Math.min(discount.amount, getSubjectFeeByName(subjectName)) : 0,
+        discountReason: discountEnabled ? discount.reason || '' : '',
       };
     });
 
@@ -612,14 +651,14 @@ const Admissions = () => {
       fatherName,
       class: classTitle,
       group,
-      subjects: subjectsWithFees, // Send as array of {name, fee} objects
+      subjects: subjectsWithFees, // Send as array of {name, fee, discount, discountEnabled, discountReason} objects
       parentCell,
       studentCell: studentCell || undefined,
       address: address || undefined,
       admissionDate: new Date(admissionDate),
       totalFee: Number(totalFee),
       paidAmount: Number(paidAmount) || 0,
-      discountAmount: calculatedDiscount,
+      discountAmount: totalSubjectDiscounts + calculatedDiscount, // Combined: per-subject + any lump-sum
       classRef: selectedClassId,
       sessionRef: selectedSessionId || undefined,
       photo: photo || undefined,
@@ -649,6 +688,7 @@ const Admissions = () => {
     setIsCustomFeeMode(false);
     setSubjectFeeOverrides({});
     setSubjectTeacherOverrides({});
+    setSubjectDiscounts({}); // Clear per-subject discounts
     setFeeValidationError(""); // Clear validation error
     setPhoto(null);
 
@@ -857,6 +897,8 @@ const Admissions = () => {
                       const key = normalizeSubjectKey(subjectName);
                       const inClass = classSubjectNameSet.has(key);
                       const subjectFee = getSubjectFeeByName(subjectName);
+                      const effectiveFee = getEffectiveSubjectFee(subjectName);
+                      const subjectDiscount = subjectDiscounts[key] || { enabled: false, amount: 0, reason: '' };
                       const selectedTeacherId = subjectTeacherOverrides[key] || "";
                       const classTeacher = classSubjectTeacherMap.get(key);
                       const effectiveTeacherId = classTeacher?.teacherId || selectedTeacherId;
@@ -871,7 +913,14 @@ const Admissions = () => {
                               onCheckedChange={() => handleSubjectToggle(subjectName)}
                             />
                             <span>{subjectName}</span>
-                            <span className="ml-auto text-[10px] font-semibold text-slate-600">PKR {subjectFee.toLocaleString()}</span>
+                            <span className={`ml-auto text-[10px] font-semibold ${subjectDiscount.enabled && subjectDiscount.amount > 0 ? "line-through text-slate-400" : "text-slate-600"}`}>
+                              PKR {subjectFee.toLocaleString()}
+                            </span>
+                            {subjectDiscount.enabled && subjectDiscount.amount > 0 && (
+                              <span className="text-[10px] font-bold text-emerald-600">
+                                PKR {effectiveFee.toLocaleString()}
+                              </span>
+                            )}
                             {inClass && <span className="text-[10px] text-emerald-600 font-medium">Class</span>}
                           </label>
 
@@ -886,6 +935,56 @@ const Admissions = () => {
                                   onChange={(e) => handleSubjectFeeChange(subjectName, e.target.value)}
                                   className="h-8"
                                 />
+                              </div>
+
+                              {/* Per-Subject Discount Toggle */}
+                              <div className="space-y-1.5 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[10px] uppercase tracking-wide text-amber-700">Discount</Label>
+                                  <Switch
+                                    checked={subjectDiscount.enabled}
+                                    onCheckedChange={(enabled) =>
+                                      setSubjectDiscounts((prev) => ({
+                                        ...prev,
+                                        [key]: { ...prev[key], enabled, amount: prev[key]?.amount || 0, reason: prev[key]?.reason || '' },
+                                      }))
+                                    }
+                                    className="scale-75"
+                                  />
+                                </div>
+                                {subjectDiscount.enabled && (
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-amber-700">PKR</span>
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={subjectFee}
+                                        placeholder="0"
+                                        value={subjectDiscount.amount || ''}
+                                        onChange={(e) => {
+                                          const amt = Math.min(Number(e.target.value) || 0, subjectFee);
+                                          setSubjectDiscounts((prev) => ({
+                                            ...prev,
+                                            [key]: { ...prev[key], amount: amt, enabled: true, reason: prev[key]?.reason || '' },
+                                          }));
+                                        }}
+                                        className="h-7 text-sm"
+                                      />
+                                    </div>
+                                    <Input
+                                      placeholder="Reason (optional)"
+                                      value={subjectDiscount.reason || ''}
+                                      onChange={(e) =>
+                                        setSubjectDiscounts((prev) => ({
+                                          ...prev,
+                                          [key]: { ...prev[key], reason: e.target.value, enabled: true, amount: prev[key]?.amount || 0 },
+                                        }))
+                                      }
+                                      className="h-7 text-xs"
+                                    />
+                                  </div>
+                                )}
                               </div>
 
                               {!inClass && (

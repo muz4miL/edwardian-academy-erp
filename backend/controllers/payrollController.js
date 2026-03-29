@@ -5,6 +5,8 @@ const Expense = require("../models/Expense");
 const Configuration = require("../models/Configuration");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
+const TeacherDeposit = require("../models/TeacherDeposit");
+const FeeRecord = require("../models/FeeRecord");
 
 // @desc    Teacher requests a cash payout
 // @route   POST /api/payroll/request
@@ -432,6 +434,348 @@ exports.getPayrollDashboard = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while fetching payroll dashboard",
+      error: error.message,
+    });
+  }
+};
+
+// =====================================================================
+// TEACHER DEPOSITS - Arbitrary Payments (Advance, Bonus, Reimbursement)
+// =====================================================================
+
+// @desc    Deposit arbitrary amount to teacher
+// @route   POST /api/payroll/deposit
+// @access  Protected (OWNER only)
+exports.createTeacherDeposit = async (req, res) => {
+  try {
+    const { teacherId, amount, depositType, reason, paymentMethod } = req.body;
+
+    // Validation
+    if (!teacherId || !amount || amount <= 0 || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Teacher ID, valid amount, and reason are required",
+      });
+    }
+
+    // Find teacher
+    const teacher = await Teacher.findById(teacherId);
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: "Teacher not found",
+      });
+    }
+
+    // Create deposit record
+    const deposit = await TeacherDeposit.create({
+      teacherId: teacher._id,
+      teacherName: teacher.name,
+      amount,
+      depositType: depositType || "OTHER",
+      reason,
+      depositedBy: req.user._id,
+      depositedByName: req.user.fullName,
+      paymentMethod: paymentMethod || "CASH",
+      status: "COMPLETED",
+    });
+
+    // Update teacher's balance
+    if (!teacher.balance) teacher.balance = { floating: 0, verified: 0, pending: 0 };
+    
+    // Deposits go directly to verified balance (already given cash)
+    teacher.balance.verified = (teacher.balance.verified || 0) + amount;
+    await teacher.save();
+
+    // Create transaction record
+    const transaction = await Transaction.create({
+      type: "EXPENSE",
+      category: depositType === "ADVANCE" ? "Advance" : depositType === "BONUS" ? "Bonus" : "Other",
+      subCategory: "Teacher Deposit",
+      amount,
+      description: `${depositType || "Deposit"} to ${teacher.name}: ${reason}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      date: new Date(),
+      metadata: {
+        teacherId: teacher._id,
+        teacherName: teacher.name,
+        depositId: deposit._id,
+        depositType,
+      },
+    });
+
+    // Update deposit with transaction reference
+    deposit.transactionId = transaction._id;
+    await deposit.save();
+
+    // Notify teacher
+    await Notification.create({
+      recipient: teacher._id,
+      message: `💰 You received a ${depositType || "deposit"} of PKR ${amount.toLocaleString()} from ${req.user.fullName}. Reason: ${reason}`,
+      type: "FINANCE",
+      relatedId: deposit._id.toString(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Deposited PKR ${amount.toLocaleString()} to ${teacher.name}`,
+      data: {
+        deposit,
+        transaction,
+        newBalance: teacher.balance.verified,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in createTeacherDeposit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating deposit",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get deposit history for a teacher
+// @route   GET /api/payroll/deposits/:teacherId
+// @access  Protected (OWNER only)
+exports.getTeacherDeposits = async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+    const { limit = 50 } = req.query;
+
+    const deposits = await TeacherDeposit.getDepositsForTeacher(teacherId, {
+      limit: parseInt(limit),
+    });
+
+    const totalStats = await TeacherDeposit.getTotalDeposited(teacherId);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        deposits,
+        summary: {
+          totalDeposited: totalStats.total,
+          depositCount: totalStats.count,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getTeacherDeposits:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching deposits",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Reverse a deposit (in case of mistake)
+// @route   POST /api/payroll/deposits/:depositId/reverse
+// @access  Protected (OWNER only)
+exports.reverseTeacherDeposit = async (req, res) => {
+  try {
+    const { depositId } = req.params;
+    const { reason } = req.body;
+
+    const deposit = await TeacherDeposit.findById(depositId);
+    if (!deposit) {
+      return res.status(404).json({
+        success: false,
+        message: "Deposit not found",
+      });
+    }
+
+    if (deposit.status !== "COMPLETED") {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot reverse deposit with status: ${deposit.status}`,
+      });
+    }
+
+    // Find teacher and deduct balance
+    const teacher = await Teacher.findById(deposit.teacherId);
+    if (teacher) {
+      teacher.balance.verified = Math.max(0, (teacher.balance.verified || 0) - deposit.amount);
+      await teacher.save();
+    }
+
+    // Reverse the deposit
+    await deposit.reverse(req.user, reason || "Reversed by Owner");
+
+    // Create reversal transaction
+    await Transaction.create({
+      type: "INCOME",
+      category: "Reversal",
+      subCategory: "Deposit Reversal",
+      amount: deposit.amount,
+      description: `Reversal of deposit to ${deposit.teacherName}: ${reason || "No reason provided"}`,
+      collectedBy: req.user._id,
+      status: "VERIFIED",
+      date: new Date(),
+      metadata: {
+        teacherId: deposit.teacherId,
+        teacherName: deposit.teacherName,
+        originalDepositId: deposit._id,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Deposit of PKR ${deposit.amount.toLocaleString()} reversed`,
+      data: {
+        deposit,
+        newBalance: teacher?.balance?.verified || 0,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in reverseTeacherDeposit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while reversing deposit",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get teacher earnings breakdown (detailed)
+// @route   GET /api/payroll/teacher-earnings/:teacherId
+// @access  Protected (OWNER only)
+exports.getTeacherEarningsBreakdown = async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const teacher = await Teacher.findById(teacherId).lean();
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: "Teacher not found",
+      });
+    }
+
+    // Build date filter
+    const dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // Get fee records where this teacher received a share
+    const feeRecords = await FeeRecord.find({
+      $or: [
+        { teacher: teacherId },
+        { "teachers.teacherId": teacherId },
+      ],
+      ...dateFilter,
+    })
+      .select("amount studentName className subject subjectBreakdown createdAt splitBreakdown teachers totalDiscountBreakdown")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    // Calculate earnings by class and subject
+    const earningsByClass = {};
+    const earningsBySubject = {};
+    let totalEarnings = 0;
+    let totalDiscountImpact = 0;
+
+    for (const fee of feeRecords) {
+      // Check subject breakdown for this teacher's share
+      for (const sb of (fee.subjectBreakdown || [])) {
+        if (sb.teacherId?.toString() === teacherId) {
+          const amount = sb.teacherShare || 0;
+          totalEarnings += amount;
+
+          // Track discount impact
+          if (sb.teacherShareReduction > 0) {
+            totalDiscountImpact += sb.teacherShareReduction;
+          }
+
+          // By class
+          const className = fee.className || "Unknown";
+          if (!earningsByClass[className]) {
+            earningsByClass[className] = { className, total: 0, count: 0, records: [] };
+          }
+          earningsByClass[className].total += amount;
+          earningsByClass[className].count++;
+          earningsByClass[className].records.push({
+            studentName: fee.studentName,
+            subject: sb.subject,
+            amount,
+            originalAmount: sb.teacherShareBeforeDiscount || amount,
+            discountReduction: sb.teacherShareReduction || 0,
+            date: fee.createdAt,
+          });
+
+          // By subject
+          const subject = sb.subject || "Unknown";
+          if (!earningsBySubject[subject]) {
+            earningsBySubject[subject] = { subject, total: 0, count: 0 };
+          }
+          earningsBySubject[subject].total += amount;
+          earningsBySubject[subject].count++;
+        }
+      }
+    }
+
+    // Get deposit history
+    const deposits = await TeacherDeposit.getDepositsForTeacher(teacherId, { limit: 20 });
+    const depositTotal = await TeacherDeposit.getTotalDeposited(teacherId);
+
+    // Get payout history
+    const payouts = await PayoutRequest.find({
+      teacherId,
+      status: "APPROVED",
+      ...dateFilter,
+    })
+      .select("amount approvedAt approvalNotes")
+      .sort({ approvedAt: -1 })
+      .limit(20)
+      .lean();
+
+    const payoutTotal = payouts.reduce((sum, p) => sum + p.amount, 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        teacher: {
+          _id: teacher._id,
+          name: teacher.name,
+          subject: teacher.subject,
+          balance: teacher.balance,
+        },
+        earnings: {
+          total: totalEarnings,
+          discountImpact: totalDiscountImpact,
+          byClass: Object.values(earningsByClass).sort((a, b) => b.total - a.total),
+          bySubject: Object.values(earningsBySubject).sort((a, b) => b.total - a.total),
+        },
+        deposits: {
+          records: deposits,
+          total: depositTotal.total,
+          count: depositTotal.count,
+        },
+        payouts: {
+          records: payouts,
+          total: payoutTotal,
+          count: payouts.length,
+        },
+        netPosition: {
+          earned: totalEarnings,
+          deposited: depositTotal.total,
+          paidOut: payoutTotal,
+          currentBalance: (teacher.balance?.floating || 0) + (teacher.balance?.verified || 0),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error in getTeacherEarningsBreakdown:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching earnings breakdown",
       error: error.message,
     });
   }
