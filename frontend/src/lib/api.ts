@@ -823,7 +823,7 @@ export const financeApi = {
     },
 
     // Academy Settlements - Release
-    releasePartnerSettlements: async (partnerId: string, options?: { amount?: number; notes?: string }) => {
+    releasePartnerSettlements: async (partnerId: string, options?: { partial?: boolean; amount?: number; notes?: string }) => {
         const response = await fetch(`${API_BASE_URL}/finance/academy-settlements/release/${partnerId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -910,6 +910,25 @@ export const payrollApi = {
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.message || 'Failed to fetch earnings breakdown');
+        return data;
+    },
+};
+
+// ========================================
+// Configuration API Endpoints
+// ========================================
+export const configApi = {
+    // Reset all finance data (for testing)
+    // deleteStudents: true will also delete all students
+    resetFinance: async (options?: { deleteStudents?: boolean }) => {
+        const response = await fetch(`${API_BASE_URL}/config/reset-finance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(options || {}),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to reset finance data');
         return data;
     },
 };

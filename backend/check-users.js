@@ -1,32 +1,53 @@
-const mongoose = require('mongoose');
-const User = require('./models/User');
 require('dotenv').config();
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
-const checkUsers = async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ Connected to MongoDB');
+mongoose.connect(process.env.MONGODB_URI).then(async () => {
+  const User = require('./models/User');
+  const Teacher = require('./models/Teacher');
 
-        const users = await User.find({});
-        console.log(`\n📊 Found ${users.length} users in database:\n`);
-
-        if (users.length === 0) {
-            console.log('❌ NO USERS FOUND! Need to seed the database.');
-        } else {
-            users.forEach(user => {
-                console.log(`   - ${user.fullName} (${user.role})`);
-                console.log(`     Username: ${user.username}`);
-                console.log(`     User ID: ${user.userId}`);
-                console.log(`     Active: ${user.isActive}`);
-                console.log('');
-            });
-        }
-
-        process.exit(0);
-    } catch (error) {
-        console.error('❌ Error:', error.message);
-        process.exit(1);
+  console.log('\n=== ALL USERS WITH LOGIN DETAILS ===');
+  const users = await User.find({}).select('+password').lean();
+  
+  for (const u of users) {
+    // Check if password is hashed (bcrypt hashes start with $2a$ or $2b$)
+    const isHashed = u.password && u.password.startsWith('$2');
+    
+    // Get linked teacher for plainPassword
+    let teacherPassword = null;
+    if (u.teacherId) {
+      const teacher = await Teacher.findById(u.teacherId).select('plainPassword username').lean();
+      teacherPassword = teacher?.plainPassword;
     }
-};
 
-checkUsers();
+    console.log(`\nUser: ${u.fullName} (${u.role})`);
+    console.log(`  username: ${u.username}`);
+    console.log(`  isActive: ${u.isActive}`);
+    console.log(`  password hashed: ${isHashed}`);
+    console.log(`  password length: ${u.password?.length || 0}`);
+    console.log(`  teacherId: ${u.teacherId || 'none'}`);
+    console.log(`  teacher plainPassword: ${teacherPassword || 'N/A'}`);
+    
+    // Test login with teacher plainPassword
+    if (teacherPassword && isHashed) {
+      const match = await bcrypt.compare(teacherPassword, u.password);
+      console.log(`  ✅ Password "${teacherPassword}" matches: ${match}`);
+    }
+    
+    // Test common passwords
+    if (isHashed) {
+      const testPasswords = ['admin123', 'password', '12345678', 'MruTXpYF'];
+      for (const testPw of testPasswords) {
+        const match = await bcrypt.compare(testPw, u.password);
+        if (match) {
+          console.log(`  ✅ Password matches: "${testPw}"`);
+        }
+      }
+    }
+  }
+
+  process.exit(0);
+}).catch(err => {
+  console.error('DB Error:', err.message);
+  process.exit(1);
+});

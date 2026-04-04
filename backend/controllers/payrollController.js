@@ -490,7 +490,7 @@ exports.createTeacherDeposit = async (req, res) => {
     // Create transaction record
     const transaction = await Transaction.create({
       type: "EXPENSE",
-      category: depositType === "ADVANCE" ? "Advance" : depositType === "BONUS" ? "Bonus" : "Other",
+      category: depositType === "ADVANCE" ? "Teacher Advance" : depositType === "BONUS" ? "Teacher Credit" : "Miscellaneous",
       subCategory: "Teacher Deposit",
       amount,
       description: `${depositType || "Deposit"} to ${teacher.name}: ${reason}`,

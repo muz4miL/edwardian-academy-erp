@@ -801,7 +801,7 @@ const OwnerDashboard = () => {
               )}
 
               {/* Close Day Button */}
-              <div className="flex items-center gap-4 pt-2">
+              <div data-close-day-section className="flex items-center gap-4 pt-2">
                 <Button
                   size="lg"
                   className="flex-1 h-14 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-300"
@@ -887,6 +887,7 @@ const OwnerDashboard = () => {
                   if (settlementsEl) settlementsEl.scrollIntoView({ behavior: 'smooth' });
                 }}
                 onViewPayroll={() => window.location.href = '/payroll'}
+                onCloseDay={handleCloseDay}
               />
             </CardContent>
           </Card>

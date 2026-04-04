@@ -59,6 +59,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pdf } from "@react-pdf/renderer";
 import { MiscPaymentPDF, type MiscPaymentPDFData } from "@/components/print/MiscPaymentPDF";
+import { TeacherDepositModal } from "@/components/finance/TeacherDepositModal";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
@@ -1854,6 +1855,7 @@ const TeacherPayrollTab = () => {
   const [creditTeacher, setCreditTeacher] = useState<any>(null);
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
+  const [depositTeacher, setDepositTeacher] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -2004,6 +2006,14 @@ const TeacherPayrollTab = () => {
                         </p>
                         <p className="text-xs text-muted-foreground">Net owed</p>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                        onClick={(e) => { e.stopPropagation(); setDepositTeacher({ id: t.teacherId, name: t.teacherName }); }}
+                      >
+                        <Wallet className="h-3 w-3 mr-1" /> Deposit
+                      </Button>
                       {t.netOwed > 0 && (
                         <Button
                           size="sm"
@@ -2212,6 +2222,17 @@ const TeacherPayrollTab = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Teacher Deposit Modal */}
+      <TeacherDepositModal
+        teacher={depositTeacher ? { _id: depositTeacher.id, name: depositTeacher.name, subject: "" } : null}
+        open={!!depositTeacher}
+        onOpenChange={(open) => !open && setDepositTeacher(null)}
+        onSuccess={() => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ["teacher-payroll-report-finance"] });
+        }}
+      />
     </div>
   );
 };

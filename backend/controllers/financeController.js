@@ -487,18 +487,34 @@ exports.getDashboardStats = async (req, res) => {
     // Total teachers
     const totalTeachers = await Teacher.countDocuments({ status: "active" });
 
-    // Monthly income (from transactions)
-    const monthlyIncomeResult = await Transaction.aggregate([
+    // Monthly income - Use FeeRecords for accurate total (includes deferred settlements)
+    // This represents the TOTAL money collected from students, regardless of distribution status
+    // NOTE: FeeRecord uses timestamps: true → field is `createdAt`, NOT `collectedAt`
+    const monthlyFeeRecordsResult = await FeeRecord.aggregate([
+      {
+        $match: {
+          status: "PAID",
+          createdAt: { $gte: startOfMonth },
+        },
+      },
+      { $group: { _id: null, total: { $sum: "$amount" } } },
+    ]);
+    const monthlyIncomeFromFees = monthlyFeeRecordsResult[0]?.total || 0;
+
+    // Add any other income transactions (not from fee records) that are FLOATING/VERIFIED
+    const monthlyOtherIncomeResult = await Transaction.aggregate([
       {
         $match: {
           type: "INCOME",
           date: { $gte: startOfMonth },
           status: { $in: ["FLOATING", "VERIFIED"] },
+          category: { $ne: "Tuition" }, // Exclude tuition since we got that from FeeRecords
         },
       },
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
-    const monthlyIncomeGross = monthlyIncomeResult[0]?.total || 0;
+    const monthlyOtherIncome = monthlyOtherIncomeResult[0]?.total || 0;
+    const monthlyIncomeGross = monthlyIncomeFromFees + monthlyOtherIncome;
 
     // Deduct refunds from monthly income
     const monthlyRefundResult = await Transaction.aggregate([
@@ -3252,9 +3268,10 @@ exports.releasePartnerSettlements = async (req, res) => {
     // Create notification for partner
     await Notification.create({
       recipient: partnerId,
-      recipientRole: partner.role,
+      recipientRole: "PARTNER",
       message: `Your academy share of PKR ${result.releasedAmount.toLocaleString()} has been released by ${releasedBy.fullName}. It is now available in your closing dashboard.`,
       type: "FINANCE",
+      relatedId: `settlement-release-${Date.now()}`,
     });
 
     return res.json({
@@ -3283,6 +3300,11 @@ exports.getSettlementHistory = async (req, res) => {
     const { partnerId, startDate, endDate, limit = 100 } = req.query;
 
     const match = { status: "RELEASED" };
+    // Exclude OWNER auto-released settlements from history (they are auto-credited)
+    // Only show PARTNER settlements which are manually released by Owner
+    if (!partnerId) {
+      match.partnerRole = { $ne: "OWNER" };
+    }
     if (partnerId) match.partnerId = new mongoose.Types.ObjectId(partnerId);
     if (startDate && endDate) {
       match.releasedAt = {

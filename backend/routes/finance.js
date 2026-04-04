@@ -1319,6 +1319,42 @@ router.post("/partner/credit-balance", protect, restrictTo("OWNER"), async (req,
   }
 });
 
+// @route   GET /api/finance/partner/settlements
+// @desc    Get a partner's own released academy settlements (visible to partner themselves)
+// @access  Protected (PARTNER, OWNER)
+router.get("/partner/settlements", protect, restrictTo("OWNER", "PARTNER"), async (req, res) => {
+  try {
+    const AcademySettlement = require("../models/AcademySettlement");
+    const userId = req.user.role === "PARTNER" ? req.user._id : (req.query.partnerId || req.user._id);
+
+    // Get both released and pending settlements for this partner
+    const settlements = await AcademySettlement.find({
+      partnerId: userId,
+      status: { $in: ["RELEASED", "PENDING"] },
+    }).sort({ createdAt: -1 }).limit(50).lean();
+
+    const released = settlements.filter(s => s.status === "RELEASED");
+    const pending = settlements.filter(s => s.status === "PENDING");
+
+    const totalReleased = released.reduce((sum, s) => sum + s.amount, 0);
+    const totalPending = pending.reduce((sum, s) => sum + s.amount, 0);
+
+    return res.json({
+      success: true,
+      data: settlements,
+      summary: {
+        totalReleased,
+        totalPending,
+        releasedCount: released.length,
+        pendingCount: pending.length,
+      },
+    });
+  } catch (error) {
+    console.error("Partner settlements error:", error);
+    res.status(500).json({ success: false, message: "Error fetching partner settlements", error: error.message });
+  }
+});
+
 // ------------------------------------------------------------------
 // FINANCE RECORD CRUD (FinanceRecord model - used by frontend)
 // ------------------------------------------------------------------

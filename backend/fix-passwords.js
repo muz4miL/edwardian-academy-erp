@@ -1,42 +1,56 @@
-const mongoose = require('mongoose');
-const User = require('./models/User');
+/**
+ * Fix password sync issue for OWNER and PARTNER accounts
+ * 
+ * Problem: The plainPassword in Teacher model shows one password,
+ *          but the User model's hashed password doesn't match it.
+ * 
+ * Solution: Re-set the User model password to match the Teacher plainPassword,
+ *           which will trigger the pre-save hook to properly hash it.
+ */
 require('dotenv').config();
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
-const fixPasswords = async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('✅ Connected to MongoDB');
+mongoose.connect(process.env.MONGODB_URI).then(async () => {
+  const User = require('./models/User');
+  const Teacher = require('./models/Teacher');
 
-        // Get all users
-        const users = await User.find({});
-        console.log(`\n📝 Fixing passwords for ${users.length} users...\n`);
-
-        for (const user of users) {
-            // Get the current password (plain text)
-            const plainPassword = user.password;
-
-            // If it looks like it's already hashed (starts with $2), skip it
-            if (plainPassword.startsWith('$2')) {
-                console.log(`   ⏭️  ${user.fullName}: Already hashed`);
-                continue;
-            }
-
-            console.log(`   🔧 ${user.fullName}: Hashing password...`);
-
-            // Trigger the pre-save hook by explicitly saving
-            user.password = plainPassword; // Reset to trigger isModified
-            await user.save(); // This will trigger the pre-save hook
-
-            console.log(`   ✅ ${user.fullName}: Password hashed successfully`);
-        }
-
-        console.log('\n✅ All passwords fixed!');
-        process.exit(0);
-    } catch (error) {
-        console.error('❌ Error:', error.message);
-        console.error(error);
-        process.exit(1);
+  console.log('\n=== PASSWORD SYNC FIX ===');
+  
+  // Find all users with mismatched passwords
+  const users = await User.find({}).select('+password');
+  
+  for (const user of users) {
+    if (!user.teacherId) continue;
+    
+    const teacher = await Teacher.findById(user.teacherId).select('plainPassword').lean();
+    if (!teacher?.plainPassword) continue;
+    
+    // Check if current password matches the plainPassword
+    const matches = await bcrypt.compare(teacher.plainPassword, user.password);
+    
+    if (!matches) {
+      console.log(`\n❌ MISMATCH: ${user.fullName} (${user.role})`);
+      console.log(`   username: ${user.username}`);
+      console.log(`   Teacher plainPassword: ${teacher.plainPassword}`);
+      console.log(`   Fixing... setting User password = ${teacher.plainPassword}`);
+      
+      // Set password and save (pre-save hook will hash it)
+      user.password = teacher.plainPassword;
+      await user.save();
+      
+      // Verify the fix
+      const updatedUser = await User.findById(user._id).select('+password');
+      const nowMatches = await bcrypt.compare(teacher.plainPassword, updatedUser.password);
+      console.log(`   Result: ${nowMatches ? '✅ FIXED' : '❌ STILL BROKEN'}`);
+    } else {
+      console.log(`✅ OK: ${user.fullName} (${user.role}) - password synced`);
     }
-};
+  }
 
-fixPasswords();
+  console.log('\n=== DONE ===');
+  process.exit(0);
+}).catch(err => {
+  console.error('DB Error:', err.message);
+  process.exit(1);
+});

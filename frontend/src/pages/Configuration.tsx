@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
+import { configApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const API_BASE_URL =
@@ -62,6 +63,8 @@ const Configuration = () => {
   // --- Loading State ---
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [deleteStudentsOnReset, setDeleteStudentsOnReset] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -426,6 +429,39 @@ const Configuration = () => {
         percentage: s.percentage,
       })),
     };
+  };
+
+  // --- Reset Finance Data Helper ---
+  const handleResetFinance = async (deleteStudents: boolean = false) => {
+    const studentsMessage = deleteStudents 
+      ? "\n- ALL STUDENTS (deleted permanently)" 
+      : "\n\nStudents will be preserved (fees reset to unpaid).";
+    
+    if (!confirm(`⚠️ This will PERMANENTLY DELETE all financial data including:\n- Fee payments & records\n- Transactions & settlements\n- Expenses\n- Wallet balances${studentsMessage}\n\nTeachers and classes will be preserved.\n\nContinue?`)) {
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const result = await configApi.resetFinance({ deleteStudents });
+      const studentsMsg = deleteStudents 
+        ? `${result.results?.studentsDeleted || 0} students deleted.`
+        : `${result.results?.students || 0} students reset.`;
+      toast({
+        title: "Finance Reset Complete",
+        description: `All financial data cleared. ${studentsMsg}`,
+      });
+      // Reload page to reflect changes
+      window.location.reload();
+    } catch (error: any) {
+      toast({
+        title: "Reset Failed",
+        description: error.message || "Could not reset finance data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   // --- Instant Save Helper ---
@@ -1426,6 +1462,55 @@ const Configuration = () => {
               </Button>
             </div>
 
+            {/* Reset Finance Data Section - For Testing */}
+            <div className="mt-8 pt-6 border-t border-red-200">
+              <Card className="border-red-300 bg-red-50/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-red-700 text-base">
+                    <AlertCircle className="h-5 w-5" />
+                    Reset Finance Data
+                  </CardTitle>
+                  <CardDescription className="text-red-600 text-xs">
+                    Clear ALL financial data for testing. Use carefully!
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Checkbox for deleting students */}
+                  <div className="flex items-center space-x-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                    <input
+                      type="checkbox"
+                      id="deleteStudents"
+                      checked={deleteStudentsOnReset}
+                      onChange={(e) => setDeleteStudentsOnReset(e.target.checked)}
+                      className="h-4 w-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                    />
+                    <label htmlFor="deleteStudents" className="text-sm text-red-700 font-medium cursor-pointer">
+                      Also delete all students permanently
+                    </label>
+                  </div>
+                  
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleResetFinance(deleteStudentsOnReset)}
+                    disabled={isResetting}
+                    className="bg-red-600 hover:bg-red-700 w-full"
+                  >
+                    {isResetting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Resetting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Reset All Finance Data
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
 
           </div>
         )}

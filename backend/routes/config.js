@@ -270,4 +270,111 @@ router.get("/partners", async (req, res) => {
   }
 });
 
+// @route   POST /api/config/reset-finance
+// @desc    Reset all finance data (for testing) - keeps teachers, students, classes
+// @access  Protected (OWNER only)
+router.post("/reset-finance", async (req, res) => {
+  try {
+    // Only OWNER can reset finance
+    if (req.user.role !== "OWNER") {
+      return res.status(403).json({ success: false, message: "Only Owner can reset finance data" });
+    }
+
+    const mongoose = require("mongoose");
+    const db = mongoose.connection.db;
+
+    // 1. Clear ALL financial collections
+    const collectionsToDelete = [
+      "dailyrevenues",
+      "academysettlements",
+      "teacherdeposits",
+      "transactions",
+      "closeddays",
+      "expenses",
+      "feerecords",
+      "financerecords",
+      "teacherpayments",
+      "dailyclosings",
+      "settlements",
+      "payoutrequests",
+    ];
+
+    const results = {};
+    for (const col of collectionsToDelete) {
+      try {
+        const result = await db.collection(col).deleteMany({});
+        results[col] = result.deletedCount;
+      } catch (e) {
+        results[col] = 0; // Collection might not exist
+      }
+    }
+
+    // 2. Handle students - delete or just reset fees
+    const Student = require("../models/Student");
+    const deleteStudents = req.body.deleteStudents === true;
+    
+    if (deleteStudents) {
+      const studentDeleteResult = await Student.deleteMany({});
+      results.studentsDeleted = studentDeleteResult.deletedCount;
+    } else {
+      const studentResult = await Student.updateMany(
+        {},
+        {
+          $set: {
+            feePaid: false,
+            feePaymentDate: null,
+            lastFeeAmount: 0,
+            feeStatus: "PENDING",
+          },
+          $unset: {
+            lastTransactionId: 1,
+            paidAmount: 1,
+            lastPaymentDate: 1,
+          }
+        }
+      );
+      results.studentsReset = studentResult.modifiedCount;
+    }
+
+    // 3. Reset teacher wallet balances
+    const teacherResult = await Teacher.updateMany(
+      {},
+      {
+        $set: {
+          "balance.floating": 0,
+          "balance.verified": 0,
+          "balance.pending": 0,
+          "balance.totalEarned": 0,
+          "balance.totalPaid": 0,
+          "balance.lastUpdated": new Date(),
+        }
+      }
+    );
+    results.teachers = teacherResult.modifiedCount;
+
+    // 4. Reset user wallet balances
+    const userResult = await User.updateMany(
+      {},
+      {
+        $set: {
+          "walletBalance.floating": 0,
+          "walletBalance.verified": 0,
+          "walletBalance.pending": 0,
+          "walletBalance.lastUpdated": new Date(),
+        }
+      }
+    );
+    results.users = userResult.modifiedCount;
+
+    res.json({
+      success: true,
+      message: deleteStudents ? "Finance data reset and students deleted" : "Finance data reset successfully",
+      results,
+    });
+  } catch (error) {
+    console.error("Reset finance error:", error);
+    res.status(500).json({ success: false, message: "Error resetting finance data", error: error.message });
+  }
+});
+
 module.exports = router;

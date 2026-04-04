@@ -3,6 +3,7 @@
  * 
  * Dashboard section for Owner (Waqar) to manage partner academy share settlements.
  * Shows pending settlements by partner with release functionality.
+ * Only shows PARTNER settlements — owner's settlements are auto-released.
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -93,7 +94,7 @@ export function AcademySettlements() {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ["academy-settlements-summary"],
     queryFn: () => financeApi.getAcademySettlementsSummary(),
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
   // Fetch partner details when selected
@@ -112,12 +113,18 @@ export function AcademySettlements() {
   // Release mutation
   const releaseMutation = useMutation({
     mutationFn: (data: { partnerId: string; partial?: boolean; amount?: number; notes?: string }) =>
-      financeApi.releasePartnerSettlements(data.partnerId, data),
+      financeApi.releasePartnerSettlements(data.partnerId, {
+        partial: data.partial,
+        amount: data.amount,
+        notes: data.notes,
+      }),
     onSuccess: (response) => {
       toast.success(`Released PKR ${response.data.releasedAmount.toLocaleString()} to ${response.data.partnerName}`);
       queryClient.invalidateQueries({ queryKey: ["academy-settlements-summary"] });
       queryClient.invalidateQueries({ queryKey: ["academy-settlements-partner"] });
       queryClient.invalidateQueries({ queryKey: ["academy-settlements-history"] });
+      queryClient.invalidateQueries({ queryKey: ["owner-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       setReleaseDialogOpen(false);
       setSelectedPartner(null);
       setReleaseAmount("");
@@ -129,8 +136,14 @@ export function AcademySettlements() {
     },
   });
 
-  const partners = summaryData?.data?.partners || [];
-  const totalPending = summaryData?.data?.totalPending || 0;
+  // Filter: only show PARTNER settlements (not OWNER — owner's share is auto-released)
+  const allPartners = summaryData?.data?.partners || [];
+  const partners = allPartners.filter((p: PartnerSettlement) => p.partnerRole !== "OWNER");
+  const totalPending = partners.reduce((sum: number, p: PartnerSettlement) => sum + p.totalPendingAmount, 0);
+
+  // Filter history: only show PARTNER releases (not OWNER auto-releases)
+  const allHistory = historyData?.data?.history || [];
+  const filteredHistory = allHistory.filter((s: any) => s.partnerRole !== "OWNER");
 
   const handleViewDetails = (partner: PartnerSettlement) => {
     setSelectedPartner(partner);
@@ -155,7 +168,10 @@ export function AcademySettlements() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-PK", {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-PK", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -163,14 +179,14 @@ export function AcademySettlements() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header Summary Card */}
-      <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800">
+      <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800 shadow-md">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                <Building2 className="h-6 w-6 text-amber-700" />
+              <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
+                <Building2 className="h-5 w-5 text-white" />
               </div>
               <div>
                 <CardTitle className="text-lg text-amber-900 dark:text-amber-100">
@@ -185,7 +201,7 @@ export function AcademySettlements() {
               <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">
                 PKR {totalPending.toLocaleString()}
               </p>
-              <p className="text-sm text-amber-600 dark:text-amber-400">
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
                 Total Pending
               </p>
             </div>
@@ -194,12 +210,12 @@ export function AcademySettlements() {
       </Card>
 
       <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="pending" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-2 h-10 bg-muted/60">
+          <TabsTrigger value="pending" className="flex items-center gap-2 text-sm font-medium">
             <Clock className="h-4 w-4" />
             Pending ({partners.length})
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
+          <TabsTrigger value="history" className="flex items-center gap-2 text-sm font-medium">
             <History className="h-4 w-4" />
             History
           </TabsTrigger>
@@ -209,79 +225,82 @@ export function AcademySettlements() {
         <TabsContent value="pending" className="space-y-4">
           {summaryLoading ? (
             <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-24 w-full" />
+              {[1, 2].map((i) => (
+                <Skeleton key={i} className="h-28 w-full rounded-xl" />
               ))}
             </div>
           ) : partners.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-emerald-500" />
-                <p className="text-lg font-medium text-muted-foreground">
+            <Card className="border-dashed border-2 border-emerald-200 bg-emerald-50/50">
+              <CardContent className="py-10 text-center">
+                <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-emerald-500" />
+                <p className="text-lg font-semibold text-emerald-800">
                   All settlements are cleared!
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-emerald-600 mt-1">
                   No pending academy share to release to partners.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               {partners.map((partner: PartnerSettlement) => (
                 <Card
                   key={partner.partnerId}
-                  className="hover:border-primary/50 transition-colors"
+                  className="hover:shadow-lg hover:border-primary/40 transition-all duration-200 overflow-hidden"
                 >
-                  <CardContent className="pt-4">
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-12 w-12">
+                  <CardContent className="p-5">
+                    {/* Partner Header */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <Avatar className="h-11 w-11 border-2 border-primary/20">
                         <AvatarImage src={partner.profileImage} />
-                        <AvatarFallback className="bg-primary/10 text-primary">
+                        <AvatarFallback className="bg-gradient-to-br from-primary/10 to-primary/20 text-primary font-bold text-sm">
                           {partner.partnerName.split(" ").map(n => n[0]).join("").slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-semibold truncate">{partner.partnerName}</p>
-                          <Badge variant={partner.partnerRole === "OWNER" ? "default" : "secondary"} className="text-[10px]">
-                            {partner.partnerRole}
+                          <p className="font-semibold text-sm truncate">{partner.partnerName}</p>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-semibold shrink-0">
+                            PARTNER
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {partner.percentage}% share
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-4 p-3 rounded-lg bg-muted/50">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-muted-foreground">Pending Amount</span>
-                        <span className="text-lg font-bold text-primary">
+                    {/* Amount Card */}
+                    <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200/50">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-medium text-amber-700">Pending Amount</span>
+                        <span className="text-lg font-bold text-amber-800">
                           PKR {partner.totalPendingAmount.toLocaleString()}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex items-center justify-between text-xs text-amber-600">
                         <span>{partner.pendingCount} settlement(s)</span>
                         <span>Since {formatDate(partner.oldestSettlement)}</span>
                       </div>
                     </div>
 
+                    {/* Actions */}
                     <div className="mt-4 flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1"
+                        className="flex-1 h-9 text-xs font-medium"
                         onClick={() => handleViewDetails(partner)}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
+                        <Eye className="h-3.5 w-3.5 mr-1.5" />
                         Details
                       </Button>
                       <Button
                         size="sm"
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                        className="flex-1 h-9 text-xs font-medium bg-emerald-600 hover:bg-emerald-700"
                         onClick={() => handleStartRelease(partner)}
                       >
-                        <Send className="h-4 w-4 mr-1" />
+                        <Send className="h-3.5 w-3.5 mr-1.5" />
                         Release
                       </Button>
                     </div>
@@ -297,37 +316,42 @@ export function AcademySettlements() {
           {historyLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+                <Skeleton key={i} className="h-16 w-full rounded-xl" />
               ))}
             </div>
-          ) : !historyData?.data?.history?.length ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <History className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">No settlement history yet.</p>
+          ) : filteredHistory.length === 0 ? (
+            <Card className="border-dashed border-2 border-slate-200">
+              <CardContent className="py-10 text-center">
+                <History className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-muted-foreground font-medium">No settlement releases yet.</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Releases to partners will appear here.
+                </p>
               </CardContent>
             </Card>
           ) : (
             <Card>
               <CardContent className="py-4">
-                <div className="space-y-3">
-                  {historyData.data.history.slice(0, 20).map((settlement: any) => (
+                <div className="space-y-2">
+                  {filteredHistory.slice(0, 20).map((settlement: any) => (
                     <div
                       key={settlement._id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        </div>
                         <div>
-                          <p className="font-medium">{settlement.partnerName}</p>
+                          <p className="font-medium text-sm">{settlement.partnerName}</p>
                           <p className="text-xs text-muted-foreground">
                             Released on {formatDate(settlement.releasedAt)}
                             {settlement.releaseNotes && ` • ${settlement.releaseNotes}`}
                           </p>
                         </div>
                       </div>
-                      <span className="font-bold text-emerald-600">
-                        +PKR {settlement.amount.toLocaleString()}
+                      <span className="font-bold text-emerald-600 text-sm">
+                        +PKR {(settlement.amount || 0).toLocaleString()}
                       </span>
                     </div>
                   ))}
@@ -349,7 +373,7 @@ export function AcademySettlements() {
                   {selectedPartner?.partnerName?.split(" ").map(n => n[0]).join("").slice(0, 2)}
                 </AvatarFallback>
               </Avatar>
-              {selectedPartner?.partnerName} - Settlement Details
+              {selectedPartner?.partnerName} — Settlement Details
             </DialogTitle>
             <DialogDescription>
               Breakdown of pending academy share from student fees
@@ -448,9 +472,9 @@ export function AcademySettlements() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+            <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-emerald-700 dark:text-emerald-400">Amount to Release</span>
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Amount to Release</span>
                 <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
                   PKR {(releasePartial ? parseInt(releaseAmount) || 0 : selectedPartner?.totalPendingAmount || 0).toLocaleString()}
                 </span>
@@ -460,13 +484,13 @@ export function AcademySettlements() {
               </p>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
               <label className="text-sm font-medium">Release Partial Amount?</label>
               <input
                 type="checkbox"
                 checked={releasePartial}
                 onChange={(e) => setReleasePartial(e.target.checked)}
-                className="h-4 w-4"
+                className="h-4 w-4 rounded border-slate-300"
               />
             </div>
 

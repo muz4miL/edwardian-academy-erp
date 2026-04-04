@@ -30,11 +30,13 @@ import { financeApi } from "@/lib/api";
 interface OwnerBreakdownReportProps {
   onViewSettlements?: () => void;
   onViewPayroll?: () => void;
+  onCloseDay?: () => void;
 }
 
 export function OwnerBreakdownReport({
   onViewSettlements,
   onViewPayroll,
+  onCloseDay,
 }: OwnerBreakdownReportProps) {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["owner-breakdown"],
@@ -315,7 +317,7 @@ export function OwnerBreakdownReport({
         </Card>
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Points to main Close Day section */}
       <Card className="bg-muted/30">
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
@@ -325,7 +327,14 @@ export function OwnerBreakdownReport({
                 You have PKR {availableToClose.toLocaleString()} available
               </p>
             </div>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => {
+              // Scroll to main Close Day section at top
+              const closeSection = document.querySelector('[data-close-day-section]');
+              if (closeSection) {
+                closeSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+              onCloseDay?.();
+            }}>
               Close Day
               <ArrowRight className="h-4 w-4" />
             </Button>

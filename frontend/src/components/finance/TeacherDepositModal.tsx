@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -55,11 +54,7 @@ const DEPOSIT_TYPES = [
   { value: "OTHER", label: "Other", icon: AlertCircle, description: "Other payment reason" },
 ];
 
-const PAYMENT_METHODS = [
-  { value: "CASH", label: "Cash" },
-  { value: "BANK_TRANSFER", label: "Bank Transfer" },
-  { value: "ADJUSTMENT", label: "Internal Adjustment" },
-];
+
 
 export function TeacherDepositModal({
   teacher,
@@ -71,7 +66,6 @@ export function TeacherDepositModal({
   const [amount, setAmount] = useState("");
   const [depositType, setDepositType] = useState("OTHER");
   const [reason, setReason] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("CASH");
 
   const depositMutation = useMutation({
     mutationFn: (data: {
@@ -99,7 +93,6 @@ export function TeacherDepositModal({
     setAmount("");
     setDepositType("OTHER");
     setReason("");
-    setPaymentMethod("CASH");
   };
 
   const handleSubmit = () => {
@@ -121,7 +114,7 @@ export function TeacherDepositModal({
       amount: amountNum,
       depositType,
       reason: reason.trim(),
-      paymentMethod,
+      paymentMethod: "INTERNAL",
     });
   };
 
@@ -137,142 +130,94 @@ export function TeacherDepositModal({
       if (!isOpen) resetForm();
       onOpenChange(isOpen);
     }}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
-              <Wallet className="h-5 w-5 text-emerald-600" />
-            </div>
-            Deposit to Teacher
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Wallet className="h-4 w-4 text-emerald-600" />
+            Deposit to {teacher.name}
           </DialogTitle>
-          <DialogDescription>
-            Add funds to {teacher.name}'s verified balance
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Teacher Info Card */}
-          <div className="p-3 rounded-lg bg-muted/50 flex items-center justify-between">
-            <div>
-              <p className="font-semibold">{teacher.name}</p>
-              <p className="text-sm text-muted-foreground capitalize">{teacher.subject}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Current Balance</p>
-              <p className="font-bold text-primary">PKR {currentBalance.toLocaleString()}</p>
-            </div>
+        <div className="space-y-3 py-2">
+          {/* Current Balance Display */}
+          <div className="flex justify-between items-center text-sm bg-muted/50 p-2 rounded">
+            <span className="text-muted-foreground">Current Balance</span>
+            <span className="font-bold">PKR {currentBalance.toLocaleString()}</span>
           </div>
 
           {/* Deposit Type Selection */}
-          <div className="space-y-2">
-            <Label>Deposit Type *</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Deposit Type</Label>
             <Select value={depositType} onValueChange={setDepositType}>
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
                 {DEPOSIT_TYPES.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     <div className="flex items-center gap-2">
-                      <type.icon className="h-4 w-4 text-muted-foreground" />
+                      <type.icon className="h-3 w-3 text-muted-foreground" />
                       <span>{type.label}</span>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {selectedType && (
-              <p className="text-xs text-muted-foreground">{selectedType.description}</p>
-            )}
           </div>
 
           {/* Amount Input */}
-          <div className="space-y-2">
-            <Label>Amount (PKR) *</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Amount (PKR)</Label>
             <Input
               type="number"
               min={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Enter amount"
-              className="text-lg font-semibold"
+              className="h-9"
             />
             {amount && parseInt(amount) > 0 && (
               <p className="text-xs text-emerald-600">
-                New balance will be: PKR {(currentBalance + parseInt(amount)).toLocaleString()}
+                New balance: PKR {(currentBalance + parseInt(amount)).toLocaleString()}
               </p>
             )}
           </div>
 
-          {/* Payment Method */}
-          <div className="space-y-2">
-            <Label>Payment Method</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_METHODS.map((method) => (
-                  <SelectItem key={method.value} value={method.value}>
-                    {method.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Reason */}
-          <div className="space-y-2">
-            <Label>Reason *</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Reason</Label>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Explain why this deposit is being made..."
+              placeholder="Why is this deposit being made?"
               rows={2}
+              className="text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              This will be recorded in the teacher's transaction history
-            </p>
           </div>
 
-          {/* Preview Card */}
-          {amount && parseInt(amount) > 0 && reason && (
-            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
-              <div className="flex items-center gap-2 mb-2">
-                <TypeIcon className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                  {selectedType?.label}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-emerald-600">Amount to Deposit</span>
-                <span className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
-                  PKR {parseInt(amount).toLocaleString()}
-                </span>
-              </div>
+          {/* Preview */}
+          {amount && parseInt(amount) > 0 && (
+            <div className="p-2 rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 flex justify-between items-center">
+              <span className="text-sm text-emerald-700">{selectedType?.label}</span>
+              <span className="font-bold text-emerald-700">PKR {parseInt(amount).toLocaleString()}</span>
             </div>
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
+            size="sm"
             className="bg-emerald-600 hover:bg-emerald-700"
             onClick={handleSubmit}
             disabled={depositMutation.isPending || !amount || parseInt(amount) <= 0 || !reason.trim()}
           >
             {depositMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                Processing...
-              </>
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <>
-                <Wallet className="h-4 w-4 mr-1" />
-                Confirm Deposit
-              </>
+              "Deposit"
             )}
           </Button>
         </DialogFooter>
