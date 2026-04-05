@@ -314,51 +314,80 @@ const processRevenueDistribution = async ({
       // 2. Regular Teacher Payouts
       for (const payout of split.teacherPayouts) {
         const teacher = await Teacher.findById(payout.teacherId);
-        if (teacher && payout.amount > 0) {
+        if (!teacher || payout.amount <= 0) continue;
+        
+        const isPerStudentOrFixed = payout.compensationType === "perStudent" || payout.compensationType === "fixed";
+        
+        // For PERCENTAGE/HYBRID: add to teacher's floating balance
+        // For PER-STUDENT/FIXED: DON'T add to teacher balance (owner closes full fee, pays teacher later)
+        if (!isPerStudentOrFixed) {
           if (!teacher.balance) teacher.balance = { floating: 0, verified: 0, pending: 0 };
           teacher.balance.floating += payout.amount;
           await teacher.save();
-          feeTeachers.push({
-            teacherId: teacher._id,
-            teacherName: teacher.name,
-            compensationType: payout.compensationType,
-            teacherShare: payout.amount,
-            subject: subjName,
-            role: "TEACHER",
-          });
-          creditTransactions.push({
-            type: "INCOME",
-            category: "Tuition",
-            stream: "STAFF_TUITION",
-            amount: payout.amount,
-            description: `${subjName} teacher share: ${student.studentName}`,
-            collectedBy: req.user?._id,
-            status: "FLOATING",
-            date: new Date(),
-            studentId: student._id,
-          });
-          
-          // CRITICAL: Owner closes ALL money including teacher shares
-          // Create DailyRevenue entry for OWNER to close this teacher's share
-          const ownerUser = await User.findOne({ role: "OWNER" });
-          if (ownerUser) {
-            dailyRevenueEntries.push({
-              userId: ownerUser._id,
-              amount: payout.amount,
-              revenueType: "TUITION_SHARE",
-              className: classDoc?.classTitle || student.class,
-              studentRef: student._id,
-              studentName: student.studentName,
-              subject: subjName,
-              description: `Teacher share (${teacher.name || teacher.fullName}) - Owner closes and pays later`,
-              splitDetails: {
-                teacherId: teacher._id,
-                teacherName: teacher.name || teacher.fullName,
-                calculationProof: `Teacher ${teacher.name} - ${subjName}: ${payout.compensationType} = PKR ${payout.amount}`,
-                isTeacherPayout: true,
-              },
-            });
+        }
+        
+        feeTeachers.push({
+          teacherId: teacher._id,
+          teacherName: teacher.name,
+          compensationType: payout.compensationType,
+          teacherShare: payout.amount,
+          subject: subjName,
+          role: "TEACHER",
+        });
+        
+        creditTransactions.push({
+          type: "INCOME",
+          category: "Tuition",
+          stream: "STAFF_TUITION",
+          amount: payout.amount,
+          description: `${subjName} teacher share: ${student.studentName}`,
+          collectedBy: req.user?._id,
+          status: "FLOATING",
+          date: new Date(),
+          studentId: student._id,
+        });
+        
+        // Owner closes this teacher share
+        const ownerUser = await User.findOne({ role: "OWNER" });
+        if (ownerUser) {
+          // For PER-STUDENT/FIXED: Add full fee to owner's floating balance
+          if (isPerStudentOrFixed) {
+            if (!ownerUser.walletBalance) ownerUser.walletBalance = { floating: 0, verified: 0 };
+            ownerUser.walletBalance.floating += payout.amount;
+            await ownerUser.save();
           }
+          
+          // Create description based on compensation type
+          let description = `Teacher share (${teacher.name}) - Owner closes and pays later`;
+          let calculationProof = `${payout.percentage || 70}% of PKR ${subjShare} = PKR ${payout.amount}`;
+          
+          if (payout.compensationType === "perStudent") {
+            description = `Per-Student teacher (${teacher.name}) - Full fee to owner`;
+            calculationProof = `100% of PKR ${subjShare} (pays PKR ${payout.perStudentAmount}/student later)`;
+          } else if (payout.compensationType === "fixed") {
+            description = `Fixed salary teacher (${teacher.name}) - Full fee to owner`;
+            calculationProof = `100% of PKR ${subjShare} (pays PKR ${payout.fixedSalary}/month later)`;
+          }
+          
+          dailyRevenueEntries.push({
+            userId: ownerUser._id,
+            amount: payout.amount,
+            revenueType: "TUITION_SHARE",
+            className: classDoc?.classTitle || student.class,
+            studentRef: student._id,
+            studentName: student.studentName,
+            subject: subjName,
+            description,
+            splitDetails: {
+              teacherId: teacher._id,
+              teacherName: teacher.name,
+              compensationType: payout.compensationType,
+              calculationProof,
+              isTeacherPayout: true,
+              perStudentAmount: payout.perStudentAmount,
+              fixedSalary: payout.fixedSalary,
+            },
+          });
         }
         totalTeacherShare += payout.amount;
       }

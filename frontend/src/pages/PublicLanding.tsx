@@ -658,82 +658,215 @@ export default function PublicLanding() {
         </section>
       )}
 
-      {/* Faculty Carousel Section */}
-      <section className="py-16 bg-brand-secondary relative overflow-hidden" id="faculty">
-        <style>{`
-          @keyframes scroll-left {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
-          }
-          .faculty-carousel {
-            animation: scroll-left 25s linear infinite;
-          }
-          .faculty-carousel:hover {
-            animation-play-state: paused;
-          }
-        `}</style>
-        <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white to-transparent opacity-50" />
-        <div className="relative z-10">
+      {/* Expert Faculty Section - Premium Static Team Showcase */}
+      <section className="py-20 bg-gradient-to-b from-white via-brand-secondary/30 to-white relative overflow-hidden" id="faculty">
+        {/* Background decorations */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-brand-gold/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
+        
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             {...waterfall}
-            className="text-center mb-10 px-4"
+            className="text-center mb-16"
           >
-            <h2 className="text-2xl md:text-3xl font-serif font-black text-brand-primary mb-4 tracking-tight">
+            <div className="inline-flex items-center gap-2 bg-brand-gold/10 px-4 py-2 rounded-full mb-6">
+              <Crown className="h-4 w-4 text-brand-gold" />
+              <span className="text-xs font-bold text-brand-gold uppercase tracking-widest">Our Leadership</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-serif font-black text-brand-primary mb-6 tracking-tight">
               Expert Faculty
             </h2>
-            <div className="w-16 h-1 bg-brand-gold mx-auto rounded-full mb-4" />
-            <p className="text-sm text-slate-500 max-w-xl mx-auto font-medium">
-              Learn from the region's most experienced professors and subject matter experts.
+            <div className="w-24 h-1.5 bg-gradient-to-r from-brand-gold to-brand-primary mx-auto rounded-full mb-6" />
+            <p className="text-base md:text-lg text-slate-600 max-w-2xl mx-auto font-medium leading-relaxed">
+              Meet the dedicated educators and visionary leaders who make excellence possible at our institution.
             </p>
           </motion.div>
 
-          {/* Gradient fade edges */}
-          <div className="relative">
-            <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-brand-secondary to-transparent z-10 pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-brand-secondary to-transparent z-10 pointer-events-none" />
-            
-            <div className="overflow-hidden">
-              <div className="faculty-carousel flex gap-5 w-max py-4">
-                {[...(config?.faculty || []), ...(config?.faculty || [])].map((professor, index) => (
-                  <div
-                    key={index}
-                    className="flex-shrink-0 w-[220px]"
-                  >
-                    <div className={`group relative bg-white rounded-2xl p-6 text-center border transition-all duration-500 hover:-translate-y-2 hover:shadow-xl ${
-                      professor.isPartner 
-                        ? "border-brand-gold/30 shadow-[0_8px_24px_rgba(180,83,9,0.08)]" 
-                        : "border-slate-100 shadow-[0_8px_24px_rgba(0,0,0,0.04)]"
-                    }`}>
-                      <div className="relative inline-block mb-4">
-                        <div className="w-16 h-16 mx-auto rounded-full bg-slate-50 flex items-center justify-center text-xl font-black text-brand-primary shadow-inner border-[3px] border-white overflow-hidden group-hover:scale-110 transition-transform duration-500">
-                          {professor.name?.charAt(0)?.toUpperCase() || "?"}
-                        </div>
-                        {professor.isPartner && (
-                          <motion.div 
-                            animate={{ rotate: [0, 10, -10, 0] }}
-                            transition={{ duration: 4, repeat: Infinity }}
-                            className="absolute -top-1 -right-1 bg-brand-gold text-white p-1.5 rounded-full shadow-md"
-                          >
-                            <Crown className="h-3 w-3" />
-                          </motion.div>
-                        )}
-                      </div>
-                      <h3 className="text-sm font-black text-brand-primary mb-1 truncate">
-                        {professor.name}
-                      </h3>
-                      <p className="text-[10px] font-bold text-brand-gold uppercase tracking-[0.15em] mb-3">
-                        {professor.subject}
-                      </p>
-                      {professor.isPartner && (
-                        <Badge className="bg-brand-gold/10 text-brand-gold border-brand-gold/20 hover:bg-brand-gold/20 transition-colors px-2.5 py-0.5 rounded-full text-[9px]">
-                          Partner
-                        </Badge>
-                      )}
-                    </div>
+          {/* Premium Faculty Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+            {/* Mr. Jamil Ahmad */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* CEO Badge */}
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-brand-gold to-amber-500 text-white px-3 py-1.5 rounded-full shadow-lg">
+                    <Crown className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">CEO</span>
                   </div>
-                ))}
+                </div>
+                
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/Jamil.png"
+                    alt="Mr. Jamil Ahmad"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Jamil Ahmad
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    MPhil Physics | B.Ed
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Physics Teacher & CEO
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    The Grand School System
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Specializes in conceptual clarity and analytical thinking for Matric & college levels.
+                  </p>
+                </div>
               </div>
-            </div>
+            </motion.div>
+
+            {/* Mr. Qaisar Shahzad */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/Qaiser.png"
+                    alt="Mr. Qaisar Shahzad"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Qaisar Shahzad
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    M.Sc. Chemistry | M.Ed
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Govt. School Teacher & Instructor
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    &nbsp;
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Expert in modern teaching methodologies, promoting scientific thinking and academic growth.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Mr. Shams ul Haq */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Academic Director Badge */}
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-brand-primary to-slate-700 text-white px-3 py-1.5 rounded-full shadow-lg">
+                    <Award className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Director</span>
+                  </div>
+                </div>
+                
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/shams.png"
+                    alt="Mr. Shams ul Haq"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Shams ul Haq
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    M.Sc. Mathematics
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Govt. School Teacher & Academic Director
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    The Grand School System
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Focused on building solid conceptual understanding and maintaining high academic standards.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Mr. Muhammad Ishaq Jan */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Managing Director Badge */}
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-1.5 rounded-full shadow-lg">
+                    <Star className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">MD</span>
+                  </div>
+                </div>
+                
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/ishaq.png"
+                    alt="Mr. Muhammad Ishaq Jan"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Muhammad Ishaq Jan
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    M.Sc. Botany | B.Ed
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Biology Teacher & Managing Director
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    The Prime Educator School System
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Dedicated to concept-based learning and institutional management.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>

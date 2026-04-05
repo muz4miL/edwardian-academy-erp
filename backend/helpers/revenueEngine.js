@@ -847,11 +847,13 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
         teacherShare = Math.floor((portion * percentage) / 100);
         reason = `${percentage}% percentage split`;
       } else if (compType === "fixed") {
-        teacherShare = 0;
-        reason = "Fixed salary (paid monthly)";
+        // FIXED SALARY: Owner closes FULL subject fee, pays teacher fixed salary later
+        teacherShare = portion; // 100% of subject fee goes to owner to close
+        reason = `Fixed salary (PKR ${(teacher.compensation?.fixedSalary || 0).toLocaleString()}/month) - Full fee to owner`;
       } else if (compType === "perStudent") {
-        teacherShare = 0;
-        reason = "Per-student compensation (calculated in payroll)";
+        // PER-STUDENT: Owner closes FULL subject fee, pays teacher perStudentAmount later
+        teacherShare = portion; // 100% of subject fee goes to owner to close
+        reason = `Per-student (PKR ${(teacher.compensation?.perStudentAmount || 0).toLocaleString()}/student) - Full fee to owner`;
       } else if (compType === "hybrid") {
         const profitShare = teacher.compensation?.profitShare || 10;
         teacherShare = Math.floor((portion * profitShare) / 100);
@@ -868,7 +870,9 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
         teacherName: teacher.name,
         compensationType: compType,
         amount: teacherShare,
-        percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : undefined,
+        percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : (compType === "perStudent" || compType === "fixed" ? 100 : undefined),
+        perStudentAmount: compType === "perStudent" ? (teacher.compensation?.perStudentAmount || 0) : undefined,
+        fixedSalary: compType === "fixed" ? (teacher.compensation?.fixedSalary || 0) : undefined,
         reason,
         isPartner: false,
       });
