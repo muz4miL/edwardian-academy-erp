@@ -31,6 +31,9 @@ import {
   Send,
   CheckCircle2,
   Megaphone,
+  Video,
+  MessageCircle,
+  Briefcase,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -682,8 +685,127 @@ export default function PublicLanding() {
             </p>
           </motion.div>
 
+          {/* Luxurious CEO Section - Mr. Waqar Baig */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7 }}
+            viewport={{ once: true }}
+            className="mb-16"
+          >
+            <div className="bg-gradient-to-br from-slate-50 via-white to-slate-50 rounded-2xl overflow-hidden shadow-xl border border-slate-200/80 relative">
+              {/* Subtle Accent Line */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-gold via-brand-primary to-brand-gold" />
+              
+              <div className="relative grid grid-cols-1 md:grid-cols-2 gap-0">
+                {/* Left Side - Portrait */}
+                <div className="flex items-center justify-center p-8 md:p-12 bg-gradient-to-br from-slate-100/50 to-white">
+                  <div className="relative group w-full max-w-sm">
+                    {/* Refined CEO Badge */}
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20">
+                      <div className="flex items-center gap-2 bg-gradient-to-r from-brand-primary to-slate-800 text-white px-6 py-2 rounded-full shadow-lg border border-brand-gold/20">
+                        <Crown className="h-4 w-4 text-brand-gold" />
+                        <span className="text-xs font-bold uppercase tracking-wide">Chief Executive Officer</span>
+                      </div>
+                    </div>
+                    
+                    {/* Portrait with Elegant Frame */}
+                    <div className="relative mt-6">
+                      {/* Subtle Gold Accent */}
+                      <div className="absolute -inset-2 bg-gradient-to-br from-brand-gold/20 via-brand-primary/10 to-transparent rounded-2xl" />
+                      
+                      {/* Image Container */}
+                      <div className="relative aspect-[3/4] rounded-xl overflow-hidden shadow-2xl border-4 border-white transform group-hover:scale-[1.02] transition-transform duration-500">
+                        <img
+                          src="/waqar.png"
+                          alt="Mr. Waqar Baig - CEO"
+                          className="w-full h-full object-cover object-center"
+                          onError={(e) => { e.target.src = '/logo.png'; }}
+                        />
+                        {/* Subtle Vignette */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Side - Content */}
+                <div className="flex flex-col justify-center space-y-6 p-8 md:p-12">
+                  {/* Name & Title */}
+                  <div>
+                    <h3 className="text-3xl md:text-4xl font-serif font-black text-brand-primary mb-3 tracking-tight">
+                      Mr. Waqar Baig
+                    </h3>
+                    <p className="text-lg font-bold text-slate-700 mb-1">
+                      CEO & Founder, The Edwardian's Academy
+                    </p>
+                    <p className="text-base font-semibold text-brand-gold">
+                      Expert Chemistry Educator
+                    </p>
+                  </div>
+
+                  {/* Refined Divider */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-0.5 w-16 bg-brand-gold rounded-full" />
+                    <GraduationCap className="h-4 w-4 text-brand-gold" />
+                    <div className="h-0.5 flex-1 bg-gradient-to-r from-brand-gold/50 to-transparent rounded-full" />
+                  </div>
+
+                  {/* Content Sections - Compact & Elegant */}
+                  <div className="space-y-4 text-sm leading-relaxed">
+                    <div className="border-l-4 border-brand-gold/30 pl-4">
+                      <h4 className="flex items-center gap-2 text-brand-primary font-bold text-xs uppercase tracking-wider mb-2">
+                        <Award className="h-3.5 w-3.5" />
+                        Academic Background
+                      </h4>
+                      <p className="text-slate-600 font-medium">
+                        M.Sc. Chemistry, Institute of Chemical Sciences, University of Peshawar (2012).
+                      </p>
+                    </div>
+
+                    <div className="border-l-4 border-brand-gold/30 pl-4">
+                      <h4 className="flex items-center gap-2 text-brand-primary font-bold text-xs uppercase tracking-wider mb-2">
+                        <Briefcase className="h-3.5 w-3.5" />
+                        Professional Experience
+                      </h4>
+                      <p className="text-slate-600 font-medium">
+                        Former Lecturer at Fazaia Degree College and Edwardes College. Visiting Lecturer at Islamia College Peshawar.
+                      </p>
+                    </div>
+
+                    <div className="border-l-4 border-brand-gold/30 pl-4">
+                      <h4 className="flex items-center gap-2 text-brand-primary font-bold text-xs uppercase tracking-wider mb-2">
+                        <Trophy className="h-3.5 w-3.5" />
+                        Impact & Recognition
+                      </h4>
+                      <p className="text-slate-600 font-medium">
+                        Extensive experience in F.Sc. tuition and ETEA/MDCAT preparation, guiding thousands into medical colleges. Author of MCQ books and comprehensive notes. Multiple Letters of Commendation recipient.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Achievement Highlights */}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <div className="flex items-center gap-1.5 bg-brand-gold/10 px-3 py-1.5 rounded-full border border-brand-gold/20">
+                      <Award className="h-3.5 w-3.5 text-brand-gold" />
+                      <span className="text-xs font-bold text-brand-primary">Award Winner</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-brand-gold/10 px-3 py-1.5 rounded-full border border-brand-gold/20">
+                      <BookOpen className="h-3.5 w-3.5 text-brand-gold" />
+                      <span className="text-xs font-bold text-brand-primary">Published Author</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-brand-gold/10 px-3 py-1.5 rounded-full border border-brand-gold/20">
+                      <Users className="h-3.5 w-3.5 text-brand-gold" />
+                      <span className="text-xs font-bold text-brand-primary">1000+ Students</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
           {/* Premium Faculty Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
             {/* Mr. Jamil Ahmad */}
             <motion.div
               initial={{ opacity: 0, y: 40 }}
@@ -693,20 +815,13 @@ export default function PublicLanding() {
               className="group"
             >
               <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
-                {/* CEO Badge */}
-                <div className="absolute top-4 right-4 z-20">
-                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-brand-gold to-amber-500 text-white px-3 py-1.5 rounded-full shadow-lg">
-                    <Crown className="h-3 w-3" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">CEO</span>
-                  </div>
-                </div>
-                
                 {/* Image Container */}
                 <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
                   <img
                     src="/Jamil.png"
                     alt="Mr. Jamil Ahmad"
                     className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 </div>
@@ -829,20 +944,13 @@ export default function PublicLanding() {
               className="group"
             >
               <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
-                {/* Managing Director Badge */}
-                <div className="absolute top-4 right-4 z-20">
-                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-1.5 rounded-full shadow-lg">
-                    <Star className="h-3 w-3" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">MD</span>
-                  </div>
-                </div>
-                
                 {/* Image Container */}
                 <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
                   <img
                     src="/ishaq.png"
                     alt="Mr. Muhammad Ishaq Jan"
                     className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 </div>
@@ -856,13 +964,205 @@ export default function PublicLanding() {
                     M.Sc. Botany | B.Ed
                   </p>
                   <p className="text-sm font-semibold text-slate-700 mb-1">
-                    Biology Teacher & Managing Director
+                    Biology Teacher
                   </p>
                   <p className="text-xs text-brand-primary/80 font-medium mb-3">
-                    The Prime Educator School System
+                    Expert Educator
                   </p>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Dedicated to concept-based learning and institutional management.
+                    Dedicated to concept-based learning and student excellence.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Dr. Shah Khalid */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* PhD Badge */}
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-full shadow-lg">
+                    <GraduationCap className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Ph.D.</span>
+                  </div>
+                </div>
+                
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/ShahKhalid.png"
+                    alt="Dr. Shah Khalid"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Dr. Shah Khalid
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    Ph.D. ICP/Harvard University
+                  </p>
+                  <p className="text-xs text-slate-600 mb-1 font-semibold">
+                    Postdoctoral: ETH Zurich, QMUL UK
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Lecturer, Department of Botany
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    Islamia College Peshawar
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Highly accomplished academic and researcher in Botany. Former Visiting Scholar at Utah State University.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Shah Saud Khan */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.35 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/shahsaudkhan.png"
+                    alt="Shah Saud Khan"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Shah Saud Khan
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mb-3">
+                    Physics Teacher
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Passionate physics educator dedicated to student success.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Nadeem Khan */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/Nadeem.png"
+                    alt="Nadeem Khan"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Nadeem Khan
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mb-3">
+                    Mathematics Teacher
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Expert mathematics instructor focused on building strong fundamentals.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Awal Said */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.45 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/awalsaid.png"
+                    alt="Awal Said"
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Awal Said
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mb-3">
+                    English Teacher
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Dedicated English language instructor with a focus on communication skills.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Kamran Mohsin */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/kamran.png"
+                    alt="Kamran Mohsin"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Kamran Mohsin
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mb-3">
+                    English Teacher
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Experienced English educator committed to language excellence.
                   </p>
                 </div>
               </div>
@@ -945,16 +1245,51 @@ export default function PublicLanding() {
                 Advancing knowledge and transforming lives through excellence in education since 2017.
               </p>
               <div className="flex gap-3">
-                {[Facebook, Twitter, Instagram, Youtube].map((Icon, i) => (
-                  <motion.a 
-                    key={i} 
-                    href="#" 
-                    whileHover={{ y: -3, scale: 1.1 }}
-                    className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-brand-gold hover:text-white transition-all border border-white/5 hover:border-brand-gold"
-                  >
-                    <Icon className="h-4 w-4" />
-                  </motion.a>
-                ))}
+                <motion.a 
+                  href="https://www.facebook.com/theedwardiansacademy" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ y: -3, scale: 1.1 }}
+                  className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-blue-600 hover:text-white transition-all border border-white/5 hover:border-blue-600"
+                >
+                  <Facebook className="h-4 w-4" />
+                </motion.a>
+                <motion.a 
+                  href="https://www.instagram.com/theedwardiansacademy" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ y: -3, scale: 1.1 }}
+                  className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-pink-600 hover:text-white transition-all border border-white/5 hover:border-pink-600"
+                >
+                  <Instagram className="h-4 w-4" />
+                </motion.a>
+                <motion.a 
+                  href="https://www.tiktok.com/@theedwardiansacademy" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ y: -3, scale: 1.1 }}
+                  className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-black hover:text-white transition-all border border-white/5 hover:border-black"
+                >
+                  <Video className="h-4 w-4" />
+                </motion.a>
+                <motion.a 
+                  href="https://whatsapp.com/channel/0029VaiTo3bJuyAEfReetV0R" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ y: -3, scale: 1.1 }}
+                  className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-green-600 hover:text-white transition-all border border-white/5 hover:border-green-600"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </motion.a>
+                <motion.a 
+                  href="https://youtube.com/@theedwardiansacademy" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ y: -3, scale: 1.1 }}
+                  className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center hover:bg-red-600 hover:text-white transition-all border border-white/5 hover:border-red-600"
+                >
+                  <Youtube className="h-4 w-4" />
+                </motion.a>
               </div>
             </div>
 
