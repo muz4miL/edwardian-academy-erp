@@ -139,6 +139,46 @@ const styles = StyleSheet.create({
     flexDirection: "column",
   },
 
+  photoSection: {
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  photoFrame: {
+    width: 70,
+    height: 88,
+    border: "1pt solid #1f2937",
+    borderRadius: 2,
+    overflow: "hidden",
+    backgroundColor: "#f8fafc",
+  },
+  photoImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  photoFallback: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#1a365d",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  photoFallbackInitials: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#ffffff",
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  photoFallbackLabel: {
+    fontSize: 6.5,
+    fontWeight: 700,
+    color: "#d4af37",
+    letterSpacing: 0.8,
+    textAlign: "center",
+  },
+
   // Student Details Grid
   detailsGrid: {
     marginBottom: 8,
@@ -433,6 +473,8 @@ export interface StudentPDFData {
   discountAmount?: number;
   feeStatus: string;
   admissionDate?: string | Date;
+  photo?: string;
+  imageUrl?: string;
   subjects?: Array<{ name: string; fee: number; teacherName?: string }>;
   schedule?: Array<{
     subject: string;
@@ -484,6 +526,25 @@ const formatClassName = (className: string | undefined): string => {
   return className.replace(/-/g, " ").replace(/\s+/g, " ").trim();
 };
 
+const getInitials = (name: string | undefined): string => {
+  if (!name) return "NA";
+
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase() || "NA";
+  }
+
+  return name.trim().slice(0, 2).toUpperCase() || "NA";
+};
+
+const resolvePhotoSrc = (photo: string | undefined): string | null => {
+  if (!photo) return null;
+  if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
+
+  const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001";
+  return `${apiBaseUrl}${photo}`;
+};
+
 // ==================== COMPONENT ====================
 export const ReceiptPDF = ({
   student,
@@ -497,6 +558,8 @@ export const ReceiptPDF = ({
   );
   const isPaid = student.feeStatus === "paid" || balance === 0;
   const isMedical = student.group?.toLowerCase().includes("medical");
+  const studentPhoto = resolvePhotoSrc(student.imageUrl || student.photo);
+  const studentInitials = getInitials(student.studentName);
 
   return (
     <Document>
@@ -555,6 +618,20 @@ export const ReceiptPDF = ({
           <View style={styles.mainContent}>
             {/* LEFT — Student Info + Schedule Table */}
             <View style={styles.leftSection}>
+              <View style={styles.photoSection}>
+                <View style={styles.photoFrame}>
+                  {studentPhoto ? (
+                    <Image src={studentPhoto} style={styles.photoImage} />
+                  ) : (
+                    <View style={styles.photoFallback}>
+                      <Text style={styles.photoFallbackInitials}>
+                        {studentInitials}
+                      </Text>
+                      <Text style={styles.photoFallbackLabel}>NO PHOTO</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
               <View style={styles.detailsGrid}>
                 {/* Row 1: Name | Father */}
                 <View style={styles.detailRow}>

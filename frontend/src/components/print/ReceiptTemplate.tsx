@@ -1,4 +1,4 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, useState } from "react";
 import Barcode from "react-barcode";
 
 /**
@@ -40,6 +40,15 @@ interface ReceiptTemplateProps {
 
 const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
   ({ student, receiptConfig }, ref) => {
+    const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+
+    const resolvePhotoSrc = (photo: string | undefined) => {
+      if (!photo) return null;
+      if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
+      const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001";
+      return `${apiBaseUrl}${photo}`;
+    };
+
     const formatDate = (date: Date | string | undefined) => {
       if (!date) return new Date().toLocaleDateString("en-GB");
       return new Date(date).toLocaleDateString("en-GB");
@@ -54,6 +63,9 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
       (student.totalFee || 0) - (student.paidAmount || 0),
     );
     const isPaid = student.feeStatus === "paid" || balance === 0;
+    const studentPhoto = !photoLoadFailed
+      ? resolvePhotoSrc(student.imageUrl || student.photo)
+      : null;
 
     return (
       <>
@@ -217,21 +229,41 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
           >
             {/* Left Column - Student Photo & Details */}
             <div style={{ flex: "1.5" }}>
-              {/* Student Photo (if available) */}
-              {(student.imageUrl || student.photo) && (
-                <div style={{ float: "right", marginLeft: "10px", marginBottom: "8px" }}>
+              {/* Student Photo / Placeholder */}
+              <div style={{ float: "left", marginRight: "12px", marginBottom: "8px" }}>
+                {studentPhoto ? (
                   <img
-                    src={student.imageUrl || student.photo}
+                    src={studentPhoto}
                     alt={student.studentName}
+                    onError={() => setPhotoLoadFailed(true)}
                     style={{
-                      width: "70px",
-                      height: "80px",
+                      width: "92px",
+                      height: "112px",
                       objectFit: "cover",
                       border: "1px solid #000",
                     }}
                   />
-                </div>
-              )}
+                ) : (
+                  <div
+                    style={{
+                      width: "92px",
+                      height: "112px",
+                      border: "1px solid #000",
+                      backgroundColor: "#f5f5f5",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexDirection: "column",
+                      color: "#666",
+                      fontSize: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: "20px", lineHeight: 1 }}>PHOTO</div>
+                    <div>NO PHOTO</div>
+                  </div>
+                )}
+              </div>
               <table
                 style={{
                   width: "100%",

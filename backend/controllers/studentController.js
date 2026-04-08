@@ -395,6 +395,11 @@ const processRevenueDistribution = async ({
       // 3. Academy Distribution - NEW FLOW: Owner gets 100% immediately, then releases to partners
       totalAcademyShare += split.academyAmount;
       
+      // CHECK: Is this a 100% academy split (0% teacher share)?
+      // If teacher compensation is 0:100 (0% teacher, 100% academy), we skip partner settlements
+      // Owner closes the full amount and manually releases to partners as needed
+      const is100PercentAcademy = split.totalTeacherAmount === 0 && split.totalDirectStakeholderAmount === 0;
+      
       if (split.academyAmount > 0) {
         // Find owner user
         const ownerUser = await User.findOne({ role: "OWNER" });
@@ -406,6 +411,10 @@ const processRevenueDistribution = async ({
           await ownerUser.save();
           
           // Create ONE daily revenue entry for owner (FULL academy pool)
+          const poolDescription = is100PercentAcademy 
+            ? `Academy pool (100% academy compensation - manual release to partners)`
+            : `Academy pool (100% - will release to partners)`;
+          
           dailyRevenueEntries.push({
             userId: ownerUser._id,
             amount: split.academyAmount,
@@ -414,11 +423,12 @@ const processRevenueDistribution = async ({
             studentRef: student._id,
             studentName: student.studentName,
             subject: subjName,
-            description: `Academy pool (100% - will release to partners)`,
+            description: poolDescription,
             splitDetails: {
               studentName: student.studentName,
               subject: subjName,
-              calculationProof: `PKR ${subjShare} (${subjName}) → PKR ${split.academyAmount} academy pool (owner closes, releases to partners)`,
+              calculationProof: `PKR ${subjShare} (${subjName}) → PKR ${split.academyAmount} academy pool (owner closes${is100PercentAcademy ? ', manual release to partners' : ', releases to partners'})`,
+              is100PercentAcademy,
             },
           });
           
@@ -435,61 +445,65 @@ const processRevenueDistribution = async ({
             studentId: student._id,
           });
           
-          // Create settlements for ALL stakeholders (owner + partners)
-          for (const dist of split.academyDistribution) {
-            if (dist.amount > 0 && dist.userId) {
-              const user = await User.findById(dist.userId);
-              if (user) {
-                await AcademySettlement.create({
-                  partnerId: user._id,
-                  partnerName: user.fullName,
-                  partnerRole: user.role || "PARTNER",
-                  percentage: dist.percentage || 0,
-                  amount: dist.amount,
-                  sourceDetails: {
-                    feeRecordId: null, // Will be set after fee record is created
-                    studentId: student._id,
-                    studentName: student.studentName,
-                    className: classDoc?.classTitle || student.class,
-                    subject: subjName,
-                    originalFee: subjShare,
-                    calculationProof: `PKR ${subjShare} (${subjName}) pool share (${dist.percentage}%) = PKR ${dist.amount}`,
-                    academyPercentage: dist.percentage,
-                  },
-                  status: user.role === "OWNER" ? "RELEASED" : "PENDING", // Owner's portion auto-released
-                });
-                
-                // For PARTNERS only, create DEFERRED daily revenue entry (for tracking)
-                if (user.role === "PARTNER") {
-                  dailyRevenueEntries.push({
-                    userId: dist.userId,
+          // ONLY create partner settlements if this is NOT a 100% academy split
+          // For 100% academy (0% teacher), owner closes everything and manually releases to partners
+          if (!is100PercentAcademy) {
+            // Create settlements for ALL stakeholders (owner + partners)
+            for (const dist of split.academyDistribution) {
+              if (dist.amount > 0 && dist.userId) {
+                const user = await User.findById(dist.userId);
+                if (user) {
+                  await AcademySettlement.create({
+                    partnerId: user._id,
+                    partnerName: user.fullName,
+                    partnerRole: user.role || "PARTNER",
+                    percentage: dist.percentage || 0,
                     amount: dist.amount,
-                    revenueType: "ACADEMY_SHARE",
-                    className: classDoc?.classTitle || student.class,
-                    studentRef: student._id,
-                    studentName: student.studentName,
-                    subject: subjName,
-                    description: "Academy share (DEFERRED - pending owner release)",
-                    splitDetails: {
+                    sourceDetails: {
+                      feeRecordId: null, // Will be set after fee record is created
+                      studentId: student._id,
                       studentName: student.studentName,
+                      className: classDoc?.classTitle || student.class,
                       subject: subjName,
+                      originalFee: subjShare,
                       calculationProof: `PKR ${subjShare} (${subjName}) pool share (${dist.percentage}%) = PKR ${dist.amount}`,
+                      academyPercentage: dist.percentage,
                     },
-                    isDeferred: true,
+                    status: user.role === "OWNER" ? "RELEASED" : "PENDING", // Owner's portion auto-released
                   });
                   
-                  // Create DEFERRED transaction for partner
-                  creditTransactions.push({
-                    type: "INCOME",
-                    category: "Academy Share",
-                    stream: "ACADEMY_POOL",
-                    amount: dist.amount,
-                    description: `Academy share (${subjName}): ${student.studentName} → ${dist.fullName} (DEFERRED)`,
-                    collectedBy: req.user?._id,
-                    status: "DEFERRED",
-                    date: new Date(),
-                    studentId: student._id,
-                  });
+                  // For PARTNERS only, create DEFERRED daily revenue entry (for tracking)
+                  if (user.role === "PARTNER") {
+                    dailyRevenueEntries.push({
+                      userId: dist.userId,
+                      amount: dist.amount,
+                      revenueType: "ACADEMY_SHARE",
+                      className: classDoc?.classTitle || student.class,
+                      studentRef: student._id,
+                      studentName: student.studentName,
+                      subject: subjName,
+                      description: "Academy share (DEFERRED - pending owner release)",
+                      splitDetails: {
+                        studentName: student.studentName,
+                        subject: subjName,
+                        calculationProof: `PKR ${subjShare} (${subjName}) pool share (${dist.percentage}%) = PKR ${dist.amount}`,
+                      },
+                      isDeferred: true,
+                    });
+                    
+                    // Create DEFERRED transaction for partner
+                    creditTransactions.push({
+                      type: "INCOME",
+                      category: "Academy Share",
+                      stream: "ACADEMY_POOL",
+                      amount: dist.amount,
+                      description: `Academy share (${subjName}): ${student.studentName} → ${dist.fullName} (DEFERRED)`,
+                      collectedBy: req.user?._id,
+                      status: "DEFERRED",
+                      date: new Date(),
+                      studentId: student._id,
+                    });
+                  }
                 }
               }
             }

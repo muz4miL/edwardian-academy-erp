@@ -251,7 +251,8 @@ async function calculateAcademySplit(feeAmount, teacher, config) {
   const compType = teacher?.compensation?.type || "percentage";
 
   if (compType === "percentage") {
-    const teacherShare = teacher.compensation.teacherShare || config?.salaryConfig?.teacherShare || 70;
+    // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+    const teacherShare = teacher.compensation?.teacherShare ?? config?.salaryConfig?.teacherShare ?? 70;
     teacherAmount = Math.floor((normalizedFee * teacherShare) / 100);
     academyAmount = normalizedFee - teacherAmount;
   } else if (compType === "perStudent") {
@@ -843,7 +844,8 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
       let reason = "";
 
       if (compType === "percentage") {
-        const percentage = teacher.compensation?.teacherShare || 70;
+        // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+        const percentage = teacher.compensation?.teacherShare ?? 70;
         teacherShare = Math.floor((portion * percentage) / 100);
         reason = `${percentage}% percentage split`;
       } else if (compType === "fixed") {
@@ -870,7 +872,7 @@ async function splitFeeAmongTeachers(feeAmount, teachersData, config) {
         teacherName: teacher.name,
         compensationType: compType,
         amount: teacherShare,
-        percentage: compType === "percentage" ? (teacher.compensation?.teacherShare || 70) : (compType === "perStudent" || compType === "fixed" ? 100 : undefined),
+        percentage: compType === "percentage" ? (teacher.compensation?.teacherShare ?? 70) : (compType === "perStudent" || compType === "fixed" ? 100 : undefined),
         perStudentAmount: compType === "perStudent" ? (teacher.compensation?.perStudentAmount || 0) : undefined,
         fixedSalary: compType === "fixed" ? (teacher.compensation?.fixedSalary || 0) : undefined,
         reason,

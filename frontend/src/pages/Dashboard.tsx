@@ -886,7 +886,7 @@ const OwnerDashboard = () => {
                   const settlementsEl = document.getElementById('academy-settlements-section');
                   if (settlementsEl) settlementsEl.scrollIntoView({ behavior: 'smooth' });
                 }}
-                onViewPayroll={() => window.location.href = '/payroll'}
+                onViewPayroll={() => window.location.href = '/finance?tab=payroll'}
                 onCloseDay={handleCloseDay}
               />
             </CardContent>
@@ -1399,78 +1399,6 @@ const OwnerDashboard = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        {/* Financial Reports Section */}
-        <Card className="mt-6 border-slate-200 bg-white shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl text-slate-900">
-              <FileText className="h-6 w-6 text-red-600" />
-              Generate Financial Reports
-            </CardTitle>
-            <CardDescription className="text-slate-600">
-              One-click reports for any period - printable & downloadable
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Button
-                size="lg"
-                className="h-16 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-300"
-                onClick={() => generateReport("today")}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Today's Sale</span>
-                  </div>
-                  <span className="text-xs opacity-80">Daily Report</span>
-                </div>
-              </Button>
-
-              <Button
-                size="lg"
-                className="h-16 bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-700 hover:to-sky-800 text-white font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-300"
-                onClick={() => generateReport("week")}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4" />
-                    <span>Week's Sale</span>
-                  </div>
-                  <span className="text-xs opacity-80">Weekly Report</span>
-                </div>
-              </Button>
-
-              <Button
-                size="lg"
-                className="h-16 bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-300"
-                onClick={() => generateReport("month")}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Month's Sale</span>
-                  </div>
-                  <span className="text-xs opacity-80">Monthly Report</span>
-                </div>
-              </Button>
-
-              <Button
-                size="lg"
-                className="h-16 bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-semibold shadow-lg hover:-translate-y-0.5 hover:shadow-xl transition-all duration-300"
-                onClick={() => (window.location.href = "/finance")}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4" />
-                    <span>Full Finance</span>
-                  </div>
-                  <span className="text-xs opacity-80">Detailed Ledger</span>
-                </div>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Quick Actions */}
         <Card className="mt-6 border-slate-200 bg-white shadow-xl">

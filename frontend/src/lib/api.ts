@@ -835,6 +835,19 @@ export const financeApi = {
         return data;
     },
 
+    // Academy Settlements - Manual Release (arbitrary amount to partner)
+    manualReleaseToPartner: async (partnerId: string, amount: number, notes?: string) => {
+        const response = await fetch(`${API_BASE_URL}/finance/academy-settlements/manual-release/${partnerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ amount, notes }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to release to partner');
+        return data;
+    },
+
     // Academy Settlements - History
     getSettlementHistory: async (partnerId?: string) => {
         const url = partnerId 
@@ -929,6 +942,86 @@ export const configApi = {
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.message || 'Failed to reset finance data');
+        return data;
+    },
+};
+
+// ========================================
+// Reports API Endpoints
+// ========================================
+export const reportApi = {
+    // Get all classes for report dropdown
+    getAllClasses: async () => {
+        const response = await fetch(`${API_BASE_URL}/reports/classes`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch classes');
+        return data;
+    },
+
+    // Get all teachers for report dropdown
+    getAllTeachers: async () => {
+        const response = await fetch(`${API_BASE_URL}/reports/teachers`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch teachers');
+        return data;
+    },
+
+    // Get detailed class report
+    getClassReport: async (classId: string, options?: { startDate?: string; endDate?: string }) => {
+        const params = new URLSearchParams();
+        if (options?.startDate) params.append('startDate', options.startDate);
+        if (options?.endDate) params.append('endDate', options.endDate);
+        
+        const url = `${API_BASE_URL}/reports/class/${classId}${params.toString() ? `?${params.toString()}` : ''}`;
+        const response = await fetch(url, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch class report');
+        return data;
+    },
+
+    // Get detailed teacher report
+    getTeacherReport: async (teacherId: string, options?: { startDate?: string; endDate?: string }) => {
+        const params = new URLSearchParams();
+        if (options?.startDate) params.append('startDate', options.startDate);
+        if (options?.endDate) params.append('endDate', options.endDate);
+        
+        const url = `${API_BASE_URL}/reports/teacher/${teacherId}${params.toString() ? `?${params.toString()}` : ''}`;
+        const response = await fetch(url, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch teacher report');
+        return data;
+    },
+
+    // Get academy summary report
+    getAcademySummary: async () => {
+        const response = await fetch(`${API_BASE_URL}/reports/academy-summary`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch academy summary');
+        return data;
+    },
+
+    // Get financial overview report
+    getFinancialOverview: async (options?: { startDate?: string; endDate?: string }) => {
+        const params = new URLSearchParams();
+        if (options?.startDate) params.append('startDate', options.startDate);
+        if (options?.endDate) params.append('endDate', options.endDate);
+        
+        const url = `${API_BASE_URL}/reports/financial-overview${params.toString() ? `?${params.toString()}` : ''}`;
+        const response = await fetch(url, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch financial overview');
         return data;
     },
 };

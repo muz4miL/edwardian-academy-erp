@@ -2469,7 +2469,8 @@ exports.getTeacherPayrollReport = async (req, res) => {
 
       if (compType === "percentage") {
         // Use per-teacher Transaction records (NOT FeeRecord.splitBreakdown which is the TOTAL for all teachers)
-        const teacherShare = teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70;
+        // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+        const teacherShare = teacher.compensation?.teacherShare ?? config?.salaryConfig?.teacherShare ?? 70;
         const teacherTransactions = await Transaction.find({
           type: "INCOME",
           category: "Tuition",
@@ -2571,7 +2572,8 @@ exports.getTeacherPayrollReport = async (req, res) => {
           }).lean();
 
           const classMap = new Map(assignedClasses.map((c) => [c._id.toString(), c]));
-          const teacherSharePct = teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70;
+          // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+          const teacherSharePct = teacher.compensation?.teacherShare ?? config?.salaryConfig?.teacherShare ?? 70;
 
           const normalize = (val) => (val || "").toString().toLowerCase().trim();
           let estimatedTotal = 0;
@@ -2738,7 +2740,8 @@ exports.getTeacherPayrollReport = async (req, res) => {
           sampleItems: subjectFlowItems.slice(0, 20),
         },
         proof: compType === "percentage" ? {
-          teacherSharePercent: teacher.compensation?.teacherShare || config?.salaryConfig?.teacherShare || 70,
+          // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+          teacherSharePercent: teacher.compensation?.teacherShare ?? config?.salaryConfig?.teacherShare ?? 70,
           feeRecordCount: proof.length,
           totalFromFees: owedAmount,
           totalAcademyPoolFromFees: proof.reduce((sum, item) => sum + Number(item.academyPoolShare || 0), 0),
@@ -2913,8 +2916,9 @@ exports.getAcademyPoolReport = async (req, res) => {
             const teacher = st.teacherId;
             const userRole = teacher.userId?.role || "TEACHER";
             const compType = teacher.compensation?.type || "percentage";
-            const teacherShare = teacher.compensation?.teacherShare || 70;
-            const academyShare = teacher.compensation?.academyShare || 30;
+            // IMPORTANT: Use ?? instead of || to allow 0% teacher share (100% academy)
+            const teacherShare = teacher.compensation?.teacherShare ?? 70;
+            const academyShare = teacher.compensation?.academyShare ?? 30;
             const perStudentAmount = teacher.compensation?.perStudentAmount || 0;
             const fixedSalary = teacher.compensation?.fixedSalary || 0;
 
@@ -3123,7 +3127,7 @@ exports.getAcademySettlementsSummary = async (req, res) => {
     // Get user details for each partner
     const partnerIds = summary.map(s => s._id);
     const partners = await User.find({ _id: { $in: partnerIds } })
-      .select("fullName role profileImage")
+      .select("fullName role profileImage partnerPercentage")
       .lean();
     const partnerMap = new Map(partners.map(p => [p._id.toString(), p]));
 
@@ -3138,6 +3142,29 @@ exports.getAcademySettlementsSummary = async (req, res) => {
       newestSettlement: s.newestDate,
       profileImage: partnerMap.get(s._id?.toString())?.profileImage || null,
     }));
+
+    // ALSO fetch all partners (even those without pending settlements) for Manual Release
+    const allPartnersInSystem = await User.find({ role: "PARTNER" })
+      .select("fullName role profileImage partnerPercentage")
+      .lean();
+    
+    // Add any missing partners with 0 pending amount
+    const partnersInSummary = new Set(enrichedSummary.map(p => p.partnerId?.toString()));
+    for (const p of allPartnersInSystem) {
+      if (!partnersInSummary.has(p._id.toString())) {
+        enrichedSummary.push({
+          partnerId: p._id,
+          partnerName: p.fullName,
+          partnerRole: p.role,
+          percentage: p.partnerPercentage || 0,
+          totalPendingAmount: 0,
+          pendingCount: 0,
+          oldestSettlement: null,
+          newestSettlement: null,
+          profileImage: p.profileImage || null,
+        });
+      }
+    }
 
     // Calculate total
     const totalPending = enrichedSummary.reduce((sum, s) => sum + s.totalPendingAmount, 0);
@@ -3286,6 +3313,119 @@ exports.releasePartnerSettlements = async (req, res) => {
     });
   } catch (error) {
     console.error("releasePartnerSettlements error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Manual Release — Release arbitrary amount to partner (not tied to pending settlements).
+ * Used by Owner when they want to give a partner money at will, for bonuses, advances, etc.
+ * @route POST /api/finance/academy-settlements/manual-release/:partnerId
+ * @access OWNER only
+ */
+exports.manualReleaseToPartner = async (req, res) => {
+  try {
+    const { partnerId } = req.params;
+    const { amount, notes } = req.body;
+    const releasedBy = req.user;
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Amount must be a positive number" 
+      });
+    }
+
+    // Verify partner exists and is actually a PARTNER
+    const partner = await User.findById(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+    if (partner.role !== "PARTNER") {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Manual release is only available for partners" 
+      });
+    }
+
+    const releasedAmount = Math.floor(amount);
+    const noteText = notes ? `: ${notes}` : "";
+
+    // Create a DailyRevenue entry so partner can close this amount
+    // This is what makes it appear in the partner's closing dashboard
+    const dailyRevenueEntry = {
+      partner: partnerId,
+      date: new Date(),
+      amount: releasedAmount,
+      source: "TUITION",
+      revenueType: "ACADEMY_SHARE",
+      status: "UNCOLLECTED",  // CRITICAL: Must be UNCOLLECTED to appear in close preview
+      className: "Manual Release",
+      studentName: "",
+      description: `Manual release by ${releasedBy.fullName}${noteText}: PKR ${releasedAmount.toLocaleString()}`,
+      splitDetails: {
+        description: `Manual release from owner${noteText}`,
+        manualRelease: true,
+        releasedBy: releasedBy._id,
+        releasedByName: releasedBy.fullName,
+      },
+    };
+
+    const dailyRevenue = await DailyRevenue.create(dailyRevenueEntry);
+
+    // Create a manual settlement record for audit trail
+    const manualSettlement = await AcademySettlement.create({
+      partnerId: partner._id,
+      partnerName: partner.fullName,
+      partnerRole: partner.role,
+      percentage: partner.partnerPercentage || 0,
+      amount: releasedAmount,
+      totalAcademyShare: releasedAmount,
+      calculationProof: `Manual release by ${releasedBy.fullName}${noteText}`,
+      feeRecordId: null,
+      studentId: null,
+      studentName: "Manual Release",
+      classId: null,
+      className: "N/A",
+      subject: "Manual",
+      teacherId: null,
+      teacherName: "N/A",
+      sourceDate: new Date(),
+      status: "RELEASED",
+      releasedAt: new Date(),
+      releasedBy: releasedBy._id,
+      releaseNotes: notes || `Manual release by ${releasedBy.fullName}`,
+      dailyRevenueId: dailyRevenue._id,
+    });
+
+    // Update partner's floating balance
+    if (!partner.walletBalance) partner.walletBalance = { floating: 0, verified: 0 };
+    partner.walletBalance.floating += releasedAmount;
+    await partner.save();
+
+    // Create notification for partner
+    await Notification.create({
+      recipient: partnerId,
+      recipientRole: "PARTNER",
+      message: `You received a manual release of PKR ${releasedAmount.toLocaleString()} from ${releasedBy.fullName}.${notes ? ` Note: ${notes}` : ""} It is now available in your closing dashboard.`,
+      type: "FINANCE",
+      relatedId: `manual-release-${manualSettlement._id}`,
+    });
+
+    return res.json({
+      success: true,
+      message: `Released PKR ${releasedAmount.toLocaleString()} to ${partner.fullName}`,
+      data: {
+        releasedAmount: releasedAmount,
+        partnerName: partner.fullName,
+        notes: notes || null,
+        settlementId: manualSettlement._id,
+        dailyRevenueId: dailyRevenue._id,
+      },
+    });
+  } catch (error) {
+    console.error("manualReleaseToPartner error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

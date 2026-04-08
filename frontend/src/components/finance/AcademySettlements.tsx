@@ -47,6 +47,7 @@ import {
   Send,
   Loader2,
   Eye,
+  Gift,
 } from "lucide-react";
 import { toast } from "sonner";
 import { financeApi } from "@/lib/api";
@@ -89,6 +90,12 @@ export function AcademySettlements() {
   const [releasePartial, setReleasePartial] = useState(false);
   const [releaseAmount, setReleaseAmount] = useState("");
   const [releaseNotes, setReleaseNotes] = useState("");
+  
+  // Manual release state
+  const [manualReleaseDialogOpen, setManualReleaseDialogOpen] = useState(false);
+  const [manualReleaseAmount, setManualReleaseAmount] = useState("");
+  const [manualReleaseNotes, setManualReleaseNotes] = useState("");
+  const [selectedPartnerForManual, setSelectedPartnerForManual] = useState<PartnerSettlement | null>(null);
 
   // Fetch settlements summary
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
@@ -136,6 +143,27 @@ export function AcademySettlements() {
     },
   });
 
+  // Manual release mutation (arbitrary amount, not tied to pending settlements)
+  const manualReleaseMutation = useMutation({
+    mutationFn: (data: { partnerId: string; amount: number; notes?: string }) =>
+      financeApi.manualReleaseToPartner(data.partnerId, data.amount, data.notes),
+    onSuccess: (response) => {
+      toast.success(`Manual release of PKR ${response.data.releasedAmount.toLocaleString()} to ${response.data.partnerName}`);
+      queryClient.invalidateQueries({ queryKey: ["academy-settlements-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["academy-settlements-partner"] });
+      queryClient.invalidateQueries({ queryKey: ["academy-settlements-history"] });
+      queryClient.invalidateQueries({ queryKey: ["owner-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      setManualReleaseDialogOpen(false);
+      setSelectedPartnerForManual(null);
+      setManualReleaseAmount("");
+      setManualReleaseNotes("");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to release to partner");
+    },
+  });
+
   // Filter: only show PARTNER settlements (not OWNER — owner's share is auto-released)
   const allPartners = summaryData?.data?.partners || [];
   const partners = allPartners.filter((p: PartnerSettlement) => p.partnerRole !== "OWNER");
@@ -164,6 +192,24 @@ export function AcademySettlements() {
       partial: releasePartial,
       amount: releasePartial ? parseInt(releaseAmount) : undefined,
       notes: releaseNotes,
+    });
+  };
+
+  // Manual release handlers
+  const handleStartManualRelease = (partner: PartnerSettlement) => {
+    setSelectedPartnerForManual(partner);
+    setManualReleaseAmount("");
+    setManualReleaseNotes("");
+    setManualReleaseDialogOpen(true);
+  };
+
+  const handleManualRelease = () => {
+    if (!selectedPartnerForManual || !manualReleaseAmount) return;
+    
+    manualReleaseMutation.mutate({
+      partnerId: selectedPartnerForManual.partnerId,
+      amount: parseInt(manualReleaseAmount),
+      notes: manualReleaseNotes || undefined,
     });
   };
 
@@ -285,23 +331,35 @@ export function AcademySettlements() {
                     </div>
 
                     {/* Actions */}
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-4 flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-9 text-xs font-medium"
+                          onClick={() => handleViewDetails(partner)}
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1.5" />
+                          Details
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 h-9 text-xs font-medium bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => handleStartRelease(partner)}
+                          disabled={partner.totalPendingAmount === 0}
+                        >
+                          <Send className="h-3.5 w-3.5 mr-1.5" />
+                          Release
+                        </Button>
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 h-9 text-xs font-medium"
-                        onClick={() => handleViewDetails(partner)}
+                        className="w-full h-8 text-xs font-medium border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+                        onClick={() => handleStartManualRelease(partner)}
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1.5" />
-                        Details
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 h-9 text-xs font-medium bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => handleStartRelease(partner)}
-                      >
-                        <Send className="h-3.5 w-3.5 mr-1.5" />
-                        Release
+                        <Gift className="h-3.5 w-3.5 mr-1.5" />
+                        Manual Release
                       </Button>
                     </div>
                   </CardContent>
@@ -540,6 +598,79 @@ export function AcademySettlements() {
                 <>
                   <Send className="h-4 w-4 mr-1" />
                   Confirm Release
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual Release Dialog */}
+      <Dialog open={manualReleaseDialogOpen} onOpenChange={setManualReleaseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-purple-600" />
+              Manual Release
+            </DialogTitle>
+            <DialogDescription>
+              Release any amount to {selectedPartnerForManual?.partnerName} (bonus, advance, etc.)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-4 rounded-xl bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-purple-700 dark:text-purple-400">Releasing To</span>
+                <span className="text-lg font-bold text-purple-700 dark:text-purple-400">
+                  {selectedPartnerForManual?.partnerName}
+                </span>
+              </div>
+              <p className="text-xs text-purple-600 dark:text-purple-500">
+                {selectedPartnerForManual?.percentage}% partner share
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (PKR) *</label>
+              <Input
+                type="number"
+                min={1}
+                value={manualReleaseAmount}
+                onChange={(e) => setManualReleaseAmount(e.target.value)}
+                placeholder="Enter amount to release"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notes (Optional)</label>
+              <Textarea
+                value={manualReleaseNotes}
+                onChange={(e) => setManualReleaseNotes(e.target.value)}
+                placeholder="e.g., Bonus for performance, Monthly advance, etc."
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualReleaseDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={handleManualRelease}
+              disabled={manualReleaseMutation.isPending || !manualReleaseAmount || parseInt(manualReleaseAmount) <= 0}
+            >
+              {manualReleaseMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Releasing...
+                </>
+              ) : (
+                <>
+                  <Gift className="h-4 w-4 mr-1" />
+                  Release Amount
                 </>
               )}
             </Button>

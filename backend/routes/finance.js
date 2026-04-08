@@ -39,6 +39,7 @@ const {
   getAcademySettlementsSummary,
   getPartnerSettlementDetails,
   releasePartnerSettlements,
+  manualReleaseToPartner,
   getSettlementHistory,
   getOwnerBreakdown,
 } = require("../controllers/financeController");
@@ -130,6 +131,16 @@ router.post(
   protect,
   restrictTo("OWNER"),
   releasePartnerSettlements,
+);
+
+// @route   POST /api/finance/academy-settlements/manual-release/:partnerId
+// @desc    Manual release of arbitrary amount to a partner (not tied to pending settlements)
+// @access  Protected (OWNER only)
+router.post(
+  "/academy-settlements/manual-release/:partnerId",
+  protect,
+  restrictTo("OWNER"),
+  manualReleaseToPartner,
 );
 
 // @route   GET /api/finance/owner-breakdown
