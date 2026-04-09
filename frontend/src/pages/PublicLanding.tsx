@@ -806,135 +806,6 @@ export default function PublicLanding() {
 
           {/* Premium Faculty Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {/* Mr. Jamil Ahmad */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
-                {/* Image Container */}
-                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
-                  <img
-                    src="/Jamil.png"
-                    alt="Mr. Jamil Ahmad"
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
-                    onError={(e) => { e.target.src = '/logo.png'; }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                </div>
-                
-                {/* Content */}
-                <div className="p-6">
-                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
-                    Mr. Jamil Ahmad
-                  </h3>
-                  <p className="text-sm font-bold text-brand-gold mb-2">
-                    MPhil Physics | B.Ed
-                  </p>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">
-                    Physics Teacher & CEO
-                  </p>
-                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
-                    The Grand School System
-                  </p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Specializes in conceptual clarity and analytical thinking for Matric & college levels.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Mr. Qaisar Shahzad */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
-                {/* Image Container */}
-                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
-                  <img
-                    src="/Qaiser.png"
-                    alt="Mr. Qaisar Shahzad"
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                </div>
-                
-                {/* Content */}
-                <div className="p-6">
-                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
-                    Mr. Qaisar Shahzad
-                  </h3>
-                  <p className="text-sm font-bold text-brand-gold mb-2">
-                    M.Sc. Chemistry | M.Ed
-                  </p>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">
-                    Govt. School Teacher & Instructor
-                  </p>
-                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
-                    &nbsp;
-                  </p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Expert in modern teaching methodologies, promoting scientific thinking and academic growth.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Mr. Shams ul Haq */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              viewport={{ once: true }}
-              className="group"
-            >
-              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
-                {/* Academic Director Badge */}
-                <div className="absolute top-4 right-4 z-20">
-                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-brand-primary to-slate-700 text-white px-3 py-1.5 rounded-full shadow-lg">
-                    <Award className="h-3 w-3" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Director</span>
-                  </div>
-                </div>
-                
-                {/* Image Container */}
-                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
-                  <img
-                    src="/shams.png"
-                    alt="Mr. Shams ul Haq"
-                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                </div>
-                
-                {/* Content */}
-                <div className="p-6">
-                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
-                    Mr. Shams ul Haq
-                  </h3>
-                  <p className="text-sm font-bold text-brand-gold mb-2">
-                    M.Sc. Mathematics
-                  </p>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">
-                    Govt. School Teacher & Academic Director
-                  </p>
-                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
-                    The Grand School System
-                  </p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Focused on building solid conceptual understanding and maintaining high academic standards.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
             {/* Mr. Muhammad Ishaq Jan */}
             <motion.div
               initial={{ opacity: 0, y: 40 }}
@@ -1137,7 +1008,7 @@ export default function PublicLanding() {
             <motion.div
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
+              transition={{ duration: 0.6, delay: 0.65 }}
               viewport={{ once: true }}
               className="group"
             >
@@ -1163,6 +1034,135 @@ export default function PublicLanding() {
                   </p>
                   <p className="text-xs text-slate-500 leading-relaxed">
                     Experienced English educator committed to language excellence.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Mr. Jamil Ahmad */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.55 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/Jamil.png"
+                    alt="Mr. Jamil Ahmad"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                    onError={(e) => { e.target.src = '/logo.png'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Jamil Ahmad
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    MPhil Physics | B.Ed
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Physics Teacher & CEO
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    The Grand School System
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Specializes in conceptual clarity and analytical thinking for Matric & college levels.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Mr. Qaisar Shahzad */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/Qaiser.png"
+                    alt="Mr. Qaisar Shahzad"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Qaisar Shahzad
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    M.Sc. Chemistry | M.Ed
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Govt. School Teacher & Instructor
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    &nbsp;
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Expert in modern teaching methodologies, promoting scientific thinking and academic growth.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Mr. Shams ul Haq */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.65 }}
+              viewport={{ once: true }}
+              className="group"
+            >
+              <div className="relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 border border-slate-100/80">
+                {/* Academic Director Badge */}
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="flex items-center gap-1.5 bg-gradient-to-r from-brand-primary to-slate-700 text-white px-3 py-1.5 rounded-full shadow-lg">
+                    <Award className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Director</span>
+                  </div>
+                </div>
+                
+                {/* Image Container */}
+                <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-slate-100 to-slate-200">
+                  <img
+                    src="/shams.png"
+                    alt="Mr. Shams ul Haq"
+                    className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <h3 className="text-xl font-black text-brand-primary mb-1 group-hover:text-brand-gold transition-colors duration-300">
+                    Mr. Shams ul Haq
+                  </h3>
+                  <p className="text-sm font-bold text-brand-gold mb-2">
+                    M.Sc. Mathematics
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 mb-1">
+                    Govt. School Teacher & Academic Director
+                  </p>
+                  <p className="text-xs text-brand-primary/80 font-medium mb-3">
+                    The Grand School System
+                  </p>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Focused on building solid conceptual understanding and maintaining high academic standards.
                   </p>
                 </div>
               </div>

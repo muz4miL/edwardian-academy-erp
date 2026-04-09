@@ -31,6 +31,45 @@ const toSafeInt = (value) => {
   return Math.max(0, Math.trunc(parsed));
 };
 
+const normalizeSubjectKey = (value) =>
+  String(value || "").toLowerCase().trim();
+
+const daySortOrder = {
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+  Sunday: 7,
+};
+
+const formatScheduleTime = (entries) => {
+  if (!Array.isArray(entries) || entries.length === 0) return "TBD";
+
+  const ordered = [...entries].sort((a, b) => {
+    const dayDiff = (daySortOrder[a?.day] || 99) - (daySortOrder[b?.day] || 99);
+    if (dayDiff !== 0) return dayDiff;
+    return String(a?.startTime || "").localeCompare(String(b?.startTime || ""));
+  });
+
+  const slots = ordered
+    .map((entry) => {
+      const start = String(entry?.startTime || "").trim();
+      const end = String(entry?.endTime || "").trim();
+      if (!start && !end) return null;
+      if (!start || !end) return `${start || end}`.trim();
+      return `${start}-${end}`.trim();
+    })
+    .filter(Boolean);
+
+  const uniqueSlots = [...new Set(slots)];
+
+  if (uniqueSlots.length === 0) return "TBD";
+  if (uniqueSlots.length <= 2) return uniqueSlots.join(" | ");
+  return `${uniqueSlots.slice(0, 2).join(" | ")} +${uniqueSlots.length - 2}`;
+};
+
 // GET all students
 exports.getStudents = async (req, res) => {
   try {
@@ -706,7 +745,142 @@ exports.trackPrint = async (req, res) => {
     const receiptId = `TOKEN-${student.studentId}-${Math.random().toString(36).substr(2, 4).toUpperCase()}-V${version}`;
     student.printHistory.push({ receiptId, printedAt: new Date(), version });
     await student.save();
-    res.json({ success: true, data: { receiptId, version, student } });
+
+    let classDoc = null;
+    if (student.classRef) {
+      classDoc = await Class.findById(student.classRef)
+        .populate("subjectTeachers.teacherId", "name")
+        .lean();
+    }
+    if (!classDoc && student.class) {
+      classDoc = await Class.findOne({
+        $or: [{ classTitle: student.class }, { className: student.class }],
+      })
+        .populate("subjectTeachers.teacherId", "name")
+        .lean();
+    }
+
+    const timetableEntries = classDoc?._id
+      ? await Timetable.find({ classId: classDoc._id, status: "active" })
+          .populate("teacherId", "name")
+          .lean()
+      : [];
+
+    const classSubjectNameMap = new Map();
+    const classTeacherMap = new Map();
+
+    (classDoc?.subjects || []).forEach((subjectItem) => {
+      const subjectName =
+        typeof subjectItem === "string" ? subjectItem : subjectItem?.name;
+      const key = normalizeSubjectKey(subjectName);
+      if (key && subjectName) {
+        classSubjectNameMap.set(key, subjectName);
+      }
+    });
+
+    (classDoc?.subjectTeachers || []).forEach((mapping) => {
+      const key = normalizeSubjectKey(mapping?.subject);
+      if (!key) return;
+
+      const canonicalName = mapping?.subject;
+      if (canonicalName && !classSubjectNameMap.has(key)) {
+        classSubjectNameMap.set(key, canonicalName);
+      }
+
+      const mappedTeacherName = mapping?.teacherName || mapping?.teacherId?.name || "";
+      if (mappedTeacherName && !classTeacherMap.has(key)) {
+        classTeacherMap.set(key, mappedTeacherName);
+      }
+    });
+
+    const timetableBySubject = new Map();
+    const timetableTeacherMap = new Map();
+
+    timetableEntries.forEach((entry) => {
+      const key = normalizeSubjectKey(entry?.subject);
+      if (!key) return;
+
+      if (!timetableBySubject.has(key)) {
+        timetableBySubject.set(key, []);
+      }
+      timetableBySubject.get(key).push(entry);
+
+      const teacherName = entry?.teacherId?.name || "";
+      if (teacherName && !timetableTeacherMap.has(key)) {
+        timetableTeacherMap.set(key, teacherName);
+      }
+    });
+
+    const studentObj = student.toObject();
+    const rawSubjects = Array.isArray(studentObj.subjects) ? studentObj.subjects : [];
+
+    const enrichedSubjects = rawSubjects
+      .map((subjectItem) => {
+        const subjectName =
+          typeof subjectItem === "string" ? subjectItem : subjectItem?.name;
+        const key = normalizeSubjectKey(subjectName);
+        if (!key) return null;
+
+        const canonicalName = classSubjectNameMap.get(key) || subjectName;
+        const subjectTeacherName =
+          typeof subjectItem === "object" ? subjectItem?.teacherName : "";
+        const teacherName =
+          subjectTeacherName ||
+          classTeacherMap.get(key) ||
+          timetableTeacherMap.get(key) ||
+          undefined;
+
+        if (typeof subjectItem === "string") {
+          return {
+            name: canonicalName,
+            fee: 0,
+            teacherName,
+          };
+        }
+
+        return {
+          ...subjectItem,
+          name: canonicalName,
+          teacherName: teacherName || subjectItem?.teacherName,
+        };
+      })
+      .filter(Boolean);
+
+    const schedule = [];
+    const seenSubjects = new Set();
+
+    enrichedSubjects.forEach((subjectItem) => {
+      const key = normalizeSubjectKey(subjectItem?.name);
+      if (!key || seenSubjects.has(key)) return;
+      seenSubjects.add(key);
+
+      const subjectEntries = timetableBySubject.get(key) || [];
+      const teacherName =
+        subjectItem?.teacherName ||
+        classTeacherMap.get(key) ||
+        timetableTeacherMap.get(key) ||
+        "TBD";
+
+      schedule.push({
+        subject: subjectItem?.name,
+        teacherName,
+        time: formatScheduleTime(subjectEntries),
+        days: subjectEntries.map((entry) => entry?.day).filter(Boolean),
+      });
+    });
+
+    res.json({
+      success: true,
+      data: {
+        receiptId,
+        version,
+        student: {
+          ...studentObj,
+          subjects: enrichedSubjects,
+          schedule,
+        },
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

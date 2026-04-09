@@ -3068,7 +3068,7 @@ const TeacherDashboard = () => {
               </div>
             </div>
             {teacherProfile?.compensation?.type === "percentage" && (
-              <p className="text-xl font-bold text-emerald-800">{teacherProfile.compensation.teacherShare || 70}% of fee</p>
+              <p className="text-xl font-bold text-emerald-800">{teacherProfile.compensation.teacherShare ?? 70}% of fee</p>
             )}
             {teacherProfile?.compensation?.type === "fixed" && (
               <p className="text-xl font-bold text-emerald-800">PKR {(teacherProfile.compensation.fixedSalary || 0).toLocaleString()}/month</p>

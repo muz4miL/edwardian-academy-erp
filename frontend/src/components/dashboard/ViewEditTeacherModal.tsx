@@ -77,12 +77,12 @@ export const ViewEditTeacherModal = ({
       const comp = teacher.compensation;
       if (comp) {
         setCompType(comp.type || "percentage");
-        setTeacherShare(String(comp.teacherShare || 70));
-        setAcademyShare(String(comp.academyShare || 30));
-        setFixedSalary(String(comp.fixedSalary || ""));
-        setPerStudentAmount(String(comp.perStudentAmount || ""));
-        setBaseSalary(String(comp.baseSalary || ""));
-        setProfitShare(String(comp.profitShare || ""));
+        setTeacherShare(String(comp.teacherShare ?? 70));
+        setAcademyShare(String(comp.academyShare ?? 30));
+        setFixedSalary(String(comp.fixedSalary ?? ""));
+        setPerStudentAmount(String(comp.perStudentAmount ?? ""));
+        setBaseSalary(String(comp.baseSalary ?? ""));
+        setProfitShare(String(comp.profitShare ?? ""));
       }
     }
   }, [teacher, open]);

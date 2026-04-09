@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ImageCapture } from "@/components/shared/ImageCapture";
 import {
   User,
   DollarSign,
@@ -72,11 +73,25 @@ export const ViewEditStudentModal = ({
   const [studentCell, setStudentCell] = useState("");
   const [address, setAddress] = useState("");
   const [admissionDate, setAdmissionDate] = useState("");
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoChanged, setPhotoChanged] = useState(false);
 
   // Form State - Financial
   const [totalFee, setTotalFee] = useState("");
   const [paidAmount, setPaidAmount] = useState("");
   const [balance, setBalance] = useState(0);
+
+  const resolvePhotoPreviewSrc = (photoValue?: string | null) => {
+    if (!photoValue) return undefined;
+    if (
+      photoValue.startsWith("http") ||
+      photoValue.startsWith("data:") ||
+      photoValue.startsWith("blob:")
+    ) {
+      return photoValue;
+    }
+    return `${API_BASE_URL}${photoValue}`;
+  };
 
   // Fetch active classes for the dropdown
   const { data: classesData, isLoading: classesLoading } = useQuery({
@@ -150,6 +165,8 @@ export const ViewEditStudentModal = ({
       setAdmissionDate(
         student.admissionDate ? student.admissionDate.split("T")[0] : "",
       );
+      setPhoto(student.imageUrl || student.photo || null);
+      setPhotoChanged(false);
       setTotalFee(String(student.totalFee || ""));
       setPaidAmount(String(student.paidAmount || ""));
     }
@@ -198,20 +215,42 @@ export const ViewEditStudentModal = ({
   const handleSave = () => {
     if (!student?._id) return;
 
-    // Transform subjects array: ensure we send objects with {name, fee}
-    const subjectsWithFees = subjects.map((subjectName: string) => {
-      // Try to find the fee from the original student subjects
+    // Preserve subject metadata (teacher/discount) and restore display casing from class subjects.
+    const subjectLabelMap = new Map(
+      availableSubjects.map((subjectOption) => [subjectOption.id, subjectOption.label]),
+    );
+
+    const subjectsWithFees = subjects.map((subjectKey: string) => {
       const originalSubject = (student.subjects || []).find((s: any) => {
         const sName = typeof s === "string" ? s : s?.name;
-        return sName?.toLowerCase() === subjectName.toLowerCase();
+        return sName?.toLowerCase() === subjectKey.toLowerCase();
       });
 
-      const fee =
-        typeof originalSubject === "object" ? originalSubject?.fee || 0 : 0;
+      const originalObject =
+        typeof originalSubject === "object" && originalSubject !== null
+          ? originalSubject
+          : {};
+
+      const teacherIdValue =
+        typeof originalObject.teacherId === "object"
+          ? originalObject.teacherId?._id
+          : originalObject.teacherId;
+
+      const canonicalName =
+        subjectLabelMap.get(subjectKey) ||
+        originalObject.name ||
+        subjectKey;
+
+      const fee = Number(originalObject.fee) || 0;
 
       return {
-        name: subjectName,
-        fee: fee,
+        name: canonicalName,
+        fee,
+        discount: Number(originalObject.discount) || 0,
+        discountEnabled: Boolean(originalObject.discountEnabled),
+        discountReason: originalObject.discountReason || "",
+        teacherId: teacherIdValue || undefined,
+        teacherName: originalObject.teacherName || undefined,
       };
     });
 
@@ -229,6 +268,19 @@ export const ViewEditStudentModal = ({
       totalFee: Number(totalFee) || 0,
       paidAmount: Number(paidAmount) || 0,
     };
+
+    if (photoChanged) {
+      studentData.photo = photo || null;
+
+      // Keep imageUrl in sync so imageUrl||photo rendering always reflects latest edit.
+      if (!photo || photo.startsWith("data:")) {
+        studentData.imageUrl = null;
+      } else if (photo.startsWith("/") || photo.startsWith("http")) {
+        studentData.imageUrl = photo;
+      } else {
+        studentData.imageUrl = null;
+      }
+    }
 
     console.log("Saving student with data:", studentData);
     updateStudentMutation.mutate({ id: student._id, data: studentData });
@@ -460,6 +512,24 @@ export const ViewEditStudentModal = ({
           ) : (
             <>
               {/* Edit Mode - Form Inputs */}
+              {/* Student Photo */}
+              <div className="space-y-3">
+                <Label className="text-base font-medium">Student Photo</Label>
+                <div className="bg-slate-50/70 dark:bg-slate-900/30 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col items-center">
+                  <ImageCapture
+                    value={resolvePhotoPreviewSrc(photo)}
+                    onChange={(img) => {
+                      setPhoto(img);
+                      setPhotoChanged(true);
+                    }}
+                    size="lg"
+                  />
+                  <p className="text-xs text-muted-foreground mt-3 text-center">
+                    Upload or capture a photo. If no photo is set, receipt shows NO PHOTO.
+                  </p>
+                </div>
+              </div>
+
               {/* Personal Information Section */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-2">

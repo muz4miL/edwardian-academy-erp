@@ -272,6 +272,11 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: "#4b5563",
   },
+  scheduleMoreText: {
+    fontSize: 7,
+    color: "#6b7280",
+    fontStyle: "italic",
+  },
 
   // Fallback bullet subjects
   subjectsSection: {
@@ -545,6 +550,18 @@ const resolvePhotoSrc = (photo: string | undefined): string | null => {
   return `${apiBaseUrl}${photo}`;
 };
 
+const cleanText = (value: string | undefined, fallback = "-"): string => {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  return normalized || fallback;
+};
+
+const truncateText = (value: string | undefined, maxLength: number): string => {
+  const normalized = cleanText(value, "");
+  if (!normalized) return "-";
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(1, maxLength - 1))}…`;
+};
+
 // ==================== COMPONENT ====================
 export const ReceiptPDF = ({
   student,
@@ -552,6 +569,9 @@ export const ReceiptPDF = ({
   barcodeDataUrl,
   logoDataUrl,
 }: ReceiptPDFProps) => {
+  const MAX_SCHEDULE_ROWS = 6;
+  const MAX_SUBJECT_FALLBACK_ROWS = 6;
+
   const balance = Math.max(
     0,
     (student.totalFee || 0) - (student.paidAmount || 0),
@@ -560,6 +580,17 @@ export const ReceiptPDF = ({
   const isMedical = student.group?.toLowerCase().includes("medical");
   const studentPhoto = resolvePhotoSrc(student.imageUrl || student.photo);
   const studentInitials = getInitials(student.studentName);
+  const scheduleRows = Array.isArray(student.schedule)
+    ? student.schedule.filter((s) => s && (s.subject || s.teacherName || s.time))
+    : [];
+  const visibleScheduleRows = scheduleRows.slice(0, MAX_SCHEDULE_ROWS);
+  const hiddenScheduleCount = Math.max(0, scheduleRows.length - MAX_SCHEDULE_ROWS);
+  const fallbackSubjects = Array.isArray(student.subjects) ? student.subjects : [];
+  const visibleFallbackSubjects = fallbackSubjects.slice(0, MAX_SUBJECT_FALLBACK_ROWS);
+  const hiddenFallbackSubjectsCount = Math.max(
+    0,
+    fallbackSubjects.length - MAX_SUBJECT_FALLBACK_ROWS,
+  );
 
   return (
     <Document>
@@ -674,7 +705,7 @@ export const ReceiptPDF = ({
               </View>
 
               {/* Schedule Table — Subject / Teacher / Time */}
-              {student.schedule && student.schedule.length > 0 ? (
+              {scheduleRows.length > 0 ? (
                 <View style={styles.scheduleSection}>
                   <Text style={styles.scheduleTitle}>Class Schedule:</Text>
                   <View style={styles.scheduleHeader}>
@@ -682,7 +713,7 @@ export const ReceiptPDF = ({
                     <Text style={[styles.scheduleColTeacher, styles.scheduleHeaderText]}>TEACHER</Text>
                     <Text style={[styles.scheduleColTime, styles.scheduleHeaderText]}>TIME</Text>
                   </View>
-                  {student.schedule.map((s, idx) => (
+                  {visibleScheduleRows.map((s, idx) => (
                     <View
                       key={idx}
                       style={[
@@ -690,25 +721,51 @@ export const ReceiptPDF = ({
                         idx % 2 !== 0 ? styles.scheduleRowAlt : {},
                       ]}
                     >
-                      <Text style={[styles.scheduleColSubject, styles.scheduleSubjectText]}>{s.subject}</Text>
-                      <Text style={[styles.scheduleColTeacher, styles.scheduleTeacherText]}>{s.teacherName || "—"}</Text>
-                      <Text style={[styles.scheduleColTime, styles.scheduleTimeText]}>{s.time}</Text>
+                      <Text style={[styles.scheduleColSubject, styles.scheduleSubjectText]}>
+                        {truncateText(s.subject, 18)}
+                      </Text>
+                      <Text style={[styles.scheduleColTeacher, styles.scheduleTeacherText]}>
+                        {truncateText(s.teacherName || "-", 22)}
+                      </Text>
+                      <Text style={[styles.scheduleColTime, styles.scheduleTimeText]}>
+                        {truncateText(s.time || "TBD", 22)}
+                      </Text>
                     </View>
                   ))}
+                  {hiddenScheduleCount > 0 && (
+                    <View style={[styles.scheduleRow, styles.scheduleRowAlt]}>
+                      <Text style={[styles.scheduleColSubject, styles.scheduleMoreText]}>
+                        +{hiddenScheduleCount} more subjects
+                      </Text>
+                      <Text style={[styles.scheduleColTeacher, styles.scheduleMoreText]}>...</Text>
+                      <Text style={[styles.scheduleColTime, styles.scheduleMoreText]}>...</Text>
+                    </View>
+                  )}
                 </View>
-              ) : student.subjects && student.subjects.length > 0 ? (
+              ) : visibleFallbackSubjects.length > 0 ? (
                 /* Fallback: bullet list if no timetable data */
                 <View style={styles.subjectsSection}>
                   <Text style={styles.subjectsTitle}>Enrolled Subjects:</Text>
                   <View style={styles.subjectsList}>
-                    {student.subjects.map((s, idx) => (
+                    {visibleFallbackSubjects.map((s, idx) => (
                       <View key={idx} style={styles.subjectItem}>
                         <Text style={styles.subjectBullet}>{"\u2022"}</Text>
                         <Text style={styles.subjectName}>
-                          {s.name}{s.teacherName ? ` (${s.teacherName})` : ""}
+                          {truncateText(
+                            `${cleanText(s.name)}${s.teacherName ? ` (${s.teacherName})` : ""}`,
+                            42,
+                          )}
                         </Text>
                       </View>
                     ))}
+                    {hiddenFallbackSubjectsCount > 0 && (
+                      <View style={styles.subjectItem}>
+                        <Text style={styles.subjectBullet}>{"\u2022"}</Text>
+                        <Text style={styles.subjectName}>
+                          +{hiddenFallbackSubjectsCount} more subjects
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               ) : null}
