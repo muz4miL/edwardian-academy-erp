@@ -10,19 +10,35 @@ const generateToken = (userId) => {
     });
 };
 
+const getCookieOptions = () => {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    const configuredSameSite = (process.env.COOKIE_SAME_SITE || '').toLowerCase().trim();
+    const sameSite = configuredSameSite || (isProduction ? 'lax' : 'lax');
+
+    const configuredSecure = (process.env.COOKIE_SECURE || '').toLowerCase().trim();
+    const secure = configuredSecure
+        ? configuredSecure === 'true'
+        : isProduction;
+
+    const cookieOptions = {
+        httpOnly: true,
+        secure,
+        sameSite,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        domain: isProduction ? '.edwardiansacademy.com' : undefined,
+    };
+
+    return cookieOptions;
+};
+
 // ========================================
 // UTILITY: Send Cookie Response
 // ========================================
 const sendTokenResponse = (user, statusCode, res, message) => {
     const token = generateToken(user._id);
 
-    // Cookie options
-    const cookieOptions = {
-        httpOnly: true, // Prevents XSS attacks
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: 'strict', // CSRF protection
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
-    };
+    const cookieOptions = getCookieOptions();
 
     // Update last login
     user.lastLogin = new Date();
@@ -118,11 +134,12 @@ exports.login = async (req, res) => {
 // ========================================
 exports.logout = async (req, res) => {
     try {
+        const cookieOptions = getCookieOptions();
         res.status(200)
-            .cookie('authToken', 'none', {
-                httpOnly: true,
-                expires: new Date(Date.now() + 1000), // Expire immediately
-                sameSite: 'strict',
+            .cookie('authToken', '', {
+                ...cookieOptions,
+                expires: new Date(0),
+                maxAge: 0,
             })
             .json({
                 success: true,
