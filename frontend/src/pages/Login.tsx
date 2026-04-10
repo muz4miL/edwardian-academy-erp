@@ -24,8 +24,12 @@ const Login = () => {
 
         try {
             await login(username, password);
-            // Redirect to dashboard on success
-            navigate('/');
+            // If on public domain, redirect to ERP subdomain
+            if (window.location.hostname === 'edwardiansacademy.com' || window.location.hostname === 'www.edwardiansacademy.com') {
+                window.location.href = 'https://erp.edwardiansacademy.com/';
+            } else {
+                navigate('/');
+            }
         } catch (err: any) {
             console.error('Login error:', err);
             setError(err.message || 'Failed to connect to server. Please check if backend is running.');
