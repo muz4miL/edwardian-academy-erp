@@ -1,4 +1,4 @@
-// API Base URL - Auto-detect Codespaces or localhost
+// API Base URL - Auto-detect environment
 const getApiBaseUrl = () => {
   // Check if we're in GitHub Codespaces
   if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
@@ -7,9 +7,12 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
     return `https://${codespaceBase}-5001.app.github.dev/api`;
   }
-  // Use env var, fallback to localhost:5001
-  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-  return `${base}/api`;
+  // Production: use api.edwardiansacademy.com
+  if (typeof window !== 'undefined' && window.location.hostname.includes('edwardiansacademy.com')) {
+    return 'https://api.edwardiansacademy.com/api';
+  }
+  // Development: use localhost
+  return 'http://localhost:5001/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
