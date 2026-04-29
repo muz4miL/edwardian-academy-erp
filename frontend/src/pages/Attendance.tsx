@@ -57,9 +57,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+import { API_BASE_URL as API_BASE } from "@/utils/apiConfig";
 
 // ─── HELPERS ──────────────────────────────────────────────
 function formatTime(dateStr: string) {

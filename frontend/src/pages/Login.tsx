@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ShieldCheck, Lock, User } from 'lucide-react';
+import { Loader2, ShieldCheck, Lock, User, ExternalLink } from 'lucide-react';
 
 const Login = () => {
     const [username, setUsername] = useState('');
@@ -142,6 +142,20 @@ const Login = () => {
                         <p className="text-xs text-yellow-100/40 italic">
                             Protected by bank-grade security
                         </p>
+                        <a
+                            href="https://codeclub.tech/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-stone-950/40 px-3 py-1.5 text-[11px] font-medium text-yellow-100/70 transition-colors hover:text-yellow-100"
+                        >
+                            <img
+                                src="/codeClub.png"
+                                alt="CodeClub"
+                                className="h-5 w-5 rounded-full object-cover"
+                            />
+                            <span>Platform experience by CodeClub</span>
+                            <ExternalLink className="h-3 w-3" />
+                        </a>
                     </div>
                 </CardContent>
             </Card>

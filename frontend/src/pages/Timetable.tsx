@@ -45,11 +45,9 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { timetableApi, classApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
+import { API_URL as API_BASE_URL } from "@/utils/apiConfig";
 
-// API base URL
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:5001"}/api`;
-
-// Days of the week
+// Days of the week (used for grid columns + day filtering)
 const DAYS = [
   "Monday",
   "Tuesday",
@@ -58,6 +56,25 @@ const DAYS = [
   "Friday",
   "Saturday",
 ];
+
+// Dropdown presets — let operators pick a group of days in one click.
+// When a preset is selected, we fan the single entry out into one timetable row per day on save.
+const DAY_DROPDOWN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "__WEEKDAYS__", label: "Monday – Friday (Weekdays)" },
+  { value: "__ALL__", label: "Monday – Saturday (All Days)" },
+  { value: "Monday", label: "Monday" },
+  { value: "Tuesday", label: "Tuesday" },
+  { value: "Wednesday", label: "Wednesday" },
+  { value: "Thursday", label: "Thursday" },
+  { value: "Friday", label: "Friday" },
+  { value: "Saturday", label: "Saturday" },
+];
+
+const expandDaySelection = (day: string): string[] => {
+  if (day === "__WEEKDAYS__") return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  if (day === "__ALL__") return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return [day];
+};
 
 // Time slots for dropdowns (30-min intervals)
 const TIME_SLOTS = [
@@ -385,7 +402,7 @@ const Timetable = () => {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleSubmitAdd = () => {
+  const handleSubmitAdd = async () => {
     if (
       !formClassId ||
       !formTeacherId ||
@@ -397,15 +414,62 @@ const Timetable = () => {
       toast.error("Please fill all required fields");
       return;
     }
-    createEntryMutation.mutate({
-      classId: formClassId,
-      teacherId: formTeacherId,
-      subject: formSubject,
-      day: formDay,
-      startTime: formStartTime,
-      endTime: formEndTime,
-      room: formRoom,
-    });
+
+    const daysToCreate = expandDaySelection(formDay);
+
+    if (daysToCreate.length === 1) {
+      createEntryMutation.mutate({
+        classId: formClassId,
+        teacherId: formTeacherId,
+        subject: formSubject,
+        day: daysToCreate[0],
+        startTime: formStartTime,
+        endTime: formEndTime,
+        room: formRoom,
+      });
+      return;
+    }
+
+    // Preset selected — create one entry per day sequentially so the backend validates each cleanly
+    let created = 0;
+    const failures: string[] = [];
+    for (const day of daysToCreate) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          createEntryMutation.mutate(
+            {
+              classId: formClassId,
+              teacherId: formTeacherId,
+              subject: formSubject,
+              day,
+              startTime: formStartTime,
+              endTime: formEndTime,
+              room: formRoom,
+            },
+            {
+              onSuccess: () => {
+                created += 1;
+                resolve();
+              },
+              onError: (err: any) => {
+                failures.push(`${day}: ${err?.message || "Failed"}`);
+                resolve();
+              },
+            },
+          );
+        });
+      } catch (err) {
+        // Promise is always resolved above, so this path is unreachable — kept for safety.
+      }
+    }
+
+    if (created > 0) {
+      toast.success(`Created ${created} timetable ${created === 1 ? "entry" : "entries"}`, {
+        description: failures.length ? `${failures.length} skipped: ${failures.join("; ")}` : undefined,
+      });
+    } else if (failures.length) {
+      toast.error("Failed to create entries", { description: failures.join("; ") });
+    }
   };
 
   const handleSubmitEdit = () => {
@@ -533,13 +597,18 @@ const Timetable = () => {
       }
     }
 
+    // Expand any preset days (__WEEKDAYS__ / __ALL__) into one row per day before sending.
+    const expandedEntries = bulkEntries.flatMap((entry) =>
+      expandDaySelection(entry.day).map((day) => ({ ...entry, day })),
+    );
+
     setBulkGenerating(true);
     try {
       const res = await fetch(`${API_BASE_URL}/timetable/bulk-generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ classId: bulkClassId, entries: bulkEntries }),
+        body: JSON.stringify({ classId: bulkClassId, entries: expandedEntries }),
       });
       const data = await res.json();
       if (data.success) {
@@ -719,13 +788,20 @@ const Timetable = () => {
                 <SelectValue placeholder="Select day" />
               </SelectTrigger>
               <SelectContent>
-                {DAYS.map((day) => (
-                  <SelectItem key={day} value={day}>
-                    {day}
+                {DAY_DROPDOWN_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {(formDay === "__WEEKDAYS__" || formDay === "__ALL__") && (
+              <p className="text-xs text-amber-600 font-medium">
+                {formDay === "__WEEKDAYS__"
+                  ? "Will create 5 entries (Mon–Fri) with the same time & teacher."
+                  : "Will create 6 entries (Mon–Sat) with the same time & teacher."}
+              </p>
+            )}
           </div>
         </div>
 
@@ -1306,13 +1382,18 @@ const Timetable = () => {
                               <SelectValue placeholder="Day" />
                             </SelectTrigger>
                             <SelectContent>
-                              {DAYS.map((d) => (
-                                <SelectItem key={d} value={d}>
-                                  {d}
+                              {DAY_DROPDOWN_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          {(entry.day === "__WEEKDAYS__" || entry.day === "__ALL__") && (
+                            <p className="text-[10px] text-amber-600 mt-1">
+                              {entry.day === "__WEEKDAYS__" ? "× 5 days" : "× 6 days"}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label className="text-xs">Start Time *</Label>

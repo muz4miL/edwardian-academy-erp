@@ -6,6 +6,7 @@ import {
   Image,
   StyleSheet,
 } from "@react-pdf/renderer";
+import { API_BASE_URL } from "@/config/api";
 
 // ==================== STYLES ====================
 const styles = StyleSheet.create({
@@ -546,8 +547,7 @@ const resolvePhotoSrc = (photo: string | undefined): string | null => {
   if (!photo) return null;
   if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
 
-  const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001";
-  return `${apiBaseUrl}${photo}`;
+  return `${API_BASE_URL}${photo}`;
 };
 
 const cleanText = (value: string | undefined, fallback = "-"): string => {

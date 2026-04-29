@@ -26,42 +26,12 @@ const parseTimeToMinutes = (timeStr) => {
 };
 
 const checkConflicts = async (entryData, excludeId = null) => {
-    const conflicts = [];
-    const newStart = parseTimeToMinutes(entryData.startTime);
-    const newEnd = parseTimeToMinutes(entryData.endTime);
-
-    if (newStart >= newEnd) return conflicts;
-
-    // Find entries on the same day
-    const query = { day: entryData.day, status: 'active' };
-    if (excludeId) query._id = { $ne: excludeId };
-
-    const existingEntries = await Timetable.find(query)
-        .populate('classId', 'classTitle gradeLevel classId')
-        .populate('teacherId', 'name teacherId');
-
-    for (const existing of existingEntries) {
-        const existStart = parseTimeToMinutes(existing.startTime);
-        const existEnd = parseTimeToMinutes(existing.endTime);
-
-        // Check time overlap
-        const overlaps = newStart < existEnd && newEnd > existStart;
-        if (!overlaps) continue;
-
-        // Same teacher conflict
-        const existTeacherId = existing.teacherId?._id?.toString() || existing.teacherId?.toString();
-        if (existTeacherId === entryData.teacherId?.toString()) {
-            const className = existing.classId?.classTitle || 'Unknown';
-            conflicts.push(`Teacher already has "${existing.subject}" in ${className} at ${existing.startTime}-${existing.endTime}`);
-        }
-
-        // Same room conflict (if both have rooms specified)
-        if (entryData.room && existing.room && entryData.room.toLowerCase() === existing.room.toLowerCase()) {
-            conflicts.push(`Room "${entryData.room}" is already booked for "${existing.subject}" at ${existing.startTime}-${existing.endTime}`);
-        }
-    }
-
-    return conflicts;
+    // Teacher-availability conflict checks have been DISABLED by product decision.
+    // Teachers can now be scheduled across multiple classes in the same slot (e.g. joint sessions),
+    // and the UI no longer blocks entries on the grounds of a perceived teacher clash.
+    // Room conflicts are also allowed — operators are trusted to manage rooms manually.
+    // Returning an empty array means no conflicts are ever reported, so all entries save cleanly.
+    return [];
 };
 
 // ========== HELPER: Day Sorting ==========

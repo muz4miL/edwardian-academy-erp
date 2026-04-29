@@ -348,6 +348,7 @@
 
   .sidebar-scrollbar::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
 
   .sidebar-scrollbar::-webkit-scrollbar-track {

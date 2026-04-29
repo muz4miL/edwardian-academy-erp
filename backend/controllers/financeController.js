@@ -2965,29 +2965,46 @@ exports.getAcademyPoolReport = async (req, res) => {
       const paidAmt = fee.amount || 0;
       entry.totalFeeCollected += paidAmt;
 
-      // Calculate academy pool contribution for this student
-      // Mixed classes (Owner/Partners + regular teachers) are handled per-subject.
-      const hasOwnerPartner = entry.teachers.some(t => t.role === "OWNER" || t.role === "PARTNER");
+      // === AUTHORITATIVE SPLIT ===
+      // Prefer the per-subject breakdown stored on the FeeRecord at payment time.
+      // This matches EXACTLY what was shown to the user when they paid (and what Teacher Finance uses),
+      // so the Owner Dashboard stays in perfect sync. We only recompute if no breakdown is recorded.
       let academyPool = 0;
       let teacherPayout = 0;
-      if (entry.teachers.length > 0) {
+      const subjectBreakdown = Array.isArray(fee.subjectBreakdown) ? fee.subjectBreakdown : [];
+
+      if (subjectBreakdown.length > 0) {
+        // Use per-subject teacherShare / academyShare / ownerPartnerShare exactly as recorded.
+        for (const sb of subjectBreakdown) {
+          const tShare = Number(sb.teacherShare || 0);
+          const aShare = Number(sb.academyShare || 0);
+          const opShare = Number(sb.ownerPartnerShare || 0);
+          // Owner/Partner tuition and regular teacher percentage both count toward "teacher payout"
+          // from the dashboard's perspective (money NOT routed to academy pool).
+          teacherPayout += tShare + opShare;
+          academyPool += aShare;
+        }
+      } else if (fee.splitBreakdown && (fee.splitBreakdown.teacherShare || fee.splitBreakdown.academyShare || fee.splitBreakdown.ownerPartnerShare)) {
+        // Aggregated fallback: use top-level splitBreakdown recorded at payment.
+        teacherPayout = Number(fee.splitBreakdown.teacherShare || 0) + Number(fee.splitBreakdown.ownerPartnerShare || 0);
+        academyPool = Number(fee.splitBreakdown.academyShare || 0);
+      } else if (entry.teachers.length > 0) {
+        // Legacy fallback (very old fee records without any breakdown stored):
+        // Divide paid amount equally across class subject teachers and apply their comp rules.
         const numTeachers = entry.teachers.length;
         for (const t of entry.teachers) {
           const subjectShare = Math.round(paidAmt / numTeachers);
           if (t.role === "OWNER" || t.role === "PARTNER") {
-            // Owner/Partner teaching this subject: 100% goes to them (TUITION_SHARE)
             teacherPayout += subjectShare;
           } else if (t.compType === "percentage") {
             const tShare = Math.round((subjectShare * t.teacherShare) / 100);
-            const aShare = subjectShare - tShare;
-            academyPool += aShare;
+            academyPool += subjectShare - tShare;
             teacherPayout += tShare;
           } else if (t.compType === "perStudent") {
             const perAmt = t.perStudentAmount || 0;
             teacherPayout += perAmt;
             academyPool += Math.max(0, subjectShare - perAmt);
           } else if (t.compType === "fixed") {
-            // Fixed salary teacher: full subject fee goes to academy pool
             academyPool += subjectShare;
           } else if (t.compType === "hybrid") {
             const profitShare = t.profitShare || 0;
@@ -2995,24 +3012,38 @@ exports.getAcademyPoolReport = async (req, res) => {
             academyPool += subjectShare - tShare;
             teacherPayout += tShare;
           } else if (t.compType === "tuition") {
-            // tuition type stored for Owner/Partners (legacy): same as OWNER/PARTNER handling
             teacherPayout += subjectShare;
           } else {
-            // Unknown comp type: default 70% teacher / 30% academy
             const tShare = Math.round((subjectShare * 70) / 100);
             academyPool += subjectShare - tShare;
             teacherPayout += tShare;
           }
         }
       } else {
-        // No teacher info in class: use the split recorded on the fee record
-        const fallbackAcademy = fee.splitBreakdown?.academyShare || 0;
-        academyPool = fallbackAcademy;
-        teacherPayout = Math.max(0, paidAmt - fallbackAcademy);
+        // Absolute last resort: everything to teacher.
+        teacherPayout = paidAmt;
       }
+
+      // Safety clamp: never exceed paid amount, never go negative.
+      if (teacherPayout + academyPool > paidAmt) {
+        // Proportionally scale down (handles tiny rounding drift in very old records).
+        const total = teacherPayout + academyPool;
+        teacherPayout = Math.round((teacherPayout / total) * paidAmt);
+        academyPool = Math.max(0, paidAmt - teacherPayout);
+      }
+      if (teacherPayout < 0) teacherPayout = 0;
+      if (academyPool < 0) academyPool = 0;
 
       entry.totalAcademyPool += academyPool;
       entry.totalTeacherPayout += teacherPayout;
+      // Subject-level detail for transparency in the Dashboard's student row (tooltip / expanded view).
+      const subjectDetail = subjectBreakdown.map((sb) => ({
+        subject: sb.subject,
+        subjectFee: Number(sb.effectivePrice ?? sb.subjectPrice ?? 0),
+        teacher: Number(sb.teacherShare || 0) + Number(sb.ownerPartnerShare || 0),
+        academy: Number(sb.academyShare || 0),
+        teacherName: sb.teacherName || "",
+      }));
       entry.students.push({
         studentName: fee.student?.fullName || fee.studentName || "Unknown",
         studentId: fee.student?.studentId || "",
@@ -3020,6 +3051,7 @@ exports.getAcademyPoolReport = async (req, res) => {
         paidDate: fee.createdAt,
         academyContribution: academyPool,
         teacherPayout,
+        subjectDetail,
       });
     }
 

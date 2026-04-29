@@ -13,9 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, AlertTriangle, Banknote, UserMinus, Users, GraduationCap } from "lucide-react";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 interface WithdrawStudentDialogProps {
   open: boolean;

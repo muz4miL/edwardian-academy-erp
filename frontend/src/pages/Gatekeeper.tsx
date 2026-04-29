@@ -32,10 +32,23 @@ import {
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
-
 // ==================== TYPES ====================
+
+// Runtime API URL detection - works in production without rebuild
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname.includes('edwardiansacademy.com')) {
+      return 'https://api.edwardiansacademy.com';
+    }
+    if (hostname.includes('.app.github.dev')) {
+      const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+      return `https://${codespaceBase}-5001.app.github.dev`;
+    }
+  }
+  return import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+};
+const API_BASE_URL = getApiBaseUrl();
 interface EnrolledClass {
   classId: string;
   classTitle: string;

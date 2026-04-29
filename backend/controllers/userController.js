@@ -15,6 +15,7 @@ const ALL_PERMISSIONS = [
   "classes",
   "timetable",
   "sessions",
+  "exams",
   "configuration",
   "users",
   "website",
@@ -454,6 +455,11 @@ exports.getPermissionsList = async (req, res) => {
         key: "lectures",
         label: "Lectures",
         description: "Academic video portal",
+      },
+      {
+        key: "exams",
+        label: "Exams",
+        description: "Create and manage tests/exams",
       },
       {
         key: "configuration",

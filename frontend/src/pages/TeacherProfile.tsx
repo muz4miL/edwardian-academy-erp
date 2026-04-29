@@ -34,9 +34,7 @@ import {
   TeacherEarningsCards,
   TeacherPayoutHistory,
 } from "@/components/teachers";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+import { API_URL as API_BASE_URL } from "@/utils/apiConfig";
 
 export default function TeacherProfile() {
   const { id } = useParams<{ id: string }>();

@@ -11,6 +11,7 @@ const PERMISSION_VALUES = [
   "classes",
   "timetable",
   "sessions",
+  "exams",
   "configuration",
   "users",
   "website",
@@ -75,20 +76,17 @@ const userSchema = new mongoose.Schema(
     expenseDebt: {
       type: Number,
       default: 0,
-      min: 0,
     },
     // Partner Debt Tracking - Amount owed TO the owner (Sir Waqar)
     // Used when owner pays expenses out-of-pocket and partners owe their share
     debtToOwner: {
       type: Number,
       default: 0,
-      min: 0,
     },
     // Deprecated fields kept for safety, but we rely on walletBalance now
     pendingDebt: {
       type: Number,
       default: 0,
-      min: 0,
     },
     phone: {
       type: String,
@@ -217,6 +215,7 @@ userSchema.methods.getPublicProfile = function () {
       "classes",
       "timetable",
       "sessions",
+      "exams",
       "configuration",
       "users",
       "website",
@@ -229,8 +228,15 @@ userSchema.methods.getPublicProfile = function () {
       "lectures",
     ];
   } else if (this.role === "TEACHER") {
-    // Teachers get dashboard and lectures by default
-    permissions = ["dashboard", "lectures"];
+    // Teachers can have customized permissions from User Management.
+    // Keep saved permissions if present; otherwise fallback to safe defaults.
+    permissions =
+      Array.isArray(this.permissions) && this.permissions.length > 0
+        ? this.permissions
+        : ["dashboard", "lectures"];
+    if (!permissions.includes("dashboard")) {
+      permissions.unshift("dashboard");
+    }
   }
 
   const profile = {

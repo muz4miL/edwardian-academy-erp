@@ -8,16 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GraduationCap, Users, BookOpen, School } from "lucide-react";
-
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
-    const hostname = window.location.hostname;
-    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
-    return `https://${codespaceBase}-5000.app.github.dev/api`;
-  }
-  return import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-};
-const API_BASE_URL = getApiBaseUrl();
+import { API_URL as API_BASE_URL } from "@/utils/apiConfig";
 
 interface ClassInfo {
   _id: string;

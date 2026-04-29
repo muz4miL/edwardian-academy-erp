@@ -39,6 +39,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import confetti from "canvas-confetti";
 import { AdmissionSlip } from "@/components/admissions/AdmissionSlip";
 import { ImageCapture } from "@/components/shared/ImageCapture";
+import { ACADEMIC_GROUP_OPTIONS } from "@/constants/academicGroups";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
 
@@ -72,7 +73,9 @@ const Admissions = () => {
   const { data: configData } = useQuery({
     queryKey: ["config-subjects"],
     queryFn: settingsApi.get,
-    staleTime: 5 * 60 * 1000,
+    // No staleTime: always fetch fresh so newly added subjects in Configuration
+    // show up immediately in Admissions without waiting for cache expiry.
+    staleTime: 0,
   });
 
   const { data: teachersData } = useQuery({
@@ -255,22 +258,45 @@ const Admissions = () => {
     }))
     .filter((s: any) => s.name);
   const classSubjectNames = classSubjectsWithFees.map((s: any) => s.name);
+  // classSubjectNameSet: ALL subjects in the raw class data (for fee lookup)
   const classSubjectNameSet = new Set(classSubjectNames.map((s: string) => normalizeSubjectKey(s)));
 
-  const classSubjectTeacherMap = new Map(
-    (selectedClass?.subjectTeachers || [])
-      .filter((st: any) => st?.subject)
-      .map((st: any) => [
-        normalizeSubjectKey(st.subject),
-        {
-          teacherId:
-            typeof st.teacherId === "string"
-              ? st.teacherId
-              : st.teacherId?._id || "",
-          teacherName: st.teacherName || st.teacherId?.name || "",
-        },
-      ]),
-  );
+  // classSubjectTeachersMap: Maps each subject key → ALL teachers assigned to it in this class
+  // This replaces the old single-teacher Map so we can support multi-teacher subjects.
+  const classSubjectTeachersMap = new Map<string, Array<{ teacherId: string; teacherName: string }>>();
+  (selectedClass?.subjectTeachers || [])
+    .filter((st: any) => st?.subject)
+    .forEach((st: any) => {
+      const key = normalizeSubjectKey(st.subject);
+      const existing = classSubjectTeachersMap.get(key) || [];
+      const teacherId = typeof st.teacherId === "string" ? st.teacherId : st.teacherId?._id || "";
+      const teacherName = st.teacherName || st.teacherId?.name || "";
+      const normalizedTeacherName = teacherName.toLowerCase().trim();
+      if (
+        teacherId &&
+        !existing.some(
+          (entry) =>
+            entry.teacherId === teacherId ||
+            entry.teacherName.toLowerCase().trim() === normalizedTeacherName
+        )
+      ) {
+        existing.push({ teacherId, teacherName });
+      }
+      classSubjectTeachersMap.set(key, existing);
+    });
+
+  // Helper: get the single auto-assigned teacher for a subject (only when exactly 1 teacher → no choice needed)
+  const getAutoTeacher = (subjectKey: string) => {
+    const list = classSubjectTeachersMap.get(subjectKey);
+    return list?.length === 1 ? list[0] : null;
+  };
+
+  // Helper: does a class subject need a teacher picker?
+  // True when the class has 0 or 2+ teachers for that subject.
+  const subjectNeedsTeacherPicker = (subjectKey: string) => {
+    const list = classSubjectTeachersMap.get(subjectKey);
+    return !list || list.length !== 1;
+  };
 
   const configSubjectFeeMap = new Map(
     (configData?.data?.defaultSubjectFees || [])
@@ -281,14 +307,19 @@ const Admissions = () => {
     .map((s: any) => s?.name)
     .filter(Boolean);
 
-  const subjectNameLookup = new Map<string, string>();
-  configSubjectNames.forEach((name: string) => {
-    subjectNameLookup.set(normalizeSubjectKey(name), name);
-  });
-  classSubjectNames.forEach((name: string) => {
-    subjectNameLookup.set(normalizeSubjectKey(name), name);
-  });
-  const availableSubjects = Array.from(subjectNameLookup.values());
+  // availableSubjects = ALL subjects from Master Subject List (Configuration tab).
+  // This is the full list that appears in the Admissions form.
+  // Config is the source of truth — deleted subjects are excluded automatically.
+  const availableSubjects = configSubjectNames;
+
+  // validClassSubjectNameSet: class subjects that ALSO exist in the Master Subject List.
+  // Used for auto-selection when a class is picked, and for the "Class" badge.
+  // This filters out stale DB entries like "Botany"/"Bootany" that were removed from config.
+  const validClassSubjectNameSet = new Set(
+    classSubjectNames
+      .map((s: string) => normalizeSubjectKey(s))
+      .filter((key: string) => configSubjectFeeMap.has(key))
+  );
 
   const getDefaultSubjectFeeByName = (subjectName: string) => {
     const found = classSubjectsWithFees.find(
@@ -383,30 +414,37 @@ const Admissions = () => {
   useEffect(() => {
     if (selectedClassId) {
       setIsCustomFeeMode(false);
-      const nextSubjects = (selectedClass?.subjects || [])
+      // Auto-select only subjects that exist in both the class AND the Master Subject List.
+      // This strips stale DB entries (e.g. "Botany") that were removed from config.
+      const rawClassSubjects = (selectedClass?.subjects || [])
         .map((s: any) => (typeof s === "string" ? s : s?.name))
         .filter(Boolean);
+      const configKeySet = new Set(configSubjectNames.map((n: string) => normalizeSubjectKey(n)));
+      const nextSubjects = rawClassSubjects.filter(
+        (name: string) => configKeySet.has(normalizeSubjectKey(name))
+      );
 
       setSelectedSubjects(nextSubjects);
 
-      setSubjectFeeOverrides((prev) => {
-        const next = { ...prev };
-        for (const subjectName of availableSubjects) {
-          const key = normalizeSubjectKey(subjectName);
-          if (!Number.isFinite(next[key])) {
-            next[key] = getDefaultSubjectFeeByName(subjectName);
-          }
-        }
-        return next;
-      });
+      // Always fully re-initialize fee overrides when class changes.
+      // Do NOT carry over prev values — a subject like Botany may have been stored
+      // in the class DB with fee=0 but now have a real fee in the Master Subject List.
+      const freshOverrides: Record<string, number> = {};
+      for (const subjectName of availableSubjects) {
+        const key = normalizeSubjectKey(subjectName);
+        freshOverrides[key] = getDefaultSubjectFeeByName(subjectName);
+      }
+      setSubjectFeeOverrides(freshOverrides);
 
       setSubjectTeacherOverrides((prev) => {
         const next = { ...prev };
         for (const subjectName of nextSubjects) {
           const key = normalizeSubjectKey(subjectName);
-          const mapping = classSubjectTeacherMap.get(key);
-          if (mapping?.teacherId) {
-            next[key] = mapping.teacherId;
+          // Only auto-assign if there is exactly 1 teacher for this subject.
+          // If 0 or 2+ teachers → leave blank so the picker is shown at admission.
+          const autoTeacher = getAutoTeacher(key);
+          if (autoTeacher?.teacherId) {
+            next[key] = autoTeacher.teacherId;
           }
         }
         return next;
@@ -429,11 +467,13 @@ const Admissions = () => {
           return { ...fees, [key]: getDefaultSubjectFeeByName(subjectName) };
         });
 
-        const classTeacher = classSubjectTeacherMap.get(key);
-        if (classTeacher?.teacherId) {
+        // For subjects with exactly 1 auto-teacher, pre-fill the override.
+        // For 0 or 2+ teachers, leave blank so the picker is shown.
+        const autoTeacher = getAutoTeacher(key);
+        if (autoTeacher?.teacherId) {
           setSubjectTeacherOverrides((teachersMap) => ({
             ...teachersMap,
-            [key]: classTeacher.teacherId,
+            [key]: autoTeacher.teacherId,
           }));
         }
       }
@@ -593,10 +633,12 @@ const Admissions = () => {
       return;
     }
 
+    // Only require teacher for manually added EXTRA subjects (not in class).
+    // Class subjects may have 0 or 2+ teachers → picker is shown; undecided = allowed.
     const missingTeacherSubjects = selectedSubjects.filter((subjectName) => {
       const key = normalizeSubjectKey(subjectName);
-      const isClassSubject = classSubjectNameSet.has(key);
-      if (isClassSubject) return false;
+      const isClassSubject = validClassSubjectNameSet.has(key);
+      if (isClassSubject) return false; // class subjects can be undecided
       const selectedTeacherId = subjectTeacherOverrides[key];
       return !selectedTeacherId;
     });
@@ -612,12 +654,14 @@ const Admissions = () => {
     // Prepare student data with exact subject fees and teacher links from admission time.
     const subjectsWithFees = selectedSubjects.map((subjectName) => {
       const key = normalizeSubjectKey(subjectName);
-      const classTeacher = classSubjectTeacherMap.get(key);
-      const teacherId = classTeacher?.teacherId || subjectTeacherOverrides[key] || undefined;
-      const teacherName =
-        classTeacher?.teacherName ||
-        teachers.find((t: any) => t._id === teacherId)?.name ||
-        undefined;
+      // Use the teacher override (which covers both class subjects and extra subjects).
+      // For class subjects with 1 auto-assigned teacher, the override was pre-filled.
+      // For class subjects with 0 or 2+ teachers, the override holds the picked/undecided choice.
+      const teacherId = subjectTeacherOverrides[key] || undefined;
+      const teacherName = teacherId
+        ? (teachers.find((t: any) => t._id === teacherId)?.name ||
+           classSubjectTeachersMap.get(key)?.find(t => t.teacherId === teacherId)?.teacherName)
+        : undefined;
       
       // Include per-subject discount
       const discount = subjectDiscounts[key];
@@ -819,11 +863,8 @@ const Admissions = () => {
 
               <div className="space-y-2 sm:col-span-2">
                 <Label>Group *</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { value: "Pre-Medical", label: "Pre-Medical" },
-                    { value: "Pre-Engineering", label: "Pre-Engineering" },
-                  ].map((opt) => {
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                  {ACADEMIC_GROUP_OPTIONS.map((opt) => {
                     const isSelected = group === opt.value;
                     return (
                       <button
@@ -842,6 +883,7 @@ const Admissions = () => {
                           </div>
                         )}
                         <p className={`font-semibold text-sm ${isSelected ? "text-primary" : "text-foreground"}`}>{opt.label}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{opt.description}</p>
                       </button>
                     );
                   })}
@@ -895,13 +937,13 @@ const Admissions = () => {
                     {availableSubjects.map((subjectName: string) => {
                       const checked = selectedSubjects.includes(subjectName);
                       const key = normalizeSubjectKey(subjectName);
-                      const inClass = classSubjectNameSet.has(key);
+                      const inClass = validClassSubjectNameSet.has(key);
                       const subjectFee = getSubjectFeeByName(subjectName);
                       const effectiveFee = getEffectiveSubjectFee(subjectName);
                       const subjectDiscount = subjectDiscounts[key] || { enabled: false, amount: 0, reason: '' };
                       const selectedTeacherId = subjectTeacherOverrides[key] || "";
-                      const classTeacher = classSubjectTeacherMap.get(key);
-                      const effectiveTeacherId = classTeacher?.teacherId || selectedTeacherId;
+                      const classTeacher = getAutoTeacher(key);
+                      const effectiveTeacherId = subjectTeacherOverrides[key] || classTeacher?.teacherId || "";
                       return (
                         <div
                           key={subjectName}
@@ -987,12 +1029,16 @@ const Admissions = () => {
                                 )}
                               </div>
 
-                              {!inClass && (
+                              {/* Teacher Picker: shown for ALL subjects that need a choice */}
+                              {/* Class subjects with 1 auto-teacher: no picker (auto-assigned) */}
+                              {/* Class subjects with 0 or 2+ teachers: picker shown with Undecided option */}
+                              {/* Extra (non-class) subjects: picker always shown, Undecided NOT allowed */}
+                              {(inClass ? subjectNeedsTeacherPicker(key) : true) && (
                                 <div className="space-y-1">
-                                  <Label className="text-[10px] uppercase tracking-wide text-amber-700">
-                                    Extra Subject Teacher *
+                                  <Label className={`text-[10px] uppercase tracking-wide ${inClass ? "text-blue-700" : "text-amber-700"}`}>
+                                    {inClass ? "Select Teacher" : "Extra Subject Teacher *"}
                                   </Label>
-                                  {getTeachersForSubject(subjectName).length === 0 && (
+                                  {!inClass && getTeachersForSubject(subjectName).length === 0 && (
                                     <p className="text-[10px] text-red-600">
                                       No teacher found with subject specialization: {subjectName}
                                     </p>
@@ -1002,21 +1048,43 @@ const Admissions = () => {
                                     onValueChange={(value) =>
                                       setSubjectTeacherOverrides((prev) => ({
                                         ...prev,
-                                        [key]: value,
+                                        [key]: value === "__undecided__" ? "" : value,
                                       }))
                                     }
                                   >
                                     <SelectTrigger className="h-8 bg-background">
-                                      <SelectValue placeholder="Select teacher" />
+                                      <SelectValue placeholder={inClass ? "Choose teacher or mark Undecided" : "Select teacher"} />
                                     </SelectTrigger>
                                     <SelectContent className="bg-popover">
-                                      {getTeachersForSubject(subjectName).map((teacher: any) => (
-                                        <SelectItem key={teacher._id} value={teacher._id}>
-                                          {teacher.name}
+                                      {/* Undecided option — only for class subjects (demo period) */}
+                                      {inClass && (
+                                        <SelectItem value="__undecided__">
+                                          <span className="flex items-center gap-1.5 text-slate-500 italic">
+                                            🕐 Undecided (Demo Period)
+                                          </span>
                                         </SelectItem>
-                                      ))}
+                                      )}
+                                      {/* Class teachers for this subject */}
+                                      {inClass &&
+                                        (classSubjectTeachersMap.get(key) || []).map((t) => (
+                                          <SelectItem key={t.teacherId} value={t.teacherId}>
+                                            {t.teacherName}
+                                          </SelectItem>
+                                        ))}
+                                      {/* All matching teachers for extra (non-class) subjects */}
+                                      {!inClass &&
+                                        getTeachersForSubject(subjectName).map((teacher: any) => (
+                                          <SelectItem key={teacher._id} value={teacher._id}>
+                                            {teacher.name}
+                                          </SelectItem>
+                                        ))}
                                     </SelectContent>
                                   </Select>
+                                  {inClass && !effectiveTeacherId && (
+                                    <p className="text-[10px] text-amber-600">
+                                      💡 Can be finalized after demo classes
+                                    </p>
+                                  )}
                                 </div>
                               )}
                             </div>

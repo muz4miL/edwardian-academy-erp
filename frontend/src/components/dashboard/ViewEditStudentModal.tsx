@@ -22,18 +22,9 @@ import {
   BookOpen,
   Phone,
 } from "lucide-react";
-import { studentApi } from "@/lib/api";
+import { studentApi, teacherApi } from "@/lib/api";
 import { toast } from "sonner";
-
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
-    const hostname = window.location.hostname;
-    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
-    return `https://${codespaceBase}-5000.app.github.dev`;
-  }
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
-};
-const API_BASE_URL = getApiBaseUrl();
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 interface ViewEditStudentModalProps {
   open: boolean;
@@ -51,6 +42,11 @@ interface ClassInstance {
   startTime: string;
   endTime: string;
   subjects?: Array<{ name: string; fee: number }>;
+  subjectTeachers?: Array<{
+    subject?: string;
+    teacherId?: string | { _id?: string; name?: string };
+    teacherName?: string;
+  }>;
 }
 
 export const ViewEditStudentModal = ({
@@ -69,6 +65,9 @@ export const ViewEditStudentModal = ({
   const [selectedClassId, setSelectedClassId] = useState(""); // NEW: For class dropdown
   const [group, setGroup] = useState("");
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [subjectTeacherOverrides, setSubjectTeacherOverrides] = useState<
+    Record<string, string>
+  >({});
   const [parentCell, setParentCell] = useState("");
   const [studentCell, setStudentCell] = useState("");
   const [address, setAddress] = useState("");
@@ -108,6 +107,14 @@ export const ViewEditStudentModal = ({
 
   const activeClasses: ClassInstance[] = classesData?.data || [];
 
+  const { data: teachersData } = useQuery({
+    queryKey: ["teachers", { status: "active" }],
+    queryFn: () => teacherApi.getAll({ status: "active" }),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+  const activeTeachers = teachersData?.data || [];
+
   // TASK 3: Real-time Status Preview - calculate live as user types
   const calculatePreviewStatus = (): "paid" | "partial" | "pending" => {
     const total = Number(totalFee) || 0;
@@ -128,10 +135,35 @@ export const ViewEditStudentModal = ({
 
   // Get available subjects from the selected class
   const selectedClass = activeClasses.find((c) => c._id === selectedClassId);
-  const availableSubjects = (selectedClass?.subjects || []).map((s) => ({
-    id: s.name.toLowerCase(),
-    label: s.name,
-  }));
+  const normalizeSubjectKey = (value: string) => String(value || "").toLowerCase().trim();
+  const availableSubjects = Array.from(
+    new Map(
+      (selectedClass?.subjects || [])
+        .filter((s) => s?.name)
+        .map((s) => [normalizeSubjectKey(s.name), { id: normalizeSubjectKey(s.name), label: s.name }])
+    ).values()
+  );
+  const classSubjectTeachersMap = new Map<string, Array<{ teacherId: string; teacherName: string }>>();
+  (selectedClass?.subjectTeachers || []).forEach((st) => {
+    const key = normalizeSubjectKey(st?.subject || "");
+    if (!key) return;
+    const list = classSubjectTeachersMap.get(key) || [];
+    const teacherId =
+      typeof st.teacherId === "string" ? st.teacherId : st.teacherId?._id || "";
+    const teacherName = st.teacherName || (typeof st.teacherId === "object" ? st.teacherId?.name : "") || "";
+    const normalizedTeacherName = teacherName.toLowerCase().trim();
+    if (
+      teacherId &&
+      !list.some(
+        (entry) =>
+          entry.teacherId === teacherId ||
+          entry.teacherName.toLowerCase().trim() === normalizedTeacherName
+      )
+    ) {
+      list.push({ teacherId, teacherName });
+    }
+    classSubjectTeachersMap.set(key, list);
+  });
 
   // Populate form when student data changes
   useEffect(() => {
@@ -154,10 +186,25 @@ export const ViewEditStudentModal = ({
       }
 
       // BUGFIX: Handle subjects as objects {name, fee} or strings
-      const subjectNames = (student.subjects || []).map((s: any) =>
-        typeof s === "string" ? s.toLowerCase() : s.name.toLowerCase(),
-      );
+      const subjectNames = Array.from(
+        new Set(
+          (student.subjects || []).map((s: any) =>
+            normalizeSubjectKey(typeof s === "string" ? s : s.name),
+          )
+        )
+      ).filter(Boolean) as string[];
       setSubjects(subjectNames);
+      const subjectTeacherMap: Record<string, string> = {};
+      for (const s of student.subjects || []) {
+        if (typeof s === "object" && s?.name) {
+          const key = s.name.toLowerCase();
+          const teacherId = typeof s.teacherId === "object" ? s.teacherId?._id : s.teacherId;
+          if (teacherId) {
+            subjectTeacherMap[key] = teacherId;
+          }
+        }
+      }
+      setSubjectTeacherOverrides(subjectTeacherMap);
 
       setParentCell(student.parentCell || "");
       setStudentCell(student.studentCell || "");
@@ -232,9 +279,10 @@ export const ViewEditStudentModal = ({
           : {};
 
       const teacherIdValue =
-        typeof originalObject.teacherId === "object"
+        subjectTeacherOverrides[subjectKey] ||
+        (typeof originalObject.teacherId === "object"
           ? originalObject.teacherId?._id
-          : originalObject.teacherId;
+          : originalObject.teacherId);
 
       const canonicalName =
         subjectLabelMap.get(subjectKey) ||
@@ -250,11 +298,19 @@ export const ViewEditStudentModal = ({
         discountEnabled: Boolean(originalObject.discountEnabled),
         discountReason: originalObject.discountReason || "",
         teacherId: teacherIdValue || undefined,
-        teacherName: originalObject.teacherName || undefined,
+        teacherName:
+          (teacherIdValue
+            ? classSubjectTeachersMap
+                .get(subjectKey)
+                ?.find((t) => t.teacherId === teacherIdValue)?.teacherName ||
+              activeTeachers.find((t: any) => t._id === teacherIdValue)?.name
+            : "") ||
+          originalObject.teacherName ||
+          undefined,
       };
     });
 
-    const studentData = {
+    const studentData: any = {
       studentName,
       fatherName,
       class: studentClass,
@@ -682,20 +738,64 @@ export const ViewEditStudentModal = ({
                     {availableSubjects.map((subject) => (
                       <div
                         key={subject.id}
-                        className="flex items-center space-x-2 border border-border rounded-lg p-3 cursor-pointer hover:border-sky-500/50 transition-colors bg-card"
-                        onClick={() => handleSubjectToggle(subject.id)}
+                        className="border border-border rounded-lg p-3 bg-card"
                       >
-                        <Checkbox
-                          id={subject.id}
-                          checked={subjects.includes(subject.id)}
-                          className="text-sky-600"
-                        />
-                        <Label
-                          htmlFor={subject.id}
-                          className="font-normal text-sm cursor-pointer"
+                        <div
+                          className="flex items-center space-x-2 cursor-pointer hover:border-sky-500/50 transition-colors"
+                          onClick={() => handleSubjectToggle(subject.id)}
                         >
-                          {subject.label}
-                        </Label>
+                          <Checkbox
+                            id={subject.id}
+                            checked={subjects.includes(subject.id)}
+                            className="text-sky-600"
+                          />
+                          <Label
+                            htmlFor={subject.id}
+                            className="font-normal text-sm cursor-pointer"
+                          >
+                            {subject.label}
+                          </Label>
+                        </div>
+                        {subjects.includes(subject.id) && (
+                          <div className="mt-2 space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-blue-700">
+                              Subject Teacher
+                            </Label>
+                            <Select
+                              value={subjectTeacherOverrides[subject.id] || "__undecided__"}
+                              onValueChange={(value) =>
+                                setSubjectTeacherOverrides((prev) => ({
+                                  ...prev,
+                                  [subject.id]: value === "__undecided__" ? "" : value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="h-8 bg-background">
+                                <SelectValue placeholder="Select teacher" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-popover">
+                                <SelectItem value="__undecided__">
+                                  Undecided (Demo Period)
+                                </SelectItem>
+                                {(Array.from(
+                                  new Map(
+                                    (classSubjectTeachersMap.get(subject.id) || activeTeachers
+                                      .filter((teacher: any) => normalizeSubjectKey(teacher?.subject || "") === subject.id)
+                                      .map((teacher: any) => ({ teacherId: teacher._id, teacherName: teacher.name })))
+                                      .map((teacher) => [
+                                        `${teacher.teacherId}:${(teacher.teacherName || "").toLowerCase().trim()}`,
+                                        teacher,
+                                      ])
+                                  ).values()
+                                ) as Array<{ teacherId: string; teacherName: string }>).map((teacher) => (
+                                    <SelectItem key={teacher.teacherId} value={teacher.teacherId}>
+                                      {teacher.teacherName}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

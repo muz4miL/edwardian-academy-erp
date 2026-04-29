@@ -29,9 +29,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+import { API_URL as API_BASE_URL } from "@/utils/apiConfig";
 
 export default function StudentProfile() {
   const { id } = useParams<{ id: string }>();
@@ -68,6 +66,13 @@ export default function StudentProfile() {
 
   const student = studentData?.data;
   const feeRecords = feeHistoryData?.data || [];
+  const profilePhoto =
+    student?.imageUrl || student?.photo
+      ? (String(student?.imageUrl || student?.photo).startsWith("http") ||
+        String(student?.imageUrl || student?.photo).startsWith("data:")
+          ? String(student?.imageUrl || student?.photo)
+          : `${API_BASE_URL}${student?.imageUrl || student?.photo}`)
+      : null;
 
   // Calculate totals
   const totalPaid = feeRecords.reduce(
@@ -201,9 +206,17 @@ export default function StudentProfile() {
               {/* Profile Avatar */}
               <div className="flex justify-center mb-4">
                 <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border-2 border-primary/20">
-                  <span className="text-3xl font-bold text-primary">
-                    {student.studentName?.charAt(0)?.toUpperCase()}
-                  </span>
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt={student.studentName}
+                      className="w-full h-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <span className="text-3xl font-bold text-primary">
+                      {student.studentName?.charAt(0)?.toUpperCase()}
+                    </span>
+                  )}
                 </div>
               </div>
 

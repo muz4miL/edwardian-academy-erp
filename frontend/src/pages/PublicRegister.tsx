@@ -16,9 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GraduationCap, CheckCircle2, Loader2, ArrowRight, Phone, Mail, User, MapPin, Stethoscope, Wrench, CalendarDays } from "lucide-react";
+import { GraduationCap, CheckCircle2, Loader2, ArrowRight, Phone, Mail, User, MapPin, Stethoscope, Wrench, CalendarDays, Monitor, Palette, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { ACADEMIC_GROUP_OPTIONS } from "@/constants/academicGroups";
 
 // Motion Variants
 const waterfall = {
@@ -40,8 +41,21 @@ const ripple = {
   whileTap: { scale: 0.99 },
 };
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+// Runtime API URL detection - works in production without rebuild
+const getApiUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname.includes('edwardiansacademy.com')) {
+      return 'https://api.edwardiansacademy.com/api';
+    }
+    if (hostname.includes('.app.github.dev')) {
+      const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
+      return `https://${codespaceBase}-5001.app.github.dev/api`;
+    }
+  }
+  return import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+};
+const API_BASE_URL = getApiUrl();
 
 export default function PublicRegister() {
   const [formData, setFormData] = useState({
@@ -52,12 +66,20 @@ export default function PublicRegister() {
     email: "",
     address: "",
     class: "", // Will store class _id
-    group: "", // Pre-Medical or Pre-Engineering
+    group: "", // Academic group
     sessionRef: "", // Session _id
   });
 
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedData, setSubmittedData] = useState<any>(null);
+
+  const groupIcons: Record<string, any> = {
+    "Pre-Medical": Stethoscope,
+    "Pre-Engineering": Wrench,
+    "Computer Science": Monitor,
+    Arts: Palette,
+    "General Science": FlaskConical,
+  };
 
   // Fetch available classes (active only)
   const { data: classesData, isLoading: isLoadingClasses } = useQuery({
@@ -400,12 +422,10 @@ export default function PublicRegister() {
                 <Label className="text-slate-300 text-xs font-bold uppercase tracking-[0.2em] ml-2">
                   Academic Stream <span className="text-brand-gold">*</span>
                 </Label>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { value: "Pre-Medical", label: "Pre-Medical", icon: Stethoscope, desc: "Biology · Chemistry · Physics" },
-                    { value: "Pre-Engineering", label: "Pre-Engineering", icon: Wrench, desc: "Maths · Chemistry · Physics" },
-                  ].map((opt) => {
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                  {ACADEMIC_GROUP_OPTIONS.map((opt) => {
                     const isSelected = formData.group === opt.value;
+                    const Icon = groupIcons[opt.value] || GraduationCap;
                     return (
                       <motion.button
                         key={opt.value}
@@ -424,9 +444,9 @@ export default function PublicRegister() {
                             <CheckCircle2 className="h-4 w-4 text-white" />
                           </div>
                         )}
-                        <opt.icon className={`h-8 w-8 mb-3 ${isSelected ? "text-brand-gold" : "text-slate-400"}`} />
+                        <Icon className={`h-8 w-8 mb-3 ${isSelected ? "text-brand-gold" : "text-slate-400"}`} />
                         <p className={`font-black text-lg ${isSelected ? "text-brand-gold" : "text-white"}`}>{opt.label}</p>
-                        <p className="text-xs text-slate-400 mt-1 font-medium">{opt.desc}</p>
+                        <p className="text-xs text-slate-400 mt-1 font-medium">{opt.description}</p>
                       </motion.button>
                     );
                   })}

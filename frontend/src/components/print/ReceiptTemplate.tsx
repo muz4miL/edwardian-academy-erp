@@ -1,5 +1,6 @@
 import React, { forwardRef, useState } from "react";
 import Barcode from "react-barcode";
+import { API_BASE_URL } from "@/config/api";
 
 /**
  * ReceiptTemplate - Horizontal Landscape Admission Receipt
@@ -45,8 +46,7 @@ const ReceiptTemplate = forwardRef<HTMLDivElement, ReceiptTemplateProps>(
     const resolvePhotoSrc = (photo: string | undefined) => {
       if (!photo) return null;
       if (photo.startsWith("http") || photo.startsWith("data:")) return photo;
-      const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5001";
-      return `${apiBaseUrl}${photo}`;
+      return `${API_BASE_URL}${photo}`;
     };
 
     const formatDate = (date: Date | string | undefined) => {

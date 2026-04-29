@@ -128,6 +128,7 @@ router.post("/", protect, async (req, res) => {
           partnerKey: null, // No hardcoded key in dynamic mode
           percentage: pct,
           amount: shareAmount,
+          settledAmount: 0,
           status: "UNPAID",
           repaymentStatus: "PENDING",
         });
@@ -150,6 +151,7 @@ router.post("/", protect, async (req, res) => {
           partnerKey: key,
           percentage: pct,
           amount: shareAmount,
+          settledAmount: 0,
           status: "UNPAID",
           repaymentStatus: "PENDING",
         });
@@ -309,8 +311,13 @@ router.delete("/:id", async (req, res) => {
     if (expense.shares && expense.shares.length > 0) {
       for (const share of expense.shares) {
         if (share.partner && share.status === "UNPAID") {
+          const outstanding = Math.max(
+            0,
+            Number(share.amount || 0) - Number(share.settledAmount || 0),
+          );
+          if (outstanding <= 0) continue;
           await User.findByIdAndUpdate(share.partner, {
-            $inc: { expenseDebt: -share.amount, debtToOwner: -share.amount },
+            $inc: { expenseDebt: -outstanding, debtToOwner: -outstanding },
           });
         }
       }

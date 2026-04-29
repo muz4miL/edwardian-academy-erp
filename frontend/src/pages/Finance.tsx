@@ -1856,14 +1856,36 @@ const TeacherPayrollTab = () => {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [depositTeacher, setDepositTeacher] = useState<{ id: string; name: string } | null>(null);
+  const [classFilters, setClassFilters] = useState<Record<string, string>>({});
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
   const queryClient = useQueryClient();
 
+  // Build month options: current month + last 5 months
+  const monthOptions = useMemo(() => {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      opts.push({ val, label });
+    }
+    return opts;
+  }, []);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["teacher-payroll-report-finance"],
+    queryKey: ["teacher-payroll-report-finance", selectedMonth],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE_URL}/api/finance/teacher-payroll-report`, {
-        credentials: "include",
-      });
+      const [year, month] = selectedMonth.split("-").map(Number);
+      const startDate = new Date(year, month - 1, 1).toISOString();
+      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+      const res = await fetch(
+        `${API_BASE_URL}/api/finance/teacher-payroll-report?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
+        { credentials: "include" }
+      );
       if (!res.ok) throw new Error("Failed to fetch teacher payroll report");
       return res.json();
     },
@@ -1908,278 +1930,510 @@ const TeacherPayrollTab = () => {
 
   const report = data?.data || [];
   const totalOwed = data?.totalOwed || 0;
+  const teachersWithBalance = report.filter((t: any) => t.netOwed > 0);
+  const totalAlreadyPaid = report.reduce((s: number, t: any) => s + (t.alreadyPaid || 0), 0);
 
-  const compTypeLabels: Record<string, string> = {
-    percentage: "Percentage Split",
-    perStudent: "Per Student",
-    fixed: "Fixed Salary",
-    hybrid: "Hybrid",
+  const compConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: string }> = {
+    percentage: { label: "% Split", color: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200", icon: "%" },
+    perStudent: { label: "Per Student", color: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200", icon: "S" },
+    fixed: { label: "Fixed Salary", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", icon: "F" },
+    hybrid: { label: "Hybrid", color: "text-rose-700", bg: "bg-rose-50", border: "border-rose-200", icon: "H" },
   };
 
+  // Build class options for a teacher from proof items (percentage/perStudent) or feeFlowItems (fixed/hybrid)
+  const getClassOptions = (t: any): string[] => {
+    const items: any[] = t.proof?.items || [];
+    const feeFlowItems: any[] = t.proof?.feeFlowItems || [];
+    const all = [...items, ...feeFlowItems];
+    return Array.from(new Set(all.map((it) => it.className).filter((c) => typeof c === "string" && c.trim()))).sort();
+  };
+
+  const selectedMonthLabel = monthOptions.find((m) => m.val === selectedMonth)?.label || selectedMonth;
+
   return (
-    <div className="space-y-6">
-      {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Teachers</p>
-            <p className="text-2xl font-bold text-slate-900">{report.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">Regular teachers (excl. Owner/Partner)</p>
+    <div className="space-y-5">
+      {/* ── Header row ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Teacher Payroll</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Real-time salary report — click any teacher to see the full breakdown</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); setExpanded(null); setClassFilters({}); }}>
+            <SelectTrigger className="w-44 h-9 text-sm">
+              <SelectValue placeholder="Select month" />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((m) => (
+                <SelectItem key={m.val} value={m.val}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9">
+            <Loader2 className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Summary strip ── */}
+      {teachersWithBalance.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white text-sm font-bold">
+            {teachersWithBalance.length}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-emerald-900">
+              {teachersWithBalance.length} teacher{teachersWithBalance.length !== 1 ? "s" : ""} need to be paid for {selectedMonthLabel}
+            </p>
+            <p className="text-xs text-emerald-700 mt-0.5">
+              Total due: <span className="font-bold">{formatCurrency(totalOwed)}</span>
+              {totalAlreadyPaid > 0 && <span className="ml-2 opacity-70">· Already paid: {formatCurrency(totalAlreadyPaid)}</span>}
+            </p>
+          </div>
+          <div className="text-2xl font-extrabold text-emerald-700 shrink-0">{formatCurrency(totalOwed)}</div>
+        </div>
+      )}
+
+      {/* ── Summary cards ── */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Teachers on Payroll</p>
+            <p className="text-3xl font-extrabold text-slate-900 mt-1">{report.length}</p>
+            <p className="text-xs text-slate-400 mt-1">Excl. Owner &amp; Partners</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Total Owed</p>
-            <p className="text-2xl font-bold text-emerald-700">{formatCurrency(totalOwed)}</p>
-            <p className="text-xs text-muted-foreground mt-1">Net amount due this month</p>
+        <Card className="border-emerald-200 bg-emerald-50/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide">Total Owed This Month</p>
+            <p className="text-3xl font-extrabold text-emerald-700 mt-1">{formatCurrency(totalOwed)}</p>
+            <p className="text-xs text-emerald-500 mt-1">{selectedMonthLabel}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Period</p>
-            <p className="text-2xl font-bold text-slate-900">{new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
-            <p className="text-xs text-muted-foreground mt-1">Current billing cycle</p>
+        <Card className="border-blue-200 bg-blue-50/40">
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">Already Paid</p>
+            <p className="text-3xl font-extrabold text-blue-700 mt-1">{formatCurrency(totalAlreadyPaid)}</p>
+            <p className="text-xs text-blue-500 mt-1">Payments processed this period</p>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-violet-500" />
-                Teacher Payroll Report
-              </CardTitle>
-              <CardDescription>
-                Click a teacher to see how their salary is calculated. "Pay" releases payment and generates a voucher.
-              </CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Refresh
-            </Button>
+      {/* ── Teacher list ── */}
+      <div className="space-y-3">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-9 w-9 animate-spin text-violet-500" />
           </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
-            </div>
-          ) : error ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-400" />
-              <p className="text-sm">Failed to load report.</p>
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => refetch()}>Retry</Button>
-            </div>
-          ) : report.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No teacher payroll data for this period.</p>
-              <p className="text-sm mt-1">When students pay fees, teacher earnings will appear here based on their compensation type.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {report.map((t: any) => (
-                <div key={t.teacherId} className="border rounded-lg overflow-hidden">
-                  <div
-                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => setExpanded(expanded === t.teacherId ? null : t.teacherId)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700 font-bold">
-                        {(t.teacherName || "T").charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm">{t.teacherName}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant="secondary" className="text-[10px] h-5">
-                            {compTypeLabels[t.compensationType] || t.compensationType}
-                          </Badge>
-                          {t.subject && <span className="text-xs text-muted-foreground">{t.subject}</span>}
-                        </div>
-                      </div>
+        ) : error ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-400" />
+            <p className="text-sm font-medium">Failed to load payroll report</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>Retry</Button>
+          </div>
+        ) : report.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground border rounded-xl bg-slate-50">
+            <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">No teacher payroll data for {selectedMonthLabel}</p>
+            <p className="text-sm mt-1 text-slate-400">When students pay fees, teacher earnings appear here.</p>
+          </div>
+        ) : (
+          report.map((t: any) => {
+            const cfg = compConfig[t.compensationType] || compConfig.fixed;
+            const isOpen = expanded === t.teacherId;
+            const classOptions = getClassOptions(t);
+            const selectedClass = classFilters[t.teacherId] || "";
+
+            // Filtered items for percentage / perStudent proof items
+            const proofItems: any[] = t.proof?.items || [];
+            const feeFlowItems: any[] = t.proof?.feeFlowItems || [];
+            const filteredProof = selectedClass ? proofItems.filter((it) => it.className === selectedClass) : proofItems;
+            const filteredFlow = selectedClass ? feeFlowItems.filter((it) => it.className === selectedClass) : feeFlowItems;
+
+            // Totals for filtered view
+            const filteredTeacherTotal = filteredProof.reduce((s, it) => s + (Number(it.teacherShare) || 0), 0);
+            const filteredAcademyTotal = filteredProof.reduce((s, it) => s + (Number(it.academyPoolShare) || 0), 0);
+            const filteredSubjectTotal = filteredProof.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+
+            // Revenue bar widths
+            const totalRevenue = t.revenueFlow?.subjectFeesCollected || 0;
+            const teacherPct = totalRevenue > 0 ? Math.round(((t.revenueFlow?.teacherShareFromFees || 0) / totalRevenue) * 100) : 0;
+            const academyPct = totalRevenue > 0 ? Math.round(((t.revenueFlow?.academyPoolRouted || 0) / totalRevenue) * 100) : 0;
+            const ownerPct = totalRevenue > 0 ? Math.round(((t.revenueFlow?.ownerPartnerDirectRouted || 0) / totalRevenue) * 100) : 0;
+
+            return (
+              <div key={t.teacherId} className={`rounded-xl border overflow-hidden transition-shadow ${isOpen ? "shadow-md border-slate-300" : "border-slate-200 hover:border-slate-300"}`}>
+                {/* ── Collapsed header ── */}
+                <div
+                  className="flex flex-wrap items-center gap-3 p-4 cursor-pointer bg-white hover:bg-slate-50/70 transition-colors"
+                  onClick={() => setExpanded(isOpen ? null : t.teacherId)}
+                >
+                  {/* Avatar */}
+                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${cfg.bg} ${cfg.color} text-lg font-extrabold border ${cfg.border}`}>
+                    {(t.teacherName || "T").charAt(0).toUpperCase()}
+                  </div>
+
+                  {/* Name + type + classes */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">{t.teacherName}</span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.color} ${cfg.border}`}>
+                        {cfg.label}
+                        {t.compensationType === "percentage" && t.proof?.teacherSharePercent && (
+                          <span>· {t.proof.teacherSharePercent}%</span>
+                        )}
+                      </span>
+                      {t.subject && <span className="text-xs text-slate-500">{t.subject}</span>}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className={`text-lg font-bold ${t.netOwed > 0 ? "text-emerald-600" : "text-slate-500"}`}>
-                          {formatCurrency(t.netOwed || 0)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Net owed</p>
+                    {/* Classes taught chips */}
+                    {classOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {classOptions.slice(0, 5).map((c) => (
+                          <span key={c} className="inline-block text-[10px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 border border-slate-200">{c}</span>
+                        ))}
+                        {classOptions.length > 5 && (
+                          <span className="inline-block text-[10px] bg-slate-100 text-slate-500 rounded px-1.5 py-0.5">+{classOptions.length - 5} more</span>
+                        )}
                       </div>
+                    )}
+                    {/* Quick calc summary */}
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {t.compensationType === "percentage" && `${t.proof?.feeRecordCount || 0} fee payments · ${formatCurrency(t.revenueFlow?.subjectFeesCollected || 0)} collected`}
+                      {t.compensationType === "perStudent" && `${t.proof?.activeStudentCount || 0} active students · ${formatCurrency(t.proof?.perStudentAmount || 0)}/student`}
+                      {t.compensationType === "fixed" && `Fixed monthly salary`}
+                      {t.compensationType === "hybrid" && `${formatCurrency(t.proof?.baseSalary || 0)} base + ${t.proof?.profitSharePercent || 0}% profit`}
+                    </p>
+                  </div>
+
+                  {/* Right side: amount + actions */}
+                  <div className="flex items-center gap-3 ml-auto">
+                    <div className="text-right">
+                      <p className={`text-xl font-extrabold tabular-nums ${t.netOwed > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                        {formatCurrency(t.netOwed || 0)}
+                      </p>
+                      <p className="text-[10px] text-slate-400">Net owed</p>
+                    </div>
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-blue-700 border-blue-300 hover:bg-blue-50"
-                        onClick={(e) => { e.stopPropagation(); setDepositTeacher({ id: t.teacherId, name: t.teacherName }); }}
+                        className="h-8 text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
+                        onClick={() => setDepositTeacher({ id: t.teacherId, name: t.teacherName })}
                       >
                         <Wallet className="h-3 w-3 mr-1" /> Deposit
                       </Button>
                       {t.netOwed > 0 && (
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                          onClick={(e) => { e.stopPropagation(); setCreditTeacher(t); setCreditAmount(String(t.netOwed)); }}
+                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => { setCreditTeacher(t); setCreditAmount(String(t.netOwed)); }}
                         >
-                          <Plus className="h-3 w-3 mr-1" /> Pay
+                          <Plus className="h-3 w-3 mr-1" /> Pay {formatCurrency(t.netOwed)}
                         </Button>
                       )}
-                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded === t.teacherId ? "rotate-180" : ""}`} />
                     </div>
+                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`} />
                   </div>
+                </div>
 
-                  {expanded === t.teacherId && (
-                    <div className="border-t bg-muted/20 p-4 space-y-3">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-white rounded-lg p-3 border">
-                          <p className="text-xs text-muted-foreground">Gross Earned</p>
-                          <p className="text-sm font-bold text-emerald-600">{formatCurrency(t.grossEarned || t.grossOwed || 0)}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 border">
-                          <p className="text-xs text-muted-foreground">Already Paid</p>
-                          <p className="text-sm font-bold text-blue-600">{formatCurrency(t.alreadyPaid || 0)}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 border">
-                          <p className="text-xs text-muted-foreground">Adjustments</p>
-                          <p className="text-sm font-bold text-red-600">{formatCurrency(t.withdrawalAdjustments || t.withdrawalDeduction || 0)}</p>
-                        </div>
-                        <div className="bg-white rounded-lg p-3 border border-violet-200">
-                          <p className="text-xs text-muted-foreground font-semibold">Net Owed</p>
-                          <p className="text-sm font-bold text-violet-700">{formatCurrency(t.netOwed || 0)}</p>
-                        </div>
+                {/* ── Expanded detail ── */}
+                {isOpen && (
+                  <div className="border-t bg-slate-50/60 p-4 space-y-4">
+
+                    {/* Ledger row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Gross Earned</p>
+                        <p className="text-base font-bold text-emerald-600 mt-0.5">{formatCurrency(t.grossEarned || t.grossOwed || 0)}</p>
                       </div>
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Already Paid</p>
+                        <p className="text-base font-bold text-blue-600 mt-0.5">{formatCurrency(t.alreadyPaid || 0)}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">Deductions</p>
+                        <p className="text-base font-bold text-red-500 mt-0.5">{formatCurrency(t.withdrawalAdjustments || t.withdrawalDeduction || 0)}</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 border-2 border-emerald-300">
+                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wide">You Owe</p>
+                        <p className="text-base font-extrabold text-emerald-700 mt-0.5">{formatCurrency(t.netOwed || 0)}</p>
+                      </div>
+                    </div>
 
-                      {t.proof && (
-                        <div className="text-xs text-muted-foreground bg-white rounded-lg p-3 border space-y-2">
-                          <p className="font-semibold text-slate-700">How this was calculated:</p>
-                          {t.compensationType === "percentage" && (
-                            <p>
-                              Gets {t.proof.teacherSharePercent}% of each subject fee payment ({t.proof.feeRecordCount || 0} payments this month = {formatCurrency(t.proof.totalFromFees || 0)} teacher share).
-                              Academy pool from these same payments: {formatCurrency(t.proof.totalAcademyPoolFromFees || 0)}.
-                            </p>
-                          )}
-                          {t.compensationType === "perStudent" && (
-                            <p>{formatCurrency(t.proof.perStudentAmount || 0)} per student x {t.proof.activeStudentCount || 0} active students = {formatCurrency(t.proof.calculatedAmount || 0)}</p>
-                          )}
-                          {t.compensationType === "fixed" && (
-                            <p>Fixed monthly salary: {formatCurrency(t.proof.fixedSalary || 0)}</p>
-                          )}
-                          {t.compensationType === "hybrid" && (
-                            <p>Base {formatCurrency(t.proof.baseSalary || 0)} + {t.proof.profitSharePercent}% profit share ({formatCurrency(t.proof.profitShareAmount || 0)})</p>
-                          )}
+                    {/* ── Plain-English Explanation ── */}
+                    <div className="bg-white rounded-lg border border-slate-200 p-3">
+                      <p className="text-xs font-bold text-slate-700 mb-1.5">Why this amount? (Simple explanation)</p>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {t.compensationType === "percentage" && (
+                          <>
+                            <strong>{t.teacherName}</strong> earns <strong>{t.proof?.teacherSharePercent || 0}%</strong> of every fee paid by students in their class.{" "}
+                            This month, <strong>{t.proof?.feeRecordCount || 0}</strong> students paid fees totalling{" "}
+                            <strong>{formatCurrency(t.revenueFlow?.subjectFeesCollected || 0)}</strong>. Their share ({t.proof?.teacherSharePercent || 0}%) =&nbsp;
+                            <strong className="text-emerald-700">{formatCurrency(t.grossEarned || t.grossOwed || 0)}</strong>.
+                            Academy keeps <strong className="text-blue-700">{formatCurrency(t.revenueFlow?.academyPoolRouted || 0)}</strong>.
+                          </>
+                        )}
+                        {t.compensationType === "perStudent" && (
+                          <>
+                            <strong>{t.teacherName}</strong> earns <strong>{formatCurrency(t.proof?.perStudentAmount || 0)}</strong> for every active student.{" "}
+                            They have <strong>{t.proof?.activeStudentCount || 0}</strong> active students this month.{" "}
+                            Total = <strong className="text-emerald-700">{formatCurrency(t.proof?.calculatedAmount || 0)}</strong>.
+                          </>
+                        )}
+                        {t.compensationType === "fixed" && (
+                          <>
+                            <strong>{t.teacherName}</strong> has a <strong>fixed monthly salary</strong> of{" "}
+                            <strong className="text-emerald-700">{formatCurrency(t.proof?.fixedSalary || 0)}</strong> — same every month regardless of student count.
+                            {t.alreadyPaid > 0 && <> Already paid <strong>{formatCurrency(t.alreadyPaid)}</strong> this month.</>}
+                          </>
+                        )}
+                        {t.compensationType === "hybrid" && (
+                          <>
+                            <strong>{t.teacherName}</strong> gets a base salary of <strong>{formatCurrency(t.proof?.baseSalary || 0)}</strong> plus{" "}
+                            <strong>{t.proof?.profitSharePercent || 0}%</strong> profit share (<strong>{formatCurrency(t.proof?.profitShareAmount || 0)}</strong>).{" "}
+                            Total = <strong className="text-emerald-700">{formatCurrency((t.proof?.baseSalary || 0) + (t.proof?.profitShareAmount || 0))}</strong>.
+                          </>
+                        )}
+                      </p>
+                    </div>
 
-                          {t.revenueFlow && (
-                            <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 border-t pt-2">
-                              <div className="rounded bg-slate-50 p-2 border">
-                                <p className="text-[10px] text-slate-500">Subject Fees</p>
-                                <p className="font-semibold text-slate-800">{formatCurrency(t.revenueFlow.subjectFeesCollected || 0)}</p>
-                              </div>
-                              <div className="rounded bg-emerald-50 p-2 border border-emerald-100">
-                                <p className="text-[10px] text-emerald-700">Teacher From Fees</p>
-                                <p className="font-semibold text-emerald-700">{formatCurrency(t.revenueFlow.teacherShareFromFees || 0)}</p>
-                              </div>
-                              <div className="rounded bg-blue-50 p-2 border border-blue-100">
-                                <p className="text-[10px] text-blue-700">Academy Pool Routed</p>
-                                <p className="font-semibold text-blue-700">{formatCurrency(t.revenueFlow.academyPoolRouted || 0)}</p>
-                              </div>
-                              <div className="rounded bg-amber-50 p-2 border border-amber-100">
-                                <p className="text-[10px] text-amber-700">Direct Owner/Partner</p>
-                                <p className="font-semibold text-amber-700">{formatCurrency(t.revenueFlow.ownerPartnerDirectRouted || 0)}</p>
-                              </div>
+                    {/* ── Revenue Flow Bar ── */}
+                    {totalRevenue > 0 && (
+                      <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2">
+                        <p className="text-xs font-bold text-slate-700">Revenue Flow — {formatCurrency(totalRevenue)} collected from students</p>
+                        <div className="flex rounded-full overflow-hidden h-5 w-full text-[10px] font-bold">
+                          {teacherPct > 0 && (
+                            <div className="flex items-center justify-center bg-emerald-500 text-white" style={{ width: `${teacherPct}%` }}>
+                              {teacherPct > 8 ? `${teacherPct}%` : ""}
                             </div>
                           )}
-
-                          {(t.compensationType === "perStudent" || t.compensationType === "fixed") && t.proof.collectionHandling && (
-                            <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded p-2">
-                              {t.proof.collectionHandling}
-                            </p>
+                          {academyPct > 0 && (
+                            <div className="flex items-center justify-center bg-blue-500 text-white" style={{ width: `${academyPct}%` }}>
+                              {academyPct > 8 ? `${academyPct}%` : ""}
+                            </div>
                           )}
+                          {ownerPct > 0 && (
+                            <div className="flex items-center justify-center bg-amber-500 text-white" style={{ width: `${ownerPct}%` }}>
+                              {ownerPct > 8 ? `${ownerPct}%` : ""}
+                            </div>
+                          )}
+                          {(100 - teacherPct - academyPct - ownerPct) > 0 && (
+                            <div className="flex-1 bg-slate-200" />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                            <span className="text-slate-600">Teacher: <strong className="text-emerald-700">{formatCurrency(t.revenueFlow?.teacherShareFromFees || 0)}</strong></span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" />
+                            <span className="text-slate-600">Academy pool: <strong className="text-blue-700">{formatCurrency(t.revenueFlow?.academyPoolRouted || 0)}</strong></span>
+                          </span>
+                          {(t.revenueFlow?.ownerPartnerDirectRouted || 0) > 0 && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" />
+                              <span className="text-slate-600">Owner direct: <strong className="text-amber-700">{formatCurrency(t.revenueFlow.ownerPartnerDirectRouted)}</strong></span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                          {/* Per-student fee breakdown for percentage teachers */}
-                          {t.proof.items?.length > 0 && t.compensationType === "percentage" && (
-                            <div className="mt-2 border-t pt-2 space-y-1.5">
-                              <p className="font-semibold text-slate-600">Fee-wise breakdown (subject fee to teacher + academy pool):</p>
-                              {t.proof.items.map((item: any, i: number) => (
-                                <div key={i} className="py-1.5 px-2 bg-emerald-50/50 rounded border border-emerald-100">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-700">
+                    {/* ── Class filter + breakdown table ── */}
+                    {(proofItems.length > 0 || feeFlowItems.length > 0) && (
+                      <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-slate-700">
+                            {t.compensationType === "percentage" && "Fee-by-fee breakdown"}
+                            {t.compensationType === "perStudent" && "Per-class student breakdown"}
+                            {(t.compensationType === "fixed" || t.compensationType === "hybrid") && "Revenue from teacher's classes"}
+                          </p>
+                          {classOptions.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-500">Filter class:</span>
+                              <select
+                                className="h-7 text-[11px] rounded-md border border-slate-200 bg-white px-2 pr-6"
+                                value={selectedClass}
+                                onChange={(e) => setClassFilters((prev) => ({ ...prev, [t.teacherId]: e.target.value }))}
+                              >
+                                <option value="">All classes ({classOptions.length})</option>
+                                {classOptions.map((c) => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                              {selectedClass && (
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-slate-400 hover:text-slate-700 underline"
+                                  onClick={() => setClassFilters((prev) => ({ ...prev, [t.teacherId]: "" }))}
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Filtered summary strip */}
+                        {selectedClass && (t.compensationType === "percentage") && (
+                          <div className="flex flex-wrap gap-3 text-[11px] bg-violet-50 border border-violet-100 rounded-md px-3 py-2">
+                            <span className="font-semibold text-violet-700">{selectedClass}</span>
+                            <span className="text-slate-600">Payments: <strong>{filteredProof.length}</strong></span>
+                            <span className="text-slate-600">Fees: <strong>{formatCurrency(filteredSubjectTotal)}</strong></span>
+                            <span className="text-emerald-700">Teacher: <strong>{formatCurrency(filteredTeacherTotal)}</strong></span>
+                            <span className="text-blue-700">Academy: <strong>{formatCurrency(filteredAcademyTotal)}</strong></span>
+                          </div>
+                        )}
+
+                        {/* PERCENTAGE — fee items */}
+                        {t.compensationType === "percentage" && (
+                          filteredProof.length === 0 ? (
+                            <p className="text-[11px] text-slate-400 italic px-1">No fee records for this selection.</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                              {filteredProof.map((item: any, i: number) => (
+                                <div key={i} className="rounded-lg bg-emerald-50/60 border border-emerald-100 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-slate-800 truncate">
                                       {item.studentName}
-                                      {item.subject && <span className="text-slate-500 ml-1">({item.subject})</span>}
-                                      {!item.subject && item.className && <span className="text-slate-500 ml-1">— {item.className}</span>}
-                                      {item.date && <span className="text-slate-400 ml-1">({new Date(item.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })})</span>}
+                                      {item.className && <span className="text-slate-400 ml-1.5 font-normal">· {item.className}</span>}
+                                      {item.subject && <span className="text-slate-400 ml-1.5 font-normal">({item.subject})</span>}
                                     </span>
-                                    <span className="font-semibold text-emerald-700">{formatCurrency(item.teacherShare || 0)} teacher</span>
+                                    <span className="text-xs font-bold text-emerald-700 shrink-0">
+                                      {formatCurrency(item.teacherShare || 0)}
+                                    </span>
                                   </div>
-                                  <div className="mt-1 flex flex-wrap gap-3 text-[11px]">
-                                    <span className="text-slate-600">Subject fee: <span className="font-medium">{formatCurrency(item.amount || 0)}</span></span>
-                                    <span className="text-blue-700">Academy pool: <span className="font-medium">{formatCurrency(item.academyPoolShare || 0)}</span></span>
-                                    {!!item.ownerPartnerDirectShare && (
-                                      <span className="text-amber-700">Owner/Partner direct: <span className="font-medium">{formatCurrency(item.ownerPartnerDirectShare || 0)}</span></span>
+                                  <div className="flex flex-wrap gap-x-3 mt-1 text-[10px] text-slate-500">
+                                    <span>Fee paid: <strong>{formatCurrency(item.amount || 0)}</strong></span>
+                                    <span className="text-blue-600">Academy pool: <strong>{formatCurrency(item.academyPoolShare || 0)}</strong></span>
+                                    {item.ownerPartnerDirectShare > 0 && (
+                                      <span className="text-amber-600">Owner: <strong>{formatCurrency(item.ownerPartnerDirectShare)}</strong></span>
                                     )}
+                                    {item.date && <span>{new Date(item.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>}
                                   </div>
                                   {item.stakeholderSplits?.length > 0 && (
-                                    <div className="mt-1 text-[11px] text-violet-700">
-                                      Stakeholder split: {item.stakeholderSplits.map((s: any) => `${s.fullName || s.role} (${s.percentage}%): ${formatCurrency(s.amount || 0)}`).join(" • ")}
-                                    </div>
+                                    <p className="text-[10px] text-violet-600 mt-0.5">
+                                      {item.stakeholderSplits.map((s: any) => `${s.fullName || s.role}: ${formatCurrency(s.amount)}`).join(" · ")}
+                                    </p>
                                   )}
                                 </div>
                               ))}
                             </div>
-                          )}
+                          )
+                        )}
 
-                          {/* Per-class breakdown for perStudent teachers */}
-                          {t.proof.items?.length > 0 && t.compensationType === "perStudent" && (
-                            <div className="mt-2 border-t pt-2 space-y-1.5">
-                              <p className="font-semibold text-slate-600">Per-class breakdown:</p>
-                              {t.proof.items.map((item: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between py-1 px-2 bg-blue-50/50 rounded">
-                                  <span className="text-slate-700">{item.className}</span>
-                                  <span className="font-semibold text-blue-700">
-                                    {item.studentCount} students x {formatCurrency(item.perStudentAmount || 0)} = {formatCurrency(item.total || 0)}
-                                  </span>
+                        {/* PER STUDENT — class rows */}
+                        {t.compensationType === "perStudent" && (
+                          <div className="space-y-1.5">
+                            {(selectedClass
+                              ? proofItems.filter((it) => it.className === selectedClass)
+                              : proofItems
+                            ).map((item: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between rounded-lg bg-blue-50/60 border border-blue-100 px-3 py-2.5">
+                                <div>
+                                  <p className="text-xs font-semibold text-slate-800">{item.className}</p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">
+                                    {item.studentCount} student{item.studentCount !== 1 ? "s" : ""} × {formatCurrency(item.perStudentAmount || 0)} per student
+                                  </p>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                <p className="text-sm font-bold text-blue-700">{formatCurrency(item.total || 0)}</p>
+                              </div>
+                            ))}
+                            {proofItems.length === 0 && (
+                              <p className="text-[11px] text-slate-400 italic px-1">No class data available.</p>
+                            )}
+                          </div>
+                        )}
 
-                          {t.proof.feeFlowItems?.length > 0 && (t.compensationType === "perStudent" || t.compensationType === "fixed" || t.compensationType === "hybrid") && (
-                            <div className="mt-2 border-t pt-2 space-y-1.5">
-                              <p className="font-semibold text-slate-600">Student fee flow for this teacher's subjects:</p>
-                              {t.proof.feeFlowItems.slice(0, 10).map((item: any, i: number) => (
-                                <div key={i} className="py-1.5 px-2 bg-slate-50 rounded border">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-700">
-                                      {item.studentName} {item.subject ? `(${item.subject})` : ""}
+                        {/* FIXED / HYBRID — show fee flow items from their classes */}
+                        {(t.compensationType === "fixed" || t.compensationType === "hybrid") && (
+                          filteredFlow.length === 0 ? (
+                            <p className="text-[11px] text-slate-400 italic px-1">No fee records found for this teacher's classes.</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {filteredFlow.map((item: any, i: number) => (
+                                <div key={i} className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-slate-800 truncate">
+                                      {item.studentName}
+                                      {item.subject && <span className="text-slate-400 ml-1.5 font-normal">({item.subject})</span>}
+                                      {item.className && <span className="text-slate-400 ml-1.5 font-normal">· {item.className}</span>}
                                     </span>
-                                    <span className="text-slate-800 font-semibold">{formatCurrency(item.subjectFee || 0)}</span>
+                                    <span className="text-xs font-bold text-slate-700 shrink-0">{formatCurrency(item.subjectFee || 0)}</span>
                                   </div>
-                                  <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-slate-600">
-                                    <span>Teacher from fee: {formatCurrency(item.teacherShare || 0)}</span>
-                                    <span>Academy pool: {formatCurrency(item.academyPoolShare || 0)}</span>
-                                    {!!item.ownerPartnerDirectShare && <span>Owner/Partner direct: {formatCurrency(item.ownerPartnerDirectShare || 0)}</span>}
+                                  <div className="flex flex-wrap gap-x-3 mt-0.5 text-[10px] text-slate-500">
+                                    <span className="text-emerald-600">Teacher portion: <strong>{formatCurrency(item.teacherShare || 0)}</strong></span>
+                                    <span className="text-blue-600">Academy pool: <strong>{formatCurrency(item.academyPoolShare || 0)}</strong></span>
+                                    {item.ownerPartnerDirectShare > 0 && (
+                                      <span className="text-amber-600">Owner: <strong>{formatCurrency(item.ownerPartnerDirectShare)}</strong></span>
+                                    )}
                                   </div>
                                 </div>
                               ))}
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          )
+                        )}
 
-      {/* Pay Teacher Dialog */}
+                        {/* Collection note */}
+                        {t.proof?.collectionHandling && (
+                          <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1.5 mt-1">
+                            {t.proof.collectionHandling}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+
+                    {/* Pay button inside panel — class-filter-aware */}
+                    {t.netOwed > 0 && (
+                      <div className="flex flex-col gap-2">
+                        {selectedClass && filteredTeacherTotal > 0 && (
+                          <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 text-[11px]">
+                            <span className="text-violet-700 font-semibold">Class filter active:</span>
+                            <span className="text-slate-600">{selectedClass}</span>
+                            <span className="ml-auto text-emerald-700 font-bold">{formatCurrency(filteredTeacherTotal)} teacher share for this class</span>
+                          </div>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          {selectedClass && filteredTeacherTotal > 0 && filteredTeacherTotal !== t.netOwed && (
+                            <Button
+                              variant="outline"
+                              className="text-violet-700 border-violet-200 hover:bg-violet-50 text-sm h-9"
+                              onClick={() => { setCreditTeacher(t); setCreditAmount(String(Math.round(filteredTeacherTotal))); }}
+                            >
+                              <Plus className="h-4 w-4 mr-1.5" />
+                              Pay for {selectedClass} — {formatCurrency(filteredTeacherTotal)}
+                            </Button>
+                          )}
+                          <Button
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm h-9"
+                            onClick={() => { setCreditTeacher(t); setCreditAmount(String(t.netOwed)); }}
+                          >
+                            <Plus className="h-4 w-4 mr-1.5" />
+                            Pay {t.teacherName} — {formatCurrency(t.netOwed)} (full)
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ── Pay Teacher Dialog ── */}
       <Dialog open={!!creditTeacher} onOpenChange={(open) => !open && setCreditTeacher(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pay Teacher — {creditTeacher?.teacherName}</DialogTitle>
+            <DialogTitle>Pay {creditTeacher?.teacherName}</DialogTitle>
             <DialogDescription>
-              Release salary payment. This creates a payment voucher and expense record. Net owed: {formatCurrency(creditTeacher?.netOwed || 0)}
+              Release salary payment for <strong>{selectedMonthLabel}</strong>. A payment voucher + expense record will be created.
+              Net owed: <strong>{formatCurrency(creditTeacher?.netOwed || 0)}</strong>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -2190,14 +2444,16 @@ const TeacherPayrollTab = () => {
                 value={creditAmount}
                 onChange={(e) => setCreditAmount(e.target.value)}
                 placeholder="Enter amount"
+                className="mt-1"
               />
             </div>
             <div>
-              <Label>Note / Description</Label>
+              <Label>Note (optional)</Label>
               <Input
                 value={creditNote}
                 onChange={(e) => setCreditNote(e.target.value)}
-                placeholder="e.g. March 2026 salary payment"
+                placeholder={`e.g. ${selectedMonthLabel} salary payment`}
+                className="mt-1"
               />
             </div>
           </div>
@@ -2211,7 +2467,7 @@ const TeacherPayrollTab = () => {
                   creditMutation.mutate({
                     teacherId: creditTeacher.teacherId,
                     amount: Number(creditAmount),
-                    description: creditNote || `Salary payment — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`,
+                    description: creditNote || `Salary payment — ${selectedMonthLabel}`,
                   });
                 }
               }}
@@ -2222,8 +2478,8 @@ const TeacherPayrollTab = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-      {/* Teacher Deposit Modal */}
+
+      {/* ── Teacher Deposit Modal ── */}
       <TeacherDepositModal
         teacher={depositTeacher ? { _id: depositTeacher.id, name: depositTeacher.name, subject: "" } : null}
         open={!!depositTeacher}

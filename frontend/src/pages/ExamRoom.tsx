@@ -33,8 +33,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-
-const API_BASE_URL = "http://localhost:5001";
+import { API_BASE_URL } from "@/config/api";
 
 interface Question {
     questionText: string;

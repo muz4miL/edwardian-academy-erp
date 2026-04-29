@@ -325,6 +325,82 @@ const Settlement = require("../models/Settlement");
 const User = require("../models/User");
 const Configuration = require("../models/Configuration");
 
+const getShareOutstandingAmount = (share) => {
+  const total = Number(share?.amount || 0);
+  const settled = Number(share?.settledAmount || 0);
+  return Math.max(0, total - settled);
+};
+
+const computePartnerOutstandingDebt = async (partnerId) => {
+  const expenses = await Expense.find({
+    "shares.partner": partnerId,
+  }).select("shares");
+
+  let total = 0;
+  for (const expense of expenses) {
+    const share = expense.shares.find((s) => s.partner?.toString() === partnerId.toString());
+    if (!share) continue;
+    total += getShareOutstandingAmount(share);
+  }
+  return total;
+};
+
+const syncPartnerDebtFields = async (partnerId) => {
+  const outstanding = await computePartnerOutstandingDebt(partnerId);
+  await User.findByIdAndUpdate(partnerId, {
+    $set: { expenseDebt: outstanding, debtToOwner: outstanding },
+  });
+  return outstanding;
+};
+
+const applySettlementToExpenseShares = async ({ partnerId, settlementId, amount }) => {
+  let remaining = Number(amount || 0);
+  if (remaining <= 0) return { appliedAmount: 0 };
+
+  const expenses = await Expense.find({
+    "shares.partner": partnerId,
+  }).sort({ expenseDate: 1 });
+
+  for (const expense of expenses) {
+    if (remaining <= 0) break;
+    let changed = false;
+
+    for (let idx = 0; idx < expense.shares.length; idx++) {
+      const share = expense.shares[idx];
+      if (share.partner?.toString() !== partnerId.toString()) continue;
+
+      const outstanding = getShareOutstandingAmount(share);
+      if (outstanding <= 0) continue;
+
+      const applied = Math.min(outstanding, remaining);
+      share.settledAmount = Number(share.settledAmount || 0) + applied;
+      share.settlementId = settlementId;
+      share.paidAt = new Date();
+
+      if (getShareOutstandingAmount(share) <= 0) {
+        share.status = "PAID";
+        share.repaymentStatus = "PAID";
+        share.confirmedAt = new Date();
+      } else {
+        share.status = "UNPAID";
+        share.repaymentStatus = "PROCESSING";
+      }
+
+      remaining -= applied;
+      changed = true;
+    }
+
+    if (changed) {
+      expense.hasPartnerDebt = expense.shares.some((s) => getShareOutstandingAmount(s) > 0);
+      await expense.save();
+    }
+  }
+
+  const appliedAmount = Number(amount || 0) - remaining;
+  await syncPartnerDebtFields(partnerId);
+  return { appliedAmount, unappliedAmount: remaining };
+};
+
 // @route   GET /api/finance/partner/dashboard
 // @desc    Partner-specific financial dashboard stats (includes teacher credits)
 // @access  Protected (PARTNER, OWNER)
@@ -368,13 +444,15 @@ router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async 
     unpaidExpenses.forEach(exp => {
       const myShare = exp.shares.find(s => s.partner?.toString() === userId.toString() && s.status === "UNPAID");
       if (myShare) {
-        totalDebt += myShare.amount;
+        totalDebt += getShareOutstandingAmount(myShare);
         debtDetails.push({
           expenseId: exp._id,
           title: exp.title,
           category: exp.category,
           totalAmount: exp.amount,
-          myShare: myShare.amount,
+          myShare: getShareOutstandingAmount(myShare),
+          originalShare: myShare.amount,
+          settledAmount: myShare.settledAmount || 0,
           myPercentage: myShare.percentage,
           expenseDate: exp.expenseDate,
           status: myShare.repaymentStatus,
@@ -417,7 +495,7 @@ router.get("/partner/dashboard", protect, restrictTo("PARTNER", "OWNER"), async 
       data: {
         partnerName: user?.fullName || "Partner",
         expenseDebt: totalDebt,
-        debtToOwner: user?.debtToOwner || 0,
+        debtToOwner: totalDebt,
         totalSettled,
         floatingCash: user?.walletBalance?.floating || 0,
         verifiedCash: user?.walletBalance?.verified || 0,
@@ -477,7 +555,7 @@ router.get("/partner/ledger", protect, restrictTo("PARTNER", "OWNER"), async (re
           type: "EXPENSE_SHARE",
           category: exp.category,
           description: `${exp.title} (${myShare.percentage}% share)`,
-          amount: myShare.amount,
+          amount: getShareOutstandingAmount(myShare),
           status: myShare.status,
           repaymentStatus: myShare.repaymentStatus,
           source: "expense_share",
@@ -523,16 +601,7 @@ router.post("/partner/request-payment", protect, restrictTo("PARTNER"), async (r
       return res.status(400).json({ success: false, message: "Please enter a valid payment amount" });
     }
 
-    // Compute actual debt from UNPAID expense shares (source of truth)
-    const unpaidExpenses = await Expense.find({
-      "shares.partner": userId,
-      "shares.status": "UNPAID",
-    });
-    let computedDebt = 0;
-    unpaidExpenses.forEach(exp => {
-      const myShare = exp.shares.find(s => s.partner?.toString() === userId.toString() && s.status === "UNPAID");
-      if (myShare) computedDebt += myShare.amount;
-    });
+    const computedDebt = await computePartnerOutstandingDebt(userId);
 
     if (amount > computedDebt) {
       return res.status(400).json({
@@ -562,11 +631,6 @@ router.post("/partner/request-payment", protect, restrictTo("PARTNER"), async (r
       date: new Date(),
       collectedBy: userId,
       status: "FLOATING",
-    });
-
-    // Reduce the partner's expense debt
-    await User.findByIdAndUpdate(userId, {
-      $inc: { expenseDebt: -parseFloat(amount), debtToOwner: -parseFloat(amount) },
     });
 
     // Notify all OWNER users
@@ -631,23 +695,26 @@ router.get("/partner/all-debts", protect, restrictTo("OWNER"), async (req, res) 
       if (!user) continue;
 
       // Get unpaid expense shares
-      const unpaidExpenses = await Expense.find({
+      const partnerExpenses = await Expense.find({
         "shares.partner": entry.userId,
-        "shares.status": "UNPAID",
       }).sort({ expenseDate: -1 });
 
       let totalDebt = 0;
       const debtDetails = [];
-      unpaidExpenses.forEach(exp => {
-        const myShare = exp.shares.find(s => s.partner?.toString() === entry.userId.toString() && s.status === "UNPAID");
+      partnerExpenses.forEach(exp => {
+        const myShare = exp.shares.find(s => s.partner?.toString() === entry.userId.toString());
         if (myShare) {
-          totalDebt += myShare.amount;
+          const outstanding = getShareOutstandingAmount(myShare);
+          if (outstanding <= 0) return;
+          totalDebt += outstanding;
           debtDetails.push({
             expenseId: exp._id,
             title: exp.title,
             category: exp.category,
             totalAmount: exp.amount,
-            myShare: myShare.amount,
+            myShare: outstanding,
+            originalShare: myShare.amount,
+            settledAmount: myShare.settledAmount || 0,
             myPercentage: myShare.percentage,
             expenseDate: exp.expenseDate,
             status: myShare.repaymentStatus,
@@ -698,16 +765,7 @@ router.post("/partner/record-settlement", protect, restrictTo("OWNER"), async (r
       return res.status(404).json({ success: false, message: "Partner not found" });
     }
 
-    // Compute actual debt from UNPAID expense shares (source of truth)
-    const unpaidExpenses = await Expense.find({
-      "shares.partner": partnerId,
-      "shares.status": "UNPAID",
-    });
-    let computedDebt = 0;
-    unpaidExpenses.forEach(exp => {
-      const myShare = exp.shares.find(s => s.partner?.toString() === partnerId.toString() && s.status === "UNPAID");
-      if (myShare) computedDebt += myShare.amount;
-    });
+    const computedDebt = await computePartnerOutstandingDebt(partnerId);
 
     if (amount > computedDebt) {
       return res.status(400).json({
@@ -726,36 +784,11 @@ router.post("/partner/record-settlement", protect, restrictTo("OWNER"), async (r
       notes: notes || `Settlement recorded by ${req.user.fullName}`,
       status: "COMPLETED",
     });
-
-    // Reduce the partner's expense debt
-    await User.findByIdAndUpdate(partnerId, {
-      $inc: { expenseDebt: -parseFloat(amount), debtToOwner: -parseFloat(amount) },
+    await applySettlementToExpenseShares({
+      partnerId,
+      settlementId: settlement._id,
+      amount: parseFloat(amount),
     });
-
-    // Mark the partner's oldest UNPAID expense shares as PAID (up to the settled amount)
-    let remaining = parseFloat(amount);
-    if (remaining > 0) {
-      const unpaidExpenses = await Expense.find({
-        "shares.partner": partnerId,
-        "shares.status": "UNPAID",
-      }).sort({ expenseDate: 1 }); // oldest first
-
-      for (const expense of unpaidExpenses) {
-        if (remaining <= 0) break;
-        const shareIdx = expense.shares.findIndex(
-          s => s.partner?.toString() === partnerId.toString() && s.status === "UNPAID"
-        );
-        if (shareIdx === -1) continue;
-        const shareAmt = expense.shares[shareIdx].amount || 0;
-        if (shareAmt <= remaining) {
-          expense.shares[shareIdx].status = "PAID";
-          expense.shares[shareIdx].repaymentStatus = "SETTLED";
-          remaining -= shareAmt;
-          await expense.save();
-        }
-        // If settlement is partial and doesn't cover this share fully, leave it UNPAID
-      }
-    }
 
     // Notify the partner
     await Notification.create({
@@ -817,8 +850,10 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
     let totalDebtAssigned = 0;
 
     for (const expense of expenses) {
-      // Check if this expense needs recalculation (shares have null partner IDs)
-      const needsRecalc = expense.shares.some(s => !s.partner) || expense.shares.length === 0;
+      // Recalculate only once per month for expenses that never received proper shares
+      const needsRecalc =
+        expense.shares.length === 0 ||
+        expense.shares.some((s) => !s.partner || Number(s.amount || 0) <= 0);
 
       if (!needsRecalc) {
         skippedCount++;
@@ -845,13 +880,9 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
           partnerName: share.fullName || "Partner",
           percentage: pct,
           amount: shareAmount,
+          settledAmount: 0,
           status: "UNPAID",
           repaymentStatus: "PENDING",
-        });
-
-        // Update user debt
-        await User.findByIdAndUpdate(share.userId, {
-          $inc: { expenseDebt: shareAmount, debtToOwner: shareAmount },
         });
         totalDebtAssigned += shareAmount;
       }
@@ -860,6 +891,11 @@ router.post("/partner/recalculate-splits", protect, restrictTo("OWNER"), async (
       expense.hasPartnerDebt = newShares.length > 0;
       await expense.save();
       updatedCount++;
+    }
+
+    for (const share of config.expenseShares) {
+      if (!share.userId) continue;
+      await syncPartnerDebtFields(share.userId);
     }
 
     // Record that this month has been split (use $set to bypass pre-save validation hook)
@@ -929,6 +965,12 @@ router.patch("/partner/settlements/:id/confirm", protect, restrictTo("OWNER"), a
     settlement.status = "COMPLETED";
     settlement.recordedBy = req.user._id;
     await settlement.save();
+
+    await applySettlementToExpenseShares({
+      partnerId: settlement.partnerId,
+      settlementId: settlement._id,
+      amount: settlement.amount,
+    });
 
     // Mark the DEBT transaction as VERIFIED
     await Transaction.updateOne(

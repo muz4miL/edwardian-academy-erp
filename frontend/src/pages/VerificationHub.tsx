@@ -66,9 +66,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 interface Student {
   _id: string;

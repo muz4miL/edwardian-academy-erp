@@ -94,6 +94,7 @@ const ExpenseSchema = new mongoose.Schema(
         partnerKey: { type: String, enum: ["waqar", "zahid", "saud"] }, // For quick lookups
         percentage: { type: Number }, // The percentage used (e.g., 30)
         amount: { type: Number, required: true }, // Calculated debt (e.g., 30,000)
+        settledAmount: { type: Number, default: 0 }, // Supports partial settlements safely
         status: {
           type: String,
           enum: ["UNPAID", "PAID", "N/A"],

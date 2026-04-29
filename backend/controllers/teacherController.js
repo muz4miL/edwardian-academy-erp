@@ -221,9 +221,9 @@ exports.createTeacher = async (req, res) => {
         return ["dashboard", "admissions", "students", "lectures", "finance"];
       }
       if (role === "OWNER") {
-        return ["dashboard", "admissions", "students", "teachers", "finance", "classes", "timetable", "sessions", "configuration", "users", "website", "payroll", "settlement", "gatekeeper", "frontdesk", "inquiries", "reports", "lectures"];
+        return ["dashboard", "admissions", "students", "teachers", "finance", "classes", "timetable", "sessions", "exams", "configuration", "users", "website", "payroll", "settlement", "gatekeeper", "frontdesk", "inquiries", "reports", "lectures"];
       }
-      return ["dashboard", "lectures"];
+      return ["dashboard", "lectures", "exams"];
     };
     const permissionsMatch = (current = [], next = []) => {
       if (current.length !== next.length) return false;
@@ -467,14 +467,14 @@ exports.createTeacher = async (req, res) => {
 
 /**
  * @route   PUT /api/teachers/:id
- * @desc    Update teacher
+ * @desc    Update teacher and sync linked User record (name, phone, profileImage)
  * @access  Public
  */
 exports.updateTeacher = async (req, res) => {
   try {
     const teacher = await Teacher.findByIdAndUpdate(req.params.id, req.body, {
-      new: true, // Return updated document
-      runValidators: true, // Run schema validators
+      new: true,
+      runValidators: true,
     });
 
     if (!teacher) {
@@ -482,6 +482,19 @@ exports.updateTeacher = async (req, res) => {
         success: false,
         message: "Teacher not found",
       });
+    }
+
+    // Sync updated fields to the linked User account so both are always in sync
+    if (teacher.userId) {
+      const userSyncFields = {};
+      if (req.body.name !== undefined) userSyncFields.fullName = req.body.name;
+      if (req.body.phone !== undefined) userSyncFields.phone = req.body.phone;
+      if (req.body.profileImage !== undefined) userSyncFields.profileImage = req.body.profileImage;
+
+      if (Object.keys(userSyncFields).length > 0) {
+        await User.findByIdAndUpdate(teacher.userId, userSyncFields);
+        console.log(`🔄 Synced User record for teacher ${teacher.name}:`, Object.keys(userSyncFields));
+      }
     }
 
     console.log("✅ Updated teacher:", teacher.name);

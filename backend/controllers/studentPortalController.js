@@ -2,6 +2,33 @@ const Student = require("../models/Student");
 const Video = require("../models/Video");
 const Lecture = require("../models/Lecture");
 
+const getStudentCookieOptions = () => {
+  const configuredSameSite = (
+    process.env.STUDENT_COOKIE_SAME_SITE || process.env.COOKIE_SAME_SITE || ""
+  ).toLowerCase();
+  const sameSite = configuredSameSite || "lax";
+
+  const configuredSecure = (
+    process.env.STUDENT_COOKIE_SECURE || process.env.COOKIE_SECURE || ""
+  ).toLowerCase();
+  const secure = configuredSecure
+    ? configuredSecure === "true"
+    : process.env.NODE_ENV === "production";
+
+  const options = {
+    httpOnly: true,
+    secure,
+    sameSite,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+
+  if (process.env.COOKIE_DOMAIN) {
+    options.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  return options;
+};
+
 /**
  * Student Portal Controller - LMS Module
  *
@@ -77,12 +104,7 @@ exports.studentLogin = async (req, res) => {
     );
 
     // Set cookie
-    res.cookie("studentToken", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie("studentToken", token, getStudentCookieOptions());
 
     console.log(
       `🎓 Student login: ${student.studentName} (${student.barcodeId})`,
@@ -283,8 +305,9 @@ exports.recordVideoView = async (req, res) => {
 // @access  Protected (Student)
 exports.studentLogout = async (req, res) => {
   res.cookie("studentToken", "", {
-    httpOnly: true,
+    ...getStudentCookieOptions(),
     expires: new Date(0),
+    maxAge: 0,
   });
 
   return res.status(200).json({

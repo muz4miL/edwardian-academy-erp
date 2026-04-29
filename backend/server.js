@@ -25,13 +25,93 @@ connectDB();
 
 const app = express();
 
-// Middleware - Allow all origins for Codespaces compatibility
-app.use(
-  cors({
-    origin: true, // Allow all origins
-    credentials: true,
-  }),
+const parseOriginList = (value = "") =>
+  value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const configuredOrigins = [
+  ...parseOriginList(process.env.CORS_ALLOWED_ORIGINS || ""),
+  ...parseOriginList(process.env.CLIENT_URL || ""),
+];
+
+const localDevOrigins = [
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5000",
+  "http://127.0.0.1:5000",
+];
+
+const allowedOrigins = Array.from(
+  new Set(
+    process.env.NODE_ENV === "production"
+      ? configuredOrigins
+      : [...configuredOrigins, ...localDevOrigins],
+  ),
 );
+
+const matchesWildcardOrigin = (origin, pattern) => {
+  if (!pattern.includes("*")) return false;
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`).test(origin);
+};
+
+const isCodespacesOrigin = (origin) => {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname.endsWith(".app.github.dev");
+  } catch {
+    return false;
+  }
+};
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+
+  if (
+    allowedOrigins.some(
+      (allowed) =>
+        allowed === origin || matchesWildcardOrigin(origin, allowed),
+    )
+  ) {
+    return true;
+  }
+
+  if (process.env.NODE_ENV !== "production" && isCodespacesOrigin(origin)) {
+    return true;
+  }
+
+  return false;
+};
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+
+    console.warn(`⛔ CORS blocked for origin: ${origin}`);
+    return callback(null, false);
+  },
+  credentials: true,
+};
+
+if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
+  console.warn(
+    "⚠️ CORS_ALLOWED_ORIGINS is empty in production. Browser requests may be blocked.",
+  );
+}
+
+if (allowedOrigins.length > 0) {
+  console.log("🌐 CORS allowlist:", allowedOrigins);
+}
+
+app.use(cors(corsOptions));
 
 // CRITICAL ORDER
 // Increase payload limit to 50MB for large Base64 images
@@ -43,17 +123,19 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Debug Middleware
-app.use((req, res, next) => {
-  console.log(
-    "📡 Request:",
-    req.method,
-    req.url,
-    "| 🍪 Cookies:",
-    Object.keys(req.cookies || {}),
-  );
-  next();
-});
+// Debug Middleware (disable noisy request logging in production)
+if (process.env.NODE_ENV !== "production") {
+  app.use((req, res, next) => {
+    console.log(
+      "📡 Request:",
+      req.method,
+      req.url,
+      "| 🍪 Cookies:",
+      Object.keys(req.cookies || {}),
+    );
+    next();
+  });
+}
 
 // Import Routes
 const authRoutes = require("./routes/auth");

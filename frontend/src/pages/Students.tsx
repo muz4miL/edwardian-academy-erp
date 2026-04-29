@@ -49,9 +49,7 @@ import { ViewEditStudentModal } from "@/components/dashboard/ViewEditStudentModa
 import { WithdrawStudentDialog } from "@/components/dashboard/WithdrawStudentDialog";
 // Import PDF Receipt System (replaces react-to-print)
 import { usePDFReceipt } from "@/hooks/usePDFReceipt";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 // Helper function to get initials from name
 const getInitials = (name: string): string => {
@@ -60,6 +58,18 @@ const getInitials = (name: string): string => {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return name.substring(0, 2).toUpperCase();
+};
+
+const resolveStudentPhotoSrc = (student: any): string | null => {
+  const photo = student?.imageUrl || student?.photo;
+  if (!photo) return null;
+  if (
+    typeof photo === "string" &&
+    (photo.startsWith("http") || photo.startsWith("data:") || photo.startsWith("blob:"))
+  ) {
+    return photo;
+  }
+  return `${API_BASE_URL}${photo}`;
 };
 
 // TASK 3: Helper to get subject name from string or object
@@ -84,7 +94,9 @@ const Students = () => {
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
-  const [groupFilter, setGroupFilter] = useState("all");
+  // Subject filter replaces the old Group filter — it's what operators actually
+  // search by (e.g. "who is enrolled for Botany?"). Values are subject names.
+  const [subjectFilter, setSubjectFilter] = useState("all");
 
   // TASK 4: Peshawar Session Filter
   const [sessionFilter, setSessionFilter] = useState("all");
@@ -103,6 +115,8 @@ const Students = () => {
   const [viewEditMode, setViewEditMode] = useState<"view" | "edit">("view");
   const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [isStudentQuickActionsOpen, setIsStudentQuickActionsOpen] = useState(false);
+  const [quickActionStudent, setQuickActionStudent] = useState<any | null>(null);
 
   // Fee Collection Modal State
   const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
@@ -162,15 +176,47 @@ const Students = () => {
     });
   }, [timetableData]);
 
-  // Fetch students with React Query - only when at least one filter is active
-  const hasActiveFilter = searchTerm.trim() !== "" || classFilter !== "all" || groupFilter !== "all" || sessionFilter !== "all" || timeFilter !== "all" || teacherFilter !== "all" || feeStatusFilter !== "all";
+  // Build the list of subjects for the dropdown. We union two sources so
+  // nothing ever goes missing: (1) subjects declared on every class doc, and
+  // (2) each teacher's own `subject` field. Names are normalised to title case
+  // for display but passed back verbatim (case-insensitive match on server).
+  const subjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    (classes as any[]).forEach((cls) => {
+      (cls?.subjects || []).forEach((s: any) => {
+        const name = typeof s === "string" ? s : s?.name;
+        if (name && String(name).trim()) set.add(String(name).trim());
+      });
+      (cls?.subjectTeachers || []).forEach((st: any) => {
+        if (st?.subject) set.add(String(st.subject).trim());
+      });
+    });
+    (teachers as any[]).forEach((t) => {
+      if (t?.subject) set.add(String(t.subject).trim());
+    });
+    const list = Array.from(set);
+    // Normalise capitalisation for display.
+    list.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return list;
+  }, [classes, teachers]);
+
+  // Fetch students with React Query — only when at least one filter is active.
+  // Every filter works independently (and correctly in combination) on the server.
+  const hasActiveFilter =
+    searchTerm.trim() !== "" ||
+    classFilter !== "all" ||
+    subjectFilter !== "all" ||
+    sessionFilter !== "all" ||
+    timeFilter !== "all" ||
+    teacherFilter !== "all" ||
+    feeStatusFilter !== "all";
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [
       "students",
       {
         class: classFilter,
-        group: groupFilter,
+        subject: subjectFilter,
         search: searchTerm,
         session: sessionFilter,
         time: timeFilter,
@@ -181,7 +227,7 @@ const Students = () => {
     queryFn: () =>
       studentApi.getAll({
         class: classFilter !== "all" ? classFilter : undefined,
-        group: groupFilter !== "all" ? groupFilter : undefined,
+        subject: subjectFilter !== "all" ? subjectFilter : undefined,
         search: searchTerm || undefined,
         sessionRef: sessionFilter !== "all" ? sessionFilter : undefined,
         time: timeFilter !== "all" ? timeFilter : undefined,
@@ -264,6 +310,11 @@ const Students = () => {
     setSelectedStudent(student);
     setViewEditMode("edit");
     setIsViewEditModalOpen(true);
+  };
+
+  const openStudentQuickActions = (student: any) => {
+    setQuickActionStudent(student);
+    setIsStudentQuickActionsOpen(true);
   };
 
   const handleWithdraw = (student: any) => {
@@ -385,21 +436,25 @@ const Students = () => {
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Classes</SelectItem>
               {classes.map((cls: any) => (
-                <SelectItem key={cls._id} value={cls.classTitle}>
+                <SelectItem key={cls._id} value={cls._id}>
                   {cls.classTitle}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <Select value={groupFilter} onValueChange={setGroupFilter}>
-            <SelectTrigger className="w-[170px] bg-background">
-              <SelectValue placeholder="All Groups" />
+          {/* Subject Filter (replaces the old Group filter) */}
+          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+            <SelectTrigger className="w-[180px] bg-background">
+              <SelectValue placeholder="All Subjects" />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="all">All Groups</SelectItem>
-              <SelectItem value="Pre-Medical">Pre-Medical</SelectItem>
-              <SelectItem value="Pre-Engineering">Pre-Engineering</SelectItem>
+              <SelectItem value="all">All Subjects</SelectItem>
+              {subjectOptions.map((sub) => (
+                <SelectItem key={sub} value={sub}>
+                  {sub.charAt(0).toUpperCase() + sub.slice(1)}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -442,7 +497,7 @@ const Students = () => {
               Select a filter to view students
             </p>
             <p className="text-sm text-muted-foreground mt-2 text-center max-w-md">
-              Use the filters above to find students by teacher, session, class, group, time slot, or search by name.
+              Use the filters above to find students by teacher, session, class, subject, time slot, fee status, or search by name.
             </p>
           </div>
         ) : isLoading ? (
@@ -495,6 +550,7 @@ const Students = () => {
                 students.map((student: any) => {
                   try {
                     const initials = getInitials(student?.studentName || "NA");
+                    const photoSrc = resolveStudentPhotoSrc(student);
                     const subjects = student?.subjects || [];
 
                     return (
@@ -507,11 +563,24 @@ const Students = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-500 text-white font-bold text-sm shadow-md">
-                              <span className="flex items-center justify-center">
-                                {initials}
-                              </span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openStudentQuickActions(student)}
+                              className="h-10 w-10 shrink-0 rounded-full overflow-hidden shadow-md border border-slate-200"
+                              title="Open profile/report actions"
+                            >
+                              {photoSrc ? (
+                                <img
+                                  src={photoSrc}
+                                  alt={student?.studentName || "Student"}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-sky-500 text-white font-bold text-sm">
+                                  {initials}
+                                </div>
+                              )}
+                            </button>
                             <div>
                               <p className="font-semibold text-foreground">
                                 {student.studentName}
@@ -681,6 +750,50 @@ const Students = () => {
         paidAmount={selectedStudent?.paidAmount || 0}
         isProcessing={withdrawStudentMutation.isPending}
       />
+
+      {/* Quick actions from student photo click */}
+      <Dialog
+        open={isStudentQuickActionsOpen}
+        onOpenChange={setIsStudentQuickActionsOpen}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Open Student View</DialogTitle>
+            <DialogDescription>
+              Choose where to open this student.
+            </DialogDescription>
+          </DialogHeader>
+          {quickActionStudent && (
+            <div className="rounded-lg border p-3 bg-slate-50 text-sm">
+              <p className="font-semibold">{quickActionStudent.studentName}</p>
+              <p className="text-muted-foreground">
+                ID: {quickActionStudent.studentId || "N/A"}
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!quickActionStudent?._id) return;
+                setIsStudentQuickActionsOpen(false);
+                navigate(`/students/${quickActionStudent._id}`);
+              }}
+            >
+              Open Student Profile
+            </Button>
+            <Button
+              onClick={() => {
+                if (!quickActionStudent?._id) return;
+                setIsStudentQuickActionsOpen(false);
+                navigate(`/reports?tab=student&studentId=${quickActionStudent._id}`);
+              }}
+            >
+              Open Student Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Fee Collection Modal — Perfected */}
       <Dialog

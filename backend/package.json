@@ -9,6 +9,7 @@
     "seed": "node seed.js",
     "seed:config": "node seedConfig.js",
     "seed:mega": "node mega-seed.js",
+    "seed:clone:prod": "node scripts/seed-production-clone.js",
     "db:reset": "node scripts/db-reset.js",
     "db:reset:demo": "node scripts/db-reset.js --demo",
     "db:reset:dry": "node scripts/db-reset.js --dry",

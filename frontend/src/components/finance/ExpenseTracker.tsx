@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 interface ExpenseShare {
   partner: string;
@@ -68,19 +69,6 @@ interface ExpenseTrackerProps {
   totalExpenses: number;
   isLoading: boolean;
 }
-
-const getApiBaseUrl = () => {
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname.includes(".app.github.dev")
-  ) {
-    const hostname = window.location.hostname;
-    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, "");
-    return `https://${codespaceBase}-5000.app.github.dev`;
-  }
-  return import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
-};
-const API_BASE_URL = getApiBaseUrl();
 
 export const ExpenseTracker = ({
   expenses,

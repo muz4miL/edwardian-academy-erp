@@ -22,6 +22,7 @@ import {
   BarChart,
   FileQuestion,
   Package,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -189,9 +190,9 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 h-screen bg-sidebar transition-all duration-300 ease-in-out",
+          "fixed left-0 top-0 z-40 flex h-screen flex-col bg-sidebar transition-all duration-300 ease-in-out",
           // Desktop: normal collapse behavior
-          "hidden md:block",
+          "hidden md:flex",
           collapsed ? "md:w-16" : "md:w-64",
         )}
       >
@@ -220,35 +221,58 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav
-        className="mt-4 flex flex-col gap-1 px-2 overflow-y-auto sidebar-scrollbar"
-        style={{ maxHeight: "calc(100vh - 180px)" }}
+        className="mt-4 flex-1 min-h-0 overflow-x-auto overflow-y-auto px-2 pb-4 sidebar-scrollbar"
       >
-        {filteredNavItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              )}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+        <div className="flex min-w-max flex-col gap-1">
+          {filteredNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  "flex min-w-[13rem] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
-
+      {!collapsed && (
+        <div className="mx-3 mb-2 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/10 via-sidebar-accent/80 to-amber-500/10 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
+          <a
+            href="https://codeclub.tech/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 text-sidebar-foreground transition-all hover:opacity-100"
+          >
+            <img
+              src="/codeClub.png"
+              alt="CodeClub"
+              className="h-10 w-10 rounded-xl border border-white/20 bg-white object-contain p-1"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+                Technology Partner
+              </p>
+              <p className="truncate text-sm font-semibold text-white">CodeClub</p>
+            </div>
+            <ExternalLink className="h-4 w-4 text-amber-300" />
+          </a>
+        </div>
+      )}
 
       {/* Collapse button */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute bottom-4 left-1/2 z-50 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground shadow-lg transition-colors hover:bg-primary hover:text-primary-foreground"
+        className="mx-auto mb-3 flex h-8 w-8 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground shadow-lg transition-colors hover:bg-primary hover:text-primary-foreground"
       >
         {collapsed ? (
           <ChevronRight className="h-4 w-4" />
@@ -261,7 +285,7 @@ export function Sidebar() {
     {/* Mobile sidebar - slides in from left */}
     <aside
       className={cn(
-        "fixed left-0 top-0 z-50 h-screen w-64 bg-sidebar transition-transform duration-300 ease-in-out md:hidden",
+        "fixed left-0 top-0 z-50 flex h-screen w-64 flex-col bg-sidebar transition-transform duration-300 ease-in-out md:hidden",
         mobileOpen ? "translate-x-0" : "-translate-x-full",
       )}
     >
@@ -287,29 +311,51 @@ export function Sidebar() {
 
       {/* Mobile Navigation */}
       <nav
-        className="mt-4 flex flex-col gap-1 px-2 overflow-y-auto sidebar-scrollbar"
-        style={{ maxHeight: "calc(100vh - 140px)" }}
+        className="mt-4 flex-1 min-h-0 overflow-x-auto overflow-y-auto px-2 pb-4 sidebar-scrollbar"
       >
-        {filteredNavItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              )}
-            >
-              <item.icon className="h-5 w-5 shrink-0" />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
+        <div className="flex min-w-max flex-col gap-1">
+          {filteredNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "flex min-w-[13rem] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                )}
+              >
+                <item.icon className="h-5 w-5 shrink-0" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
       </nav>
+      <div className="mx-3 mb-4 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/10 via-sidebar-accent/80 to-amber-500/10 p-3 shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
+        <a
+          href="https://codeclub.tech/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 text-sidebar-foreground"
+        >
+          <img
+            src="/codeClub.png"
+            alt="CodeClub"
+            className="h-10 w-10 rounded-xl border border-white/20 bg-white object-contain p-1"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+              Technology Partner
+            </p>
+            <p className="truncate text-sm font-semibold text-white">CodeClub</p>
+          </div>
+          <ExternalLink className="h-4 w-4 text-amber-300" />
+        </a>
+      </div>
     </aside>
     </>
   );

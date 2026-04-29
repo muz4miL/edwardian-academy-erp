@@ -15,8 +15,11 @@ const {
   getTeacherReport,
   getAllClassesForReport,
   getAllTeachersForReport,
+  getAllStudentsForReport,
   getAcademySummaryReport,
   getFinancialOverviewReport,
+  getStudentReport,
+  getSingleSubjectReport,
 } = require("../controllers/reportController");
 
 // @route   GET /api/reports/classes
@@ -29,6 +32,11 @@ router.get("/classes", protect, getAllClassesForReport);
 // @access  Protected (OWNER, STAFF)
 router.get("/teachers", protect, getAllTeachersForReport);
 
+// @route   GET /api/reports/students
+// @desc    Get all students for report dropdown
+// @access  Protected (OWNER, STAFF)
+router.get("/students", protect, getAllStudentsForReport);
+
 // @route   GET /api/reports/class/:classId
 // @desc    Get comprehensive class report with student roster
 // @access  Protected (OWNER, STAFF)
@@ -38,6 +46,16 @@ router.get("/class/:classId", protect, getClassReport);
 // @desc    Get comprehensive teacher report with earnings breakdown
 // @access  Protected (OWNER, STAFF, TEACHER - own report only)
 router.get("/teacher/:teacherId", protect, getTeacherReport);
+
+// @route   GET /api/reports/student/:studentId
+// @desc    Get comprehensive student-wise report
+// @access  Protected (OWNER, STAFF)
+router.get("/student/:studentId", protect, getStudentReport);
+
+// @route   GET /api/reports/single-subject
+// @desc    Get single-subject enrollment report (e.g. students who joined for just Botany)
+// @access  Protected (OWNER, STAFF)
+router.get("/single-subject", protect, getSingleSubjectReport);
 
 // @route   GET /api/reports/academy-summary
 // @desc    Get overall academy summary statistics

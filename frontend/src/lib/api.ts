@@ -1,4 +1,4 @@
-// API Base URL - Auto-detect environment
+// API Base URL - Auto-detect Codespaces or localhost
 const getApiBaseUrl = () => {
   // Check if we're in GitHub Codespaces
   if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
@@ -7,12 +7,9 @@ const getApiBaseUrl = () => {
     const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
     return `https://${codespaceBase}-5001.app.github.dev/api`;
   }
-  // Production: use api.edwardiansacademy.com
-  if (typeof window !== 'undefined' && window.location.hostname.includes('edwardiansacademy.com')) {
-    return 'https://api.edwardiansacademy.com/api';
-  }
-  // Development: use localhost
-  return 'http://localhost:5001/api';
+  // Use env var, fallback to localhost:5001
+  const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
+  return `${base}/api`;
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -108,7 +105,9 @@ export const teacherApi = {
         if (filters?.search) queryParams.append('search', filters.search);
 
         const url = `${API_BASE_URL}/teachers${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            credentials: 'include', // ✅ CRITICAL: Send cookies for authentication
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch teachers');
@@ -118,7 +117,9 @@ export const teacherApi = {
 
     // Get single teacher by ID
     getById: async (id: string) => {
-        const response = await fetch(`${API_BASE_URL}/teachers/${id}`);
+        const response = await fetch(`${API_BASE_URL}/teachers/${id}`, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch teacher');
@@ -133,6 +134,7 @@ export const teacherApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(teacherData),
         });
         const data = await response.json();
@@ -149,6 +151,7 @@ export const teacherApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(teacherData),
         });
         const data = await response.json();
@@ -162,6 +165,7 @@ export const teacherApi = {
     delete: async (id: string) => {
         const response = await fetch(`${API_BASE_URL}/teachers/${id}`, {
             method: 'DELETE',
+            credentials: 'include', // ✅ Send cookies
         });
         const data = await response.json();
         if (!data.success) {
@@ -206,10 +210,11 @@ export const settingsApi = {
 // Student API Endpoints
 export const studentApi = {
     // Get all students
-    getAll: async (filters?: { class?: string; group?: string; search?: string; sessionRef?: string; time?: string; teacher?: string; feeStatus?: string }) => {
+    getAll: async (filters?: { class?: string; group?: string; subject?: string; search?: string; sessionRef?: string; time?: string; teacher?: string; feeStatus?: string }) => {
         const queryParams = new URLSearchParams();
         if (filters?.class) queryParams.append('class', filters.class);
         if (filters?.group) queryParams.append('group', filters.group);
+        if (filters?.subject) queryParams.append('subject', filters.subject);
         if (filters?.search) queryParams.append('search', filters.search);
         if (filters?.sessionRef) queryParams.append('sessionRef', filters.sessionRef);
         if (filters?.time) queryParams.append('time', filters.time);
@@ -217,7 +222,9 @@ export const studentApi = {
         if (filters?.feeStatus) queryParams.append('feeStatus', filters.feeStatus);
 
         const url = `${API_BASE_URL}/students${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch students');
@@ -227,7 +234,9 @@ export const studentApi = {
 
     // Get single student by ID
     getById: async (id: string) => {
-        const response = await fetch(`${API_BASE_URL}/students/${id}`);
+        const response = await fetch(`${API_BASE_URL}/students/${id}`, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch student');
@@ -312,7 +321,9 @@ export const classApi = {
         if (filters?.search) queryParams.append('search', filters.search);
 
         const url = `${API_BASE_URL}/classes${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch classes');
@@ -322,7 +333,9 @@ export const classApi = {
 
     // Get single class by ID
     getById: async (id: string) => {
-        const response = await fetch(`${API_BASE_URL}/classes/${id}`);
+        const response = await fetch(`${API_BASE_URL}/classes/${id}`, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch class');
@@ -337,6 +350,7 @@ export const classApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(classData),
         });
         const data = await response.json();
@@ -353,6 +367,7 @@ export const classApi = {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(classData),
         });
         const data = await response.json();
@@ -366,6 +381,7 @@ export const classApi = {
     delete: async (id: string) => {
         const response = await fetch(`${API_BASE_URL}/classes/${id}`, {
             method: 'DELETE',
+            credentials: 'include', // ✅ Send cookies
         });
         const data = await response.json();
         if (!data.success) {
@@ -384,7 +400,9 @@ export const sessionApi = {
         if (filters?.search) queryParams.append('search', filters.search);
 
         const url = `${API_BASE_URL}/sessions${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch sessions');
@@ -394,7 +412,9 @@ export const sessionApi = {
 
     // Get single session by ID
     getById: async (id: string) => {
-        const response = await fetch(`${API_BASE_URL}/sessions/${id}`);
+        const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+            credentials: 'include', // ✅ Send cookies
+        });
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to fetch session');
@@ -407,6 +427,7 @@ export const sessionApi = {
         const response = await fetch(`${API_BASE_URL}/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(sessionData),
         });
         const data = await response.json();
@@ -421,6 +442,7 @@ export const sessionApi = {
         const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // ✅ Send cookies
             body: JSON.stringify(sessionData),
         });
         const data = await response.json();
@@ -434,6 +456,7 @@ export const sessionApi = {
     delete: async (id: string) => {
         const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
             method: 'DELETE',
+            credentials: 'include', // ✅ Send cookies
         });
         const data = await response.json();
         if (!data.success) {
@@ -973,6 +996,16 @@ export const reportApi = {
         return data;
     },
 
+    // Get all students for report dropdown
+    getAllStudents: async () => {
+        const response = await fetch(`${API_BASE_URL}/reports/students`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch students');
+        return data;
+    },
+
     // Get detailed class report
     getClassReport: async (classId: string, options?: { startDate?: string; endDate?: string }) => {
         const params = new URLSearchParams();
@@ -1003,6 +1036,28 @@ export const reportApi = {
         return data;
     },
 
+    // Get detailed student report
+    getStudentReport: async (studentId: string) => {
+        const response = await fetch(`${API_BASE_URL}/reports/student/${studentId}`, {
+            credentials: 'include',
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch student report');
+        return data;
+    },
+
+    // Get single-subject enrollment report (students who enrolled in just one subject)
+    getSingleSubjectReport: async (options?: { subject?: string; status?: string }) => {
+        const params = new URLSearchParams();
+        if (options?.subject) params.append('subject', options.subject);
+        if (options?.status) params.append('status', options.status);
+        const url = `${API_BASE_URL}/reports/single-subject${params.toString() ? `?${params.toString()}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'Failed to fetch single-subject report');
+        return data;
+    },
+
     // Get academy summary report
     getAcademySummary: async () => {
         const response = await fetch(`${API_BASE_URL}/reports/academy-summary`, {
@@ -1028,3 +1083,43 @@ export const reportApi = {
         return data;
     },
 };
+
+// ========================================
+// Website/Public API Endpoints
+// ========================================
+export const websiteApi = {
+    // Get public website configuration (NO auth required, but include credentials for consistency)
+    getPublicConfig: async () => {
+        const response = await fetch(`${API_BASE_URL}/website/public`, {
+            credentials: 'include', // ✅ Include for consistency
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to fetch public config');
+        }
+        return data;
+    },
+
+    // Submit inquiry form (NO auth required)
+    submitInquiry: async (inquiryData: {
+        name: string;
+        phone: string;
+        email?: string;
+        interest: string;
+        remarks: string;
+        source: string;
+    }) => {
+        const response = await fetch(`${API_BASE_URL}/public/inquiry`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // ✅ Include for consistency
+            body: JSON.stringify(inquiryData),
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to submit inquiry');
+        }
+        return data;
+    },
+};
+

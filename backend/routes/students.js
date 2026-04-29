@@ -186,13 +186,56 @@ router.get("/:id/placeholder-avatar", async (req, res) => {
 // @access  Public
 router.get("/", async (req, res) => {
   try {
-    const { class: className, group, status, search, sessionRef, time, teacher, feeStatus } = req.query;
+    const {
+      class: classParam, // may be either an ObjectId (preferred) or a classTitle string
+      group,
+      status,
+      search,
+      sessionRef,
+      time,
+      teacher,
+      subject, // NEW — filter by subject name stored on student.subjects[].name
+      feeStatus,
+    } = req.query;
 
-    // Build query using $and array for clean composability
+    // Build query using $and array for clean composability.
+    // Every filter contributes one condition; all must match (AND semantics).
     const conditions = [];
+    const mongoose = require("mongoose");
+    const isObjectId = (v) => typeof v === "string" && mongoose.Types.ObjectId.isValid(v) && String(new mongoose.Types.ObjectId(v)) === v;
 
-    if (className && className !== "all") {
-      conditions.push({ class: { $regex: className, $options: "i" } });
+    // CLASS filter — frontend usually sends the class _id, but we still support
+    // a legacy classTitle string. Match against BOTH `class` (name snapshot) and
+    // `classRef` (ObjectId link). ALSO: look up sibling class docs that share the
+    // exact same classTitle (duplicates after refactors/session resets) so students
+    // whose classRef points to an archived/older sibling still surface correctly.
+    if (classParam && classParam !== "all") {
+      if (isObjectId(classParam)) {
+        const cls = await Class.findById(classParam).select("classTitle");
+        const title = cls?.classTitle?.trim();
+        // Find ALL class docs with the same title (case-insensitive) to cover duplicates.
+        const siblings = title
+          ? await Class.find({ classTitle: { $regex: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } }).select("_id classTitle").lean()
+          : [];
+        const siblingIds = Array.from(new Set([classParam, ...siblings.map((s) => String(s._id))]));
+        const siblingTitles = Array.from(new Set([title, ...siblings.map((s) => s.classTitle)].filter(Boolean)));
+        conditions.push({
+          $or: [
+            { classRef: { $in: siblingIds } },
+            ...(siblingTitles.length ? [{ class: { $in: siblingTitles } }] : []),
+          ],
+        });
+      } else {
+        // Treat as title string — match via regex on the name snapshot,
+        // and also try to resolve it to all class docs sharing that title.
+        const siblings = await Class.find({ classTitle: { $regex: new RegExp(`^${classParam.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } }).select("_id").lean();
+        conditions.push({
+          $or: [
+            { class: { $regex: classParam, $options: "i" } },
+            ...(siblings.length ? [{ classRef: { $in: siblings.map((s) => s._id) } }] : []),
+          ],
+        });
+      }
     }
 
     if (group && group !== "all") {
@@ -221,7 +264,8 @@ router.get("/", async (req, res) => {
       conditions.push({ sessionRef });
     }
 
-    // Time-based filter: Find students whose classes have timetable entries at this time
+    // TIME filter — students whose class has at least one timetable entry
+    // starting at the selected time.
     if (time && time !== "all") {
       const timetableEntries = await Timetable.find({
         startTime: time,
@@ -232,7 +276,7 @@ router.get("/", async (req, res) => {
         return res.json({ success: true, count: 0, data: [] });
       }
 
-      const classIds = [...new Set(timetableEntries.map((t) => t.classId))];
+      const classIds = [...new Set(timetableEntries.map((t) => String(t.classId)))];
       const matchingClasses = await Class.find({ _id: { $in: classIds } });
       const classNames = matchingClasses.map((c) => c.classTitle);
 
@@ -244,38 +288,45 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Teacher filter: Find students who take the subject this teacher teaches, in classes where this teacher is assigned
+    // TEACHER filter — match students taught by this teacher via THREE paths:
+    //   1) student.subjects[].teacherId === teacher (admission-level link)
+    //   2) student.subjects[].teacherName === teacher.name (stale / name-linked)
+    //   3) student.classRef is in a class where this teacher is assignedTeacher
+    //      or a subjectTeacher (or co-teacher) — mirrors the Teacher Report logic
+    //      so single-subject MDCAT enrollees, etc., are never dropped.
     if (teacher && teacher !== "all") {
-      const teacherDoc = await Teacher.findById(teacher).select("subject");
+      const teacherDoc = await Teacher.findById(teacher).select("subject name");
+      const orClauses = [{ "subjects.teacherId": teacher }];
+
+      if (teacherDoc?.name) {
+        const nameRegex = new RegExp(`^${String(teacherDoc.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+        orClauses.push({ "subjects.teacherName": { $regex: nameRegex } });
+      }
+
+      // Class-level match: any class doc where this teacher is assigned.
       const teacherClasses = await Class.find({
-        "subjectTeachers.teacherId": teacher,
-      });
-
-      if (teacherClasses.length === 0) {
-        return res.json({ success: true, count: 0, data: [] });
-      }
-
-      const teacherClassIds = teacherClasses.map((c) => c._id);
-      const teacherClassNames = teacherClasses.map((c) => c.classTitle);
-
-      const classCondition = {
         $or: [
-          { class: { $in: teacherClassNames } },
-          { classRef: { $in: teacherClassIds } },
+          { assignedTeacher: teacher },
+          { "subjectTeachers.teacherId": teacher },
+          { "subjectTeachers.coTeachers.teacherId": teacher },
         ],
-      };
-
-      // Also filter by the teacher's subject if known
-      if (teacherDoc && teacherDoc.subject) {
-        conditions.push({
-          $and: [
-            classCondition,
-            { "subjects.name": { $regex: new RegExp(`^${teacherDoc.subject}$`, "i") } },
-          ],
-        });
-      } else {
-        conditions.push(classCondition);
+      }).select("_id classTitle").lean();
+      if (teacherClasses.length) {
+        orClauses.push({ classRef: { $in: teacherClasses.map((c) => c._id) } });
+        const classTitles = teacherClasses.map((c) => c.classTitle).filter(Boolean);
+        if (classTitles.length) {
+          orClauses.push({ class: { $in: classTitles } });
+        }
       }
+
+      conditions.push({ $or: orClauses });
+    }
+
+    // SUBJECT filter — match any subject on the student whose name equals the filter
+    if (subject && subject !== "all") {
+      conditions.push({
+        "subjects.name": { $regex: new RegExp(`^${subject}$`, "i") },
+      });
     }
 
     const query = conditions.length > 0 ? { $and: conditions } : {};
@@ -348,6 +399,20 @@ router.post("/", protect, async (req, res) => {
     if (!Array.isArray(sanitizedData.subjects)) {
       sanitizedData.subjects = [];
     }
+    // Normalize subject objects so demo/undecided does not break ObjectId casting.
+    sanitizedData.subjects = sanitizedData.subjects.map((subject) => {
+      if (typeof subject === "string") return { name: subject };
+      const next = { ...(subject || {}) };
+      if (
+        next.teacherId === "" ||
+        next.teacherId === "__undecided__" ||
+        next.teacherId === null
+      ) {
+        delete next.teacherId;
+        delete next.teacherName;
+      }
+      return next;
+    });
 
     // Default admissionDate if missing
     if (!sanitizedData.admissionDate) {
@@ -459,23 +524,42 @@ router.post("/", protect, async (req, res) => {
     // =====================================================================
     // FINANCE SYNC: Process admission payment through collectFee split engine
     // =====================================================================
+    let paymentSyncWarning = null;
     if (initialPaidAmount > 0) {
       const monthLabel = new Date().toLocaleString("en-US", {
         month: "long",
         year: "numeric",
       });
 
-      await runCollectFeeInternal({
-        studentId: savedStudent._id.toString(),
-        amount: initialPaidAmount,
-        month: monthLabel,
-        user: req.user,
-      });
+      try {
+        await runCollectFeeInternal({
+          studentId: savedStudent._id.toString(),
+          amount: initialPaidAmount,
+          month: monthLabel,
+          user: req.user,
+        });
 
-      console.log("💰 Admission payment processed via collectFee split engine", {
-        studentId: savedStudent.studentId,
-        amount: initialPaidAmount,
-      });
+        console.log("💰 Admission payment processed via collectFee split engine", {
+          studentId: savedStudent.studentId,
+          amount: initialPaidAmount,
+        });
+      } catch (collectFeeError) {
+        paymentSyncWarning =
+          collectFeeError?.message ||
+          "Admission created, but initial fee distribution failed";
+        console.error("⚠️ Admission payment sync failed after student creation:", paymentSyncWarning);
+        // Fallback: preserve payment status so admission UI reflects received cash.
+        // Finance split can be reconciled manually, but student should not stay pending.
+        savedStudent.paidAmount = initialPaidAmount;
+        if (savedStudent.totalFee > 0 && savedStudent.paidAmount >= savedStudent.totalFee) {
+          savedStudent.feeStatus = "paid";
+        } else if (savedStudent.paidAmount > 0) {
+          savedStudent.feeStatus = "partial";
+        } else {
+          savedStudent.feeStatus = "pending";
+        }
+        await savedStudent.save();
+      }
     } else {
       // No payment — still notify owner about the new admission
       try {
@@ -511,7 +595,10 @@ router.post("/", protect, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Student created successfully",
+      message: paymentSyncWarning
+        ? "Student created successfully (initial payment needs manual recollection)"
+        : "Student created successfully",
+      warning: paymentSyncWarning || undefined,
       data: responseData,
     });
   } catch (error) {
@@ -551,6 +638,21 @@ router.put("/:id", async (req, res) => {
     }
     if (updateData.paidAmount !== undefined) {
       updateData.paidAmount = Number(updateData.paidAmount);
+    }
+    if (Array.isArray(updateData.subjects)) {
+      updateData.subjects = updateData.subjects.map((subject) => {
+        if (typeof subject === "string") return { name: subject };
+        const next = { ...(subject || {}) };
+        if (
+          next.teacherId === "" ||
+          next.teacherId === "__undecided__" ||
+          next.teacherId === null
+        ) {
+          delete next.teacherId;
+          delete next.teacherName;
+        }
+        return next;
+      });
     }
 
     // Never allow frontend to override studentId or feeStatus

@@ -12,16 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
+import { API_URL } from "@/config/api";
 
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('.app.github.dev')) {
-    const hostname = window.location.hostname;
-    const codespaceBase = hostname.replace(/-\d+\.app\.github\.dev$/, '');
-    return `https://${codespaceBase}-5000.app.github.dev/api`;
-  }
-  return 'http://localhost:5001/api';
-};
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = API_URL;
 
 interface Notification {
   _id: string;

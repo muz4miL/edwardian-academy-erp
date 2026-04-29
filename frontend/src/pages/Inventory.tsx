@@ -22,8 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Package, Trash2, Plus, Loader2, DollarSign, Hash, Layers } from "lucide-react";
 import { toast } from "sonner";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
+import { API_BASE_URL } from "@/utils/apiConfig";
 
 const CATEGORIES = [
   "Furniture", "Electronics", "Stationery", "Lab Equipment",

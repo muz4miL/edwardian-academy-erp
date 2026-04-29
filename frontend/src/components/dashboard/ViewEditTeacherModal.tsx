@@ -19,9 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { User, DollarSign, Loader2, Eye, Edit } from "lucide-react";
+import { User, DollarSign, Loader2, Eye, Edit, Camera } from "lucide-react";
 import { teacherApi, settingsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { ImageCapture } from "@/components/shared/ImageCapture";
 
 interface ViewEditTeacherModalProps {
   open: boolean;
@@ -56,6 +57,7 @@ export const ViewEditTeacherModal = ({
   const [phone, setPhone] = useState("");
   const [subject, setSubject] = useState("");
   const [joiningDate, setJoiningDate] = useState("");
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [compType, setCompType] = useState<CompensationType>("percentage");
   const [teacherShare, setTeacherShare] = useState("70");
   const [academyShare, setAcademyShare] = useState("30");
@@ -73,6 +75,7 @@ export const ViewEditTeacherModal = ({
       setJoiningDate(
         teacher.joiningDate ? teacher.joiningDate.split("T")[0] : "",
       );
+      setProfileImage(teacher.profileImage || null);
 
       const comp = teacher.compensation;
       if (comp) {
@@ -164,6 +167,7 @@ export const ViewEditTeacherModal = ({
       subject,
       joiningDate,
       compensation,
+      profileImage: profileImage || null,
     };
 
     updateTeacherMutation.mutate({ id: teacher._id, data: teacherData });
@@ -173,8 +177,8 @@ export const ViewEditTeacherModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] bg-card border-border text-foreground">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[660px] bg-card border-border text-foreground max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 py-5 border-b bg-gray-50/50 shrink-0">
           <DialogTitle className="text-xl font-semibold text-foreground flex items-center gap-2">
             <div className="bg-primary/10 p-2 rounded-lg">
               {mode === "view" ? (
@@ -192,7 +196,53 @@ export const ViewEditTeacherModal = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 py-6">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+          {/* Profile Photo Section */}
+          <div className="flex flex-col items-center py-4 bg-gradient-to-b from-gray-50 to-white rounded-xl border border-gray-100">
+            {isReadOnly ? (
+              <div className="flex flex-col items-center gap-3">
+                {profileImage ? (
+                  <div className="relative">
+                    <img
+                      src={profileImage}
+                      alt={name}
+                      className="w-24 h-24 rounded-full object-cover border-2 border-amber-400/60 shadow-md"
+                    />
+                    <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
+                      <Camera className="h-3 w-3 text-white" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border-2 border-primary/20 shadow-sm">
+                    <span className="text-3xl font-bold text-primary">
+                      {name?.charAt(0)?.toUpperCase() || <User className="h-10 w-10 text-primary/50" />}
+                    </span>
+                  </div>
+                )}
+                <p className="text-sm font-semibold text-gray-800">{name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {profileImage ? "Profile photo on file" : "No photo uploaded"}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  Profile Photo
+                </p>
+                <ImageCapture
+                  value={profileImage || undefined}
+                  onChange={(img) => setProfileImage(img)}
+                  size="lg"
+                />
+                {profileImage && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hover over the photo to change or remove it
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Personal Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -421,7 +471,7 @@ export const ViewEditTeacherModal = ({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-4 border-t bg-gray-50/50 shrink-0">
           {mode === "view" ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>

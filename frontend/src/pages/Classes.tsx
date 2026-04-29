@@ -164,6 +164,7 @@ const GROUP_OPTIONS = [
   "Pre-Engineering",
   "Computer Science",
   "Arts",
+  "General Science",
 ] as const;
 
 const SHIFT_OPTIONS = [
@@ -524,13 +525,14 @@ export default function Classes() {
 
     const unassignedSubjects = (formData.subjects || []).filter((s: any) => {
       const subjectName = typeof s === "string" ? s : s.name;
-      return !(formData.subjectTeachers || []).find(
+      // A subject is assigned if it has at least one teacher in subjectTeachers
+      return !(formData.subjectTeachers || []).some(
         (st: SubjectTeacherMap) => st.subject === subjectName && st.teacherId,
       );
     });
 
     if (unassignedSubjects.length > 0) {
-      errors.subjects = `${unassignedSubjects.length} subject(s) need teacher assignment`;
+      errors.subjects = `${unassignedSubjects.length} subject(s) need at least one teacher`;
     }
 
     setFormErrors(errors);
@@ -672,25 +674,27 @@ export default function Classes() {
     });
   };
 
-  const handleSubjectTeacherChange = (
+  // Toggle a teacher on/off for a subject (supports multiple teachers per subject)
+  const handleSubjectTeacherToggle = (
     subjectName: string,
     teacherId: string,
   ) => {
     const teacher = teachers.find((t) => t._id === teacherId);
     setFormData((prev) => {
       const currentMappings = prev.subjectTeachers || [];
-      const existingIndex = currentMappings.findIndex(
-        (st) => st.subject === subjectName,
+      const alreadyAssigned = currentMappings.some(
+        (st) => st.subject === subjectName && st.teacherId === teacherId,
       );
-      if (existingIndex >= 0) {
-        const updated = [...currentMappings];
-        updated[existingIndex] = {
-          subject: subjectName,
-          teacherId,
-          teacherName: teacher?.name || "",
+      if (alreadyAssigned) {
+        // Remove this teacher from the subject
+        return {
+          ...prev,
+          subjectTeachers: currentMappings.filter(
+            (st) => !(st.subject === subjectName && st.teacherId === teacherId),
+          ),
         };
-        return { ...prev, subjectTeachers: updated };
       }
+      // Add this teacher to the subject
       return {
         ...prev,
         subjectTeachers: [
@@ -705,9 +709,17 @@ export default function Classes() {
     });
   };
 
-  const getSubjectTeacherId = (subjectName: string): string =>
-    formData.subjectTeachers?.find((st) => st.subject === subjectName)
-      ?.teacherId || "";
+  // Returns all teacher IDs assigned to a subject
+  const getSubjectTeacherIds = (subjectName: string): string[] =>
+    (formData.subjectTeachers || [])
+      .filter((st) => st.subject === subjectName && st.teacherId)
+      .map((st) => st.teacherId);
+
+  // Check if a specific teacher is assigned to a subject
+  const isTeacherAssignedToSubject = (subjectName: string, teacherId: string): boolean =>
+    (formData.subjectTeachers || []).some(
+      (st) => st.subject === subjectName && st.teacherId === teacherId,
+    );
 
   const getTeachersForSubject = (subjectName: string) =>
     teachers.filter(
@@ -1385,9 +1397,9 @@ export default function Classes() {
                   {subjectOptions.map((subject) => {
                     const isSelected = isSubjectSelected(subject.id);
                     const availableTeachers = getTeachersForSubject(subject.id);
-                    const selectedTeacherId = getSubjectTeacherId(subject.id);
+                    const assignedTeacherIds = getSubjectTeacherIds(subject.id);
                     const hasError =
-                      formErrors.subjects && isSelected && !selectedTeacherId;
+                      formErrors.subjects && isSelected && assignedTeacherIds.length === 0;
 
                     return (
                       <div
@@ -1430,66 +1442,62 @@ export default function Classes() {
                           >
                             {subject.label}
                           </span>
-                          {isSelected && availableTeachers.length > 0 && (
+                          {isSelected && assignedTeacherIds.length > 0 && (
                             <span className="text-xs text-muted-foreground">
-                              {availableTeachers.length} teachers
+                              {assignedTeacherIds.length} teacher{assignedTeacherIds.length !== 1 ? "s" : ""}
                             </span>
                           )}
                         </div>
                         {isSelected && (
                           <div className="px-3 pb-3 pt-0">
-                            <div className="flex items-center gap-2 pl-8">
-                              <User className="h-4 w-4 text-muted-foreground" />
-                              <Select
-                                value={selectedTeacherId}
-                                onValueChange={(val) =>
-                                  handleSubjectTeacherChange(subject.id, val)
-                                }
-                              >
-                                <SelectTrigger
-                                  className={cn(
-                                    "flex-1 h-9 bg-white",
-                                    !selectedTeacherId &&
-                                      "border-amber-300 text-amber-700",
-                                  )}
-                                >
-                                  <SelectValue
-                                    placeholder={`Assign ${subject.label} teacher...`}
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableTeachers.length > 0 ? (
-                                    availableTeachers.map((teacher) => (
-                                      <SelectItem
-                                        key={teacher._id}
-                                        value={teacher._id}
+                            <div className="pl-8 space-y-1">
+                              {availableTeachers.length > 0 ? (
+                                availableTeachers.map((teacher) => {
+                                  const isChecked = isTeacherAssignedToSubject(subject.id, teacher._id);
+                                  return (
+                                    <div
+                                      key={teacher._id}
+                                      onClick={() => handleSubjectTeacherToggle(subject.id, teacher._id)}
+                                      className={cn(
+                                        "flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-all text-sm",
+                                        isChecked
+                                          ? "bg-sky-100 border border-sky-300 text-sky-900"
+                                          : "bg-white border border-gray-200 hover:border-sky-200 text-gray-700",
+                                      )}
+                                    >
+                                      <div
+                                        className={cn(
+                                          "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                          isChecked
+                                            ? "bg-sky-500 border-sky-500"
+                                            : "border-slate-300 bg-white",
+                                        )}
                                       >
-                                        <div className="flex items-center gap-2">
-                                          {teacher.name}
-                                          {isPartnerTeacher(teacher.name) && (
-                                            <Crown className="h-3 w-3 text-amber-500" />
-                                          )}
-                                        </div>
-                                      </SelectItem>
-                                    ))
-                                  ) : (
-                                    <div className="px-2 py-3 text-center text-sm text-muted-foreground">
-                                      <p>
-                                        No {subject.label} teachers available
-                                      </p>
-                                      <p className="text-xs mt-1">
-                                        Add in Teachers section
-                                      </p>
+                                        {isChecked && (
+                                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                                          </svg>
+                                        )}
+                                      </div>
+                                      <span className="font-medium">{teacher.name}</span>
+                                      {isPartnerTeacher(teacher.name) && (
+                                        <Crown className="h-3 w-3 text-amber-500" />
+                                      )}
                                     </div>
-                                  )}
-                                </SelectContent>
-                              </Select>
+                                  );
+                                })
+                              ) : (
+                                <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                                  <p>No {subject.label} teachers available</p>
+                                  <p className="text-xs mt-1">Add in Teachers section</p>
+                                </div>
+                              )}
                             </div>
-                            {!selectedTeacherId &&
+                            {assignedTeacherIds.length === 0 &&
                               availableTeachers.length > 0 && (
                                 <p className="text-xs text-amber-600 mt-1 pl-8 flex items-center gap-1">
                                   <AlertCircle className="h-3 w-3" />
-                                  Teacher assignment required
+                                  At least one teacher must be assigned
                                 </p>
                               )}
                           </div>
